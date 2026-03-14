@@ -113,3 +113,10 @@ Default local URLs:
 - The cloud connector publishes SIOCS cloud transactions into a separate reconciliation lane.
 - KPI separation between `Xstore vs SIM` and `Xstore vs SIOCS` depends on the updated Flink engine indexing documents with `reconView`.
 - Admin and actuator endpoints on the connector services are protected with HTTP Basic auth.
+
+## Known Runtime Notes
+
+- The UI split between `Xstore vs SIM` and `Xstore vs SIOCS` only works when `recon-flink-engine` is running the updated split-view build.
+- Old Elasticsearch documents created before the `reconView` split do not automatically appear under either tab.
+- If both tabs show `0`, the API is usually filtering by `reconView` correctly but Elasticsearch has not yet been repopulated with new split-view documents.
+- After changing reconciliation view logic, replay the relevant connector data so Flink can rebuild Elasticsearch documents for the correct lane.
