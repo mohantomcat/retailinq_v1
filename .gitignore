@@ -1,0 +1,16 @@
+.idea/
+run-logs/
+
+**/target/
+**/dist/
+**/node_modules/
+
+*.log
+*.tmp
+*.bak
+
+.env
+.env.*
+
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,72 @@
+spring:
+  application:
+    name: xstore-kafka-publisher
+  main:
+    banner-mode: console
+  datasource:
+    url: jdbc:oracle:thin:@${DB_HOST:localhost}:1521:${DB_SID:JCR}
+    username: ${DB_USER:recon}
+    password: ${DB_PASSWORD:}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 30000
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+      transaction-id-prefix: xstore-pub-${publisher.store-id}
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+publisher:
+  store-id: ${STORE_ID:1007}
+  org-id: ${ORG_ID:1}
+  tenant-id: ${TENANT_ID:tenant-india}
+  tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+  poll-interval-ms: 30000
+  batch-size: 100
+  max-retries: 5
+  lookback-hours: 96
+  processing-lock-timeout-minutes: ${PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES:15}
+  scheduler-enabled: ${PUBLISHER_SCHEDULER_ENABLED:true}
+
+kafka:
+  topic:
+    pos-transactions: pos.transactions.raw
+    dlq: recon.dlq
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+connector:
+  security:
+    username: ${CONNECTOR_ADMIN_USER:connector-admin}
+    password: ${CONNECTOR_ADMIN_PASSWORD:}
+
+logging:
+  level:
+    com.recon: DEBUG
+    org.springframework.kafka: INFO
+
+server:
+  port: ${SERVER_PORT:8181}

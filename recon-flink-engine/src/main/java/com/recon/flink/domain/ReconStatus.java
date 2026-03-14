@@ -1,0 +1,17 @@
+package com.recon.flink.domain;
+
+public enum ReconStatus {
+    AWAITING_SIM,
+    MATCHED,
+    MISSING_IN_SIOCS,
+    DUPLICATE_IN_SIOCS,
+    PROCESSING_PENDING,
+    PROCESSING_FAILED,
+    REVERTED,
+    ITEM_MISSING,
+    QUANTITY_MISMATCH,
+    INVENTORY_BUCKET_MISMATCH,
+    LATE_MATCH,
+    CORRECTED,
+    SOFT_TTL_WARNING
+}

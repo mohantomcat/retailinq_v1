@@ -1,0 +1,252 @@
+package com.recon.flink.processor;
+
+import com.recon.flink.domain.DiscrepancyType;
+import com.recon.flink.domain.FlatPosTransaction;
+import com.recon.flink.domain.FlatSimTransaction;
+import com.recon.flink.domain.ItemDiscrepancy;
+import com.recon.flink.domain.ReconEvent;
+import com.recon.flink.util.ItemDiffEngine;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.flink.api.common.state.StateTtlConfig;
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
+import org.apache.flink.util.Collector;
+
+import java.util.List;
+
+@Slf4j
+public class ReconciliationProcessor
+        extends KeyedCoProcessFunction
+        <String,
+                FlatPosTransaction,
+                FlatSimTransaction,
+                ReconEvent> {
+
+    private static final long SOFT_TTL_MS = 30 * 60 * 1000L;
+    private static final long HARD_TTL_MS = 8 * 60 * 60 * 1000L;
+
+    private final String reconView;
+    private final String expectedSimSource;
+
+    private ValueState<FlatPosTransaction> xstoreState;
+    private ValueState<FlatSimTransaction> siocsState;
+    private ValueState<Boolean> finalizedFlag;
+    private ValueState<Long> xstoreSeenAt;
+    private ValueState<Integer> lastSiocsStatus;
+    private ValueState<String> finalizedStatus;
+    private ValueState<String> originalChecksum;
+
+    public ReconciliationProcessor(String reconView, String expectedSimSource) {
+        this.reconView = reconView;
+        this.expectedSimSource = expectedSimSource;
+    }
+
+    @Override
+    public void open(Configuration config) {
+        StateTtlConfig opTtl = StateTtlConfig
+                .newBuilder(Time.hours(9))
+                .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+                .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
+                .build();
+
+        StateTtlConfig dedupTtl = StateTtlConfig
+                .newBuilder(Time.hours(32))
+                .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+                .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
+                .build();
+
+        StateTtlConfig correctionTtl = StateTtlConfig
+                .newBuilder(Time.hours(56))
+                .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+                .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
+                .build();
+
+        xstoreState = registerState("xstore", FlatPosTransaction.class, opTtl);
+        siocsState = registerState("siocs", FlatSimTransaction.class, opTtl);
+        finalizedFlag = registerState("finalized", Boolean.class, opTtl);
+        xstoreSeenAt = registerState("xstore-seen", Long.class, dedupTtl);
+        lastSiocsStatus = registerState("siocs-status", Integer.class, dedupTtl);
+        finalizedStatus = registerState("finalized-status", String.class, correctionTtl);
+        originalChecksum = registerState("orig-checksum", String.class, correctionTtl);
+    }
+
+    @Override
+    public void processElement1(
+            FlatPosTransaction xstore,
+            Context ctx,
+            Collector<ReconEvent> out) throws Exception {
+
+        if (xstoreSeenAt.value() != null) {
+            log.debug("Duplicate Xstore dropped: {}", xstore.getTransactionKey());
+            return;
+        }
+        xstoreSeenAt.update(ctx.timerService().currentProcessingTime());
+
+        FlatSimTransaction siocs = siocsState.value();
+        if (siocs != null
+                && siocs.getProcessingStatus() != null
+                && siocs.getProcessingStatus() != 0
+                && siocs.getProcessingStatus() != 3) {
+            reconcile(xstore, siocs, out);
+            siocsState.clear();
+            return;
+        }
+
+        xstoreState.update(xstore);
+        long eventTime = ctx.timestamp();
+        ctx.timerService().registerEventTimeTimer(eventTime + SOFT_TTL_MS);
+        ctx.timerService().registerEventTimeTimer(eventTime + HARD_TTL_MS);
+
+        if (siocs == null) {
+            out.collect(ReconEvent.awaiting(xstore, reconView, expectedSimSource));
+        }
+    }
+
+    @Override
+    public void processElement2(
+            FlatSimTransaction siocs,
+            Context ctx,
+            Collector<ReconEvent> out) throws Exception {
+
+        String prevStatus = finalizedStatus.value();
+        if (prevStatus != null) {
+            handleCorrection(siocs, prevStatus, out);
+            return;
+        }
+
+        if (siocs.isDuplicateFlag()) {
+            out.collect(ReconEvent.duplicate(siocs, reconView));
+            return;
+        }
+
+        Integer lastStatus = lastSiocsStatus.value();
+        if (lastStatus != null && lastStatus.equals(siocs.getProcessingStatus())) {
+            log.debug("True duplicate SIOCS dropped key={}", siocs.getTransactionKey());
+            return;
+        }
+        lastSiocsStatus.update(siocs.getProcessingStatus());
+
+        if (siocs.getProcessingStatus() == 2) {
+            out.collect(ReconEvent.processingFailed(siocs, reconView));
+            clearAllState("PROCESSING_FAILED", null);
+            return;
+        }
+        if (siocs.getProcessingStatus() == 4) {
+            out.collect(ReconEvent.reverted(siocs, reconView));
+            clearAllState("REVERTED", null);
+            return;
+        }
+
+        if (siocs.getProcessingStatus() == 0 || siocs.getProcessingStatus() == 3) {
+            siocsState.update(siocs);
+            out.collect(ReconEvent.processingPending(siocs, reconView));
+            return;
+        }
+
+        FlatPosTransaction xstore = xstoreState.value();
+        if (xstore == null) {
+            siocsState.update(siocs);
+            return;
+        }
+
+        reconcile(xstore, siocs, out);
+        xstoreState.clear();
+    }
+
+    @Override
+    public void onTimer(long timestamp,
+                        OnTimerContext ctx,
+                        Collector<ReconEvent> out) throws Exception {
+
+        if (Boolean.TRUE.equals(finalizedFlag.value())) {
+            return;
+        }
+
+        FlatPosTransaction xstore = xstoreState.value();
+        if (xstore == null) {
+            return;
+        }
+
+        long softFireTime = ctx.timestamp() - HARD_TTL_MS + SOFT_TTL_MS;
+
+        if (timestamp <= softFireTime + 1000L) {
+            log.warn("Soft TTL exceeded key={}", xstore.getTransactionKey());
+            out.collect(ReconEvent.softTtlWarning(xstore, reconView, expectedSimSource));
+        } else {
+            log.warn("Hard TTL exceeded - MISSING_IN_SIOCS key={}", xstore.getTransactionKey());
+            out.collect(ReconEvent.missing(xstore, reconView, expectedSimSource));
+            clearAllState("MISSING_IN_SIOCS", null);
+        }
+    }
+
+    private void reconcile(FlatPosTransaction xstore,
+                           FlatSimTransaction siocs,
+                           Collector<ReconEvent> out) throws Exception {
+
+        if (xstore.getChecksum() != null
+                && xstore.getChecksum().equals(siocs.getChecksum())) {
+            out.collect(ReconEvent.matched(xstore, siocs, reconView));
+            clearAllState("MATCHED", xstore.getChecksum());
+            return;
+        }
+
+        List<ItemDiscrepancy> discrepancies = ItemDiffEngine.diff(
+                xstore.getLineItems(), siocs.getLineItems());
+
+        if (discrepancies.isEmpty()) {
+            out.collect(ReconEvent.matched(xstore, siocs, reconView));
+            clearAllState("MATCHED", xstore.getChecksum());
+            return;
+        }
+
+        boolean hasItemMissing = discrepancies.stream()
+                .anyMatch(d -> d.getType() == DiscrepancyType.ITEM_MISSING);
+
+        if (hasItemMissing) {
+            out.collect(ReconEvent.itemMissing(xstore, siocs, discrepancies, reconView));
+            clearAllState("ITEM_MISSING", xstore.getChecksum());
+        } else {
+            out.collect(ReconEvent.quantityMismatch(xstore, siocs, discrepancies, reconView));
+            clearAllState("QUANTITY_MISMATCH", xstore.getChecksum());
+        }
+    }
+
+    private void handleCorrection(FlatSimTransaction siocs,
+                                  String prevStatus,
+                                  Collector<ReconEvent> out) throws Exception {
+        String prevChecksum = originalChecksum.value();
+        boolean checksumChanged = prevChecksum != null
+                && !prevChecksum.equals(siocs.getChecksum());
+
+        if ("MATCHED".equals(prevStatus) && checksumChanged) {
+            out.collect(ReconEvent.correctionMismatch(siocs, prevStatus, prevChecksum, reconView));
+        } else if ("MISSING_IN_SIOCS".equals(prevStatus)) {
+            out.collect(ReconEvent.lateCorrection(siocs, prevStatus, reconView));
+        } else {
+            log.debug("Idempotent re-post ignored key={}", siocs.getTransactionKey());
+        }
+
+        finalizedStatus.update("CORRECTED");
+    }
+
+    private void clearAllState(String status, String checksum) throws Exception {
+        xstoreState.clear();
+        siocsState.clear();
+        finalizedFlag.update(true);
+        if (status != null) {
+            finalizedStatus.update(status);
+        }
+        if (checksum != null) {
+            originalChecksum.update(checksum);
+        }
+    }
+
+    private <T> ValueState<T> registerState(String name, Class<T> clazz, StateTtlConfig ttl) {
+        ValueStateDescriptor<T> desc = new ValueStateDescriptor<>(name, clazz);
+        desc.enableTimeToLive(ttl);
+        return getRuntimeContext().getState(desc);
+    }
+}

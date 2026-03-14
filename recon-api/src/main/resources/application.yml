@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: recon-api
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:recon123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: recon
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+    open-in-view: false
+
+server:
+  port: 8090
+
+elasticsearch:
+  host: ${ES_HOST:localhost}
+  port: ${ES_PORT:9200}
+
+app:
+  jwt:
+    secret: your-256-bit-secret-key-change-in-production-must-be-long
+    expiration-ms: 86400000
+    refresh-expiration-ms: 604800000
+
+logging:
+  level:
+    com.recon: DEBUG
+    org.springframework.web: INFO

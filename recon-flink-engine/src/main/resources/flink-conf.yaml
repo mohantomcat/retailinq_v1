@@ -1,0 +1,21 @@
+jobmanager.rpc.address: localhost
+jobmanager.memory.process.size: 2048m
+taskmanager.memory.process.size: 4096m
+taskmanager.numberOfTaskSlots: 4
+
+# RocksDB state backend
+state.backend: rocksdb
+state.backend.incremental: true
+state.checkpoints.dir: file:///tmp/flink/checkpoints
+state.savepoints.dir: file:///tmp/flink/savepoints
+
+# Checkpoint tuning
+execution.checkpointing.interval: 60000
+execution.checkpointing.mode: EXACTLY_ONCE
+execution.checkpointing.min-pause: 30000
+execution.checkpointing.timeout: 120000
+execution.checkpointing.max-concurrent-checkpoints: 1
+
+# RocksDB memory tuning
+state.backend.rocksdb.memory.managed: true
+state.backend.rocksdb.memory.fixed-per-slot: 256mb

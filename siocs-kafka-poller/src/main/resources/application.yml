@@ -1,0 +1,83 @@
+spring:
+  application:
+    name: siocs-kafka-poller
+  main:
+    banner-mode: console
+  datasource:
+    url: jdbc:oracle:thin:@${SIOCS_DB_HOST:localhost}:1521:${SIOCS_DB_SID:JCR}
+    username: ${SIOCS_DB_USER:siocs}
+    password: ${SIOCS_DB_PASSWORD:}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 30000
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+  flyway:
+    enabled: false
+
+checkpoint:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 3
+      connection-timeout: 30000
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+siocs:
+  poller:
+    org-id: ${ORG_ID:1}
+    tenant-id: ${TENANT_ID:tenant-india}
+    tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+    poll-interval-ms: 300000
+    safety-margin-min: 10
+    page-size: 500
+    max-retries: 5
+    lease-timeout-seconds: ${SIOCS_POLLER_LEASE_TIMEOUT_SECONDS:900}
+    scheduler-enabled: ${SIOCS_POLLER_SCHEDULER_ENABLED:true}
+
+kafka:
+  topic:
+    sim-transactions: sim.transactions.raw
+    dlq: recon.dlq
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+connector:
+  security:
+    username: ${CONNECTOR_ADMIN_USER:connector-admin}
+    password: ${CONNECTOR_ADMIN_PASSWORD:}
+
+logging:
+  level:
+    com.recon: DEBUG
+    org.springframework.kafka: INFO
+
+server:
+  port: ${SERVER_PORT:8182}
