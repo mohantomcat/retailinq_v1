@@ -16,6 +16,26 @@ RetailINQ is a reconciliation platform for comparing Xstore transaction data wit
 - `Xstore vs SIM`: Xstore database connector vs SIM database connector
 - `Xstore vs SIOCS`: Xstore database connector vs SIOCS cloud API connector
 
+## Architecture
+
+```text
+Xstore DB --------------------> xstore-kafka-publisher -----------+
+                                                                  |
+SIM/SIOCS DB ----------------> siocs-kafka-poller ---------------+|
+                                                                 ||
+SIOCS Cloud REST API --------> cloud-rest-ingestion-connector ---+|
+                                                                  v
+                                                        Kafka topics
+                                                                  v
+                                                     recon-flink-engine
+                                                                  v
+                                                         Elasticsearch
+                                                                  v
+                                                            recon-api
+                                                                  v
+                                                             recon-ui
+```
+
 ## Prerequisites
 
 - Java 17+
