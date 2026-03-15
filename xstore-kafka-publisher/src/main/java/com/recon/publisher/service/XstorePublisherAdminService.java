@@ -16,14 +16,27 @@ public class XstorePublisherAdminService {
     private final PublisherConfig config;
     private final PublishTrackerRepository trackerRepository;
     private final XstoreKafkaPublisher publisher;
+    private final XstoreRuntimeConfigService runtimeConfigService;
 
     public XstorePublisherStatusResponse getStatus() {
+        boolean schedulerEnabled = runtimeConfigService.getBoolean(
+                "PUBLISHER_SCHEDULER_ENABLED",
+                config.isSchedulerEnabled());
+        int batchSize = runtimeConfigService.getInt(
+                "PUBLISHER_BATCH_SIZE",
+                config.getBatchSize());
+        int maxRetries = runtimeConfigService.getInt(
+                "PUBLISHER_MAX_RETRIES",
+                config.getMaxRetries());
+        int lockTimeoutMinutes = runtimeConfigService.getInt(
+                "PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES",
+                config.getProcessingLockTimeoutMinutes());
         return XstorePublisherStatusResponse.builder()
                 .service("xstore-kafka-publisher")
-                .schedulerEnabled(config.isSchedulerEnabled())
-                .batchSize(config.getBatchSize())
-                .maxRetries(config.getMaxRetries())
-                .processingLockTimeoutMinutes(config.getProcessingLockTimeoutMinutes())
+                .schedulerEnabled(schedulerEnabled)
+                .batchSize(batchSize)
+                .maxRetries(maxRetries)
+                .processingLockTimeoutMinutes(lockTimeoutMinutes)
                 .statusCounts(trackerRepository.countByStatus())
                 .oldestPendingAt(toIso(trackerRepository.oldestTimestampForStatus("PENDING")))
                 .oldestFailedAt(toIso(trackerRepository.oldestTimestampForStatus("FAILED")))
@@ -42,7 +55,9 @@ public class XstorePublisherAdminService {
 
     public XstorePublisherActionResponse releaseStaleClaims() {
         int released = trackerRepository.releaseStaleClaims(
-                config.getProcessingLockTimeoutMinutes());
+                runtimeConfigService.getInt(
+                        "PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES",
+                        config.getProcessingLockTimeoutMinutes()));
         return XstorePublisherActionResponse.builder()
                 .action("release-stale-claims")
                 .status("OK")

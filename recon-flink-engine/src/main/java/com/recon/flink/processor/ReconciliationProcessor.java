@@ -131,12 +131,12 @@ public class ReconciliationProcessor
 
         if (siocs.getProcessingStatus() == 2) {
             out.collect(ReconEvent.processingFailed(siocs, reconView));
-            clearAllState("PROCESSING_FAILED", null);
+            clearAllState(processingFailedStatus(), null);
             return;
         }
         if (siocs.getProcessingStatus() == 4) {
             out.collect(ReconEvent.reverted(siocs, reconView));
-            clearAllState("REVERTED", null);
+            clearAllState(revertedStatus(), null);
             return;
         }
 
@@ -176,9 +176,9 @@ public class ReconciliationProcessor
             log.warn("Soft TTL exceeded key={}", xstore.getTransactionKey());
             out.collect(ReconEvent.softTtlWarning(xstore, reconView, expectedSimSource));
         } else {
-            log.warn("Hard TTL exceeded - MISSING_IN_SIOCS key={}", xstore.getTransactionKey());
+            log.warn("Hard TTL exceeded - {} key={}", missingStatus(), xstore.getTransactionKey());
             out.collect(ReconEvent.missing(xstore, reconView, expectedSimSource));
-            clearAllState("MISSING_IN_SIOCS", null);
+            clearAllState(missingStatus(), null);
         }
     }
 
@@ -223,13 +223,13 @@ public class ReconciliationProcessor
 
         if ("MATCHED".equals(prevStatus) && checksumChanged) {
             out.collect(ReconEvent.correctionMismatch(siocs, prevStatus, prevChecksum, reconView));
-        } else if ("MISSING_IN_SIOCS".equals(prevStatus)) {
+        } else if (missingStatus().equals(prevStatus)) {
             out.collect(ReconEvent.lateCorrection(siocs, prevStatus, reconView));
         } else {
             log.debug("Idempotent re-post ignored key={}", siocs.getTransactionKey());
         }
 
-        finalizedStatus.update("CORRECTED");
+        finalizedStatus.update(correctedStatus());
     }
 
     private void clearAllState(String status, String checksum) throws Exception {
@@ -242,6 +242,30 @@ public class ReconciliationProcessor
         if (checksum != null) {
             originalChecksum.update(checksum);
         }
+    }
+
+    private String missingStatus() {
+        return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
+                ? "MISSING_IN_SIOCS"
+                : "MISSING_IN_SIM";
+    }
+
+    private String processingFailedStatus() {
+        return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
+                ? "PROCESSING_FAILED_IN_SIOCS"
+                : "PROCESSING_FAILED_IN_SIM";
+    }
+
+    private String revertedStatus() {
+        return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
+                ? "REVERTED_IN_SIOCS"
+                : "REVERTED_IN_SIM";
+    }
+
+    private String correctedStatus() {
+        return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
+                ? "CORRECTED_IN_SIOCS"
+                : "CORRECTED_IN_SIM";
     }
 
     private <T> ValueState<T> registerState(String name, Class<T> clazz, StateTtlConfig ttl) {

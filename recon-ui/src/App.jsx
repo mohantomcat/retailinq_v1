@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Unauthorized from './pages/Unauthorized'
 import ProtectedRoute from './components/ProtectedRoute'
-import {RECONCILIATION_TAB_IDS, getTabLabel} from './constants/navigation'
+import {CONFIGURATION_TAB_IDS, RECONCILIATION_TAB_IDS, getTabLabel} from './constants/navigation'
 
 function buildTheme() {
     return createTheme({
@@ -163,6 +163,10 @@ function AppRoutes() {
         id,
         label: getTabLabel(t, id),
     }))
+    const configurationPairs = CONFIGURATION_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
 
     useEffect(() => {
         setOpenTabs([])
@@ -196,6 +200,7 @@ function AppRoutes() {
         <DashboardWrapper
             drawerWidth={drawerWidth}
             modules={reconciliationPairs}
+            configurations={configurationPairs}
             activeTab={activeTab}
             onSelectTab={handleSidebarClick}
             sidebarCollapsed={sidebarCollapsed}

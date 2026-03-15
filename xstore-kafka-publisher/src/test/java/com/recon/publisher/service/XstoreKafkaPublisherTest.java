@@ -42,6 +42,8 @@ class XstoreKafkaPublisherTest {
     private KafkaTemplate<String, String> kafkaTemplate;
     @Mock
     private KafkaOperations<String, String> kafkaOperations;
+    @Mock
+    private XstoreRuntimeConfigService runtimeConfigService;
 
     private XstoreKafkaPublisher publisher;
     private PublisherConfig config;
@@ -60,7 +62,12 @@ class XstoreKafkaPublisherTest {
                 parser,
                 kafkaTemplate,
                 config,
-                new ObjectMapper());
+                new ObjectMapper(),
+                runtimeConfigService);
+        when(runtimeConfigService.getBoolean("PUBLISHER_SCHEDULER_ENABLED", true)).thenReturn(true);
+        when(runtimeConfigService.getInt("PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES", 15)).thenReturn(15);
+        when(runtimeConfigService.getInt("PUBLISHER_BATCH_SIZE", 10)).thenReturn(10);
+        when(runtimeConfigService.getInt("PUBLISHER_MAX_RETRIES", 5)).thenReturn(5);
         ReflectionTestUtils.setField(publisher, "topic", "pos.transactions.raw");
         ReflectionTestUtils.setField(publisher, "dlqTopic", "recon.dlq");
     }

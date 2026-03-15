@@ -39,6 +39,8 @@ class SiocsKafkaPollerTest {
     private SiocsTransactionMapper mapper;
     @Mock
     private KafkaTemplate<String, String> kafkaTemplate;
+    @Mock
+    private PollerRuntimeConfigService runtimeConfigService;
 
     private SiocsKafkaPoller poller;
     private PollerConfig config;
@@ -61,7 +63,12 @@ class SiocsKafkaPollerTest {
                 mapper,
                 kafkaTemplate,
                 config,
-                new ObjectMapper());
+                new ObjectMapper(),
+                runtimeConfigService);
+        when(runtimeConfigService.getBoolean("SIOCS_POLLER_SCHEDULER_ENABLED", true)).thenReturn(true);
+        when(runtimeConfigService.getInt("SIOCS_POLLER_LEASE_TIMEOUT_SECONDS", 900)).thenReturn(900);
+        when(runtimeConfigService.getInt("SIOCS_POLLER_SAFETY_MARGIN_MIN", 10)).thenReturn(10);
+        when(runtimeConfigService.getInt("SIOCS_POLLER_PAGE_SIZE", 2)).thenReturn(2);
         ReflectionTestUtils.setField(poller, "topic", "sim.transactions.raw");
         ReflectionTestUtils.setField(poller, "dlqTopic", "recon.dlq");
     }

@@ -27,13 +27,15 @@ import TuneIcon from '@mui/icons-material/Tune'
 import PeopleIcon from '@mui/icons-material/People'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import SecurityIcon from '@mui/icons-material/Security'
+import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest'
+import DnsRoundedIcon from '@mui/icons-material/DnsRounded'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
-import {getTabLabel, SECURITY_TAB_IDS} from '../constants/navigation'
+import {CONFIGURATION_TAB_IDS, getTabLabel, SECURITY_TAB_IDS} from '../constants/navigation'
 
 const ITEM_PERMISSIONS = {
     'xstore-sim': 'RECON_XSTORE_SIM',
-    'xstore-siocs': 'RECON_XSTORE_SIM',
+    'xstore-siocs': 'RECON_XSTORE_SIOCS',
     'xstore-xocs': 'RECON_XSTORE_XOCS',
     'sim-rms': 'RECON_SIM_RMS',
     reports: 'REPORTS_VIEW',
@@ -41,12 +43,15 @@ const ITEM_PERMISSIONS = {
     'manage-users': 'ADMIN_USERS',
     'manage-roles': 'ADMIN_ROLES',
     'manage-perms': 'ADMIN_PERMISSIONS',
+    'module-configs': 'CONFIG_MODULE_VIEW',
+    'system-configs': 'CONFIG_SYSTEM_VIEW',
 }
 
 const SECTION_PERMISSIONS = {
     reconciliation: 'RECON_VIEW',
     reports: 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
+    configurations: ['CONFIG_MODULE_VIEW', 'CONFIG_SYSTEM_VIEW'],
     security: 'ADMIN_USERS',
 }
 
@@ -54,6 +59,7 @@ const SECTION_ICONS = {
     reconciliation: <CompareArrowsIcon sx={{fontSize: 18}}/>,
     reports: <AssessmentIcon sx={{fontSize: 18}}/>,
     settings: <SettingsIcon sx={{fontSize: 18}}/>,
+    configurations: <SettingsSuggestIcon sx={{fontSize: 18}}/>,
     security: <AdminPanelSettingsIcon sx={{fontSize: 18}}/>,
 }
 
@@ -70,6 +76,10 @@ const SECTION_COLORS = {
         icon: '#D97706',
         bg: '#FFF7ED',
     },
+    configurations: {
+        icon: '#2563EB',
+        bg: '#EFF6FF',
+    },
     security: {
         icon: '#7C3AED',
         bg: '#F5F3FF',
@@ -83,6 +93,8 @@ const ITEM_ICONS = {
     'sim-rms': <InventoryIcon sx={{fontSize: 17}}/>,
     reports: <BarChartIcon sx={{fontSize: 17}}/>,
     settings: <TuneIcon sx={{fontSize: 17}}/>,
+    'module-configs': <TuneIcon sx={{fontSize: 17}}/>,
+    'system-configs': <DnsRoundedIcon sx={{fontSize: 17}}/>,
     'manage-users': <PeopleIcon sx={{fontSize: 17}}/>,
     'manage-roles': <ManageAccountsIcon sx={{fontSize: 17}}/>,
     'manage-perms': <SecurityIcon sx={{fontSize: 17}}/>,
@@ -93,16 +105,21 @@ export default function Sidebar({
                                     collapsed,
                                     onCollapse,
                                     modules = [],
+                                    configurations = [],
                                     reports = [],
                                     settings = [],
                                     activeTab,
                                     onSelect,
                                     themeMode = 'Light',
                                 }) {
-    const {hasPermission} = useAuth()
+    const {hasAnyPermission, hasPermission} = useAuth()
     const {t} = useI18n()
     const isDark = themeMode === 'Dark'
     const securityItems = SECURITY_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const configurationItems = CONFIGURATION_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
     }))
@@ -111,6 +128,7 @@ export default function Sidebar({
         reconciliation: true,
         reports: false,
         settings: false,
+        configurations: false,
         security: false,
     })
 
@@ -138,10 +156,12 @@ export default function Sidebar({
             bg: '#F8FAFC',
         }
 
-        if (sectionPerm && !hasPermission(sectionPerm)) return null
+        if (Array.isArray(sectionPerm) && !hasAnyPermission(sectionPerm)) return null
+        if (!Array.isArray(sectionPerm) && sectionPerm && !hasPermission(sectionPerm)) return null
 
         const visibleItems = items.filter((mod) => {
             const perm = ITEM_PERMISSIONS[mod.id]
+            if (Array.isArray(perm)) return hasAnyPermission(perm)
             return !perm || hasPermission(perm)
         })
 
@@ -454,6 +474,7 @@ export default function Sidebar({
 
             <List sx={{pt: 0.75, flexGrow: 1}}>
                 {renderGroup(t('Reconciliation'), modules, 'reconciliation')}
+                {renderGroup(t('Configurations'), configurations.length ? configurations : configurationItems, 'configurations')}
                 {renderGroup(t('Reports'), reports, 'reports')}
                 {renderGroup(t('Settings'), settings, 'settings')}
                 {renderGroup(t('Security'), securityItems, 'security')}

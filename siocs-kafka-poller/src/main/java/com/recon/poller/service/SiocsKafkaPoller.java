@@ -38,6 +38,7 @@ public class SiocsKafkaPoller {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final PollerConfig config;
     private final ObjectMapper objectMapper;
+    private final PollerRuntimeConfigService runtimeConfigService;
 
     @Value("${kafka.topic.sim-transactions}")
     private String topic;
@@ -47,7 +48,7 @@ public class SiocsKafkaPoller {
 
     @Scheduled(fixedDelayString = "${siocs.poller.poll-interval-ms:300000}")
     public void poll() {
-        if (!config.isSchedulerEnabled()) {
+        if (!runtimeConfigService.getBoolean("SIOCS_POLLER_SCHEDULER_ENABLED", config.isSchedulerEnabled())) {
             return;
         }
         runPollCycle();
@@ -55,27 +56,36 @@ public class SiocsKafkaPoller {
 
     public void runPollCycle() {
         String leaseOwner = UUID.randomUUID().toString();
+        int leaseTimeoutSeconds = runtimeConfigService.getInt(
+                "SIOCS_POLLER_LEASE_TIMEOUT_SECONDS",
+                config.getLeaseTimeoutSeconds());
         SiocsPollCheckpoint cp =
                 checkpointRepository.findOrCreate(POLLER_ID, config.getTenantId());
         boolean acquired = checkpointRepository.tryAcquireLease(
-                POLLER_ID, leaseOwner, config.getLeaseTimeoutSeconds());
+                POLLER_ID, leaseOwner, leaseTimeoutSeconds);
         if (!acquired) {
             log.info("Skipping poll: lease already held for {}", POLLER_ID);
             return;
         }
 
         try {
+            int safetyMarginMinutes = runtimeConfigService.getInt(
+                    "SIOCS_POLLER_SAFETY_MARGIN_MIN",
+                    config.getSafetyMarginMin());
+            int pageSize = runtimeConfigService.getInt(
+                    "SIOCS_POLLER_PAGE_SIZE",
+                    config.getPageSize());
             Timestamp fromTs = Timestamp.from(
                     cp.getLastProcessedTimestamp().toInstant()
-                            .minus(config.getSafetyMarginMin(), ChronoUnit.MINUTES));
+                            .minus(safetyMarginMinutes, ChronoUnit.MINUTES));
             String fromExtId = cp.getLastProcessedExternalId();
             long fromId = cp.getLastProcessedId() == null ? 0L : cp.getLastProcessedId();
 
             checkpointRepository.markStarted(POLLER_ID);
             log.info("Poll started from={} extId={} id={} ({}min overlap)",
-                    fromTs, fromExtId, fromId, config.getSafetyMarginMin());
+                    fromTs, fromExtId, fromId, safetyMarginMinutes);
 
-            int total = pollAllPages(fromTs, fromExtId, fromId);
+            int total = pollAllPages(fromTs, fromExtId, fromId, pageSize);
             checkpointRepository.markCompleted(POLLER_ID, total);
             log.info("Poll completed. Total transactions: {}", total);
 
@@ -89,27 +99,28 @@ public class SiocsKafkaPoller {
 
     private int pollAllPages(Timestamp fromTs,
                              String fromExtId,
-                             long fromId) throws Exception {
+                             long fromId,
+                             int pageSize) throws Exception {
         int total = 0;
         List<SiocsRawRow> page;
 
         do {
             page = siocsRepository.findRawRows(
-                    fromTs, fromExtId, fromId, config.getPageSize());
+                    fromTs, fromExtId, fromId, pageSize);
 
             if (page.isEmpty()) {
                 break;
             }
 
             AggregationResult result =
-                    aggregator.aggregate(page, config.getPageSize());
+                    aggregator.aggregate(page, pageSize);
 
             if (result.isSingleTransactionPage()) {
                 log.warn("Single txn fills page; doubling pageSize");
                 page = siocsRepository.findRawRows(
-                        fromTs, fromExtId, fromId, config.getPageSize() * 2);
+                        fromTs, fromExtId, fromId, pageSize * 2);
                 result = aggregator.aggregate(
-                        page, config.getPageSize() * 2);
+                        page, pageSize * 2);
             }
 
             if (!result.getTransactions().isEmpty()) {
@@ -124,7 +135,7 @@ public class SiocsKafkaPoller {
             checkpointRepository.updateComposite(
                     POLLER_ID, fromTs, fromExtId, fromId);
 
-        } while (page.size() >= config.getPageSize());
+        } while (page.size() >= pageSize);
 
         return total;
     }

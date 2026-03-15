@@ -21,6 +21,7 @@ import CompareArrowsRoundedIcon from '@mui/icons-material/CompareArrowsRounded'
 import KPI from '../components/KPI'
 import DetailTable from '../components/DetailTable'
 import {reconApi} from '../services/reconApi'
+import Configurations from './Configurations'
 import ManageUsers from './admin/ManageUsers'
 import ManageRoles from './admin/ManageRoles'
 import ManagePermissions from './admin/ManagePermissions'
@@ -29,22 +30,63 @@ import {DatePicker} from '@mui/x-date-pickers/DatePicker'
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import {useI18n} from '../context/I18nContext'
-import {getTabLabel} from '../constants/navigation'
-
-const KPI_STATUS_MAP = {
-    total: null,
-    matched: 'MATCHED',
-    missingInSiocs: 'MISSING_IN_SIOCS',
-    quantityMismatch: 'QUANTITY_MISMATCH',
-    itemMissing: 'ITEM_MISSING',
-    processingPending: 'PROCESSING_PENDING',
-}
+import {CONFIGURATION_TAB_IDS, getTabLabel} from '../constants/navigation'
 
 const PAGE_SIZE = 20
 const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms']
+const CONFIGURATION_IDS = CONFIGURATION_TAB_IDS
 const RECON_VIEW_BY_TAB = {
     'xstore-sim': 'XSTORE_SIM',
     'xstore-siocs': 'XSTORE_SIOCS',
+    'xstore-xocs': 'XSTORE_XOCS',
+}
+
+function getMissingKpiTitle(tabId, t) {
+    switch (tabId) {
+        case 'xstore-siocs':
+            return t('Missing in SIOCS')
+        case 'xstore-xocs':
+            return t('Missing in XOCS')
+        case 'xstore-sim':
+        default:
+            return t('Missing in SIM')
+    }
+}
+
+function getTargetSystem(tabId) {
+    switch (tabId) {
+        case 'xstore-siocs':
+            return 'SIOCS'
+        case 'xstore-xocs':
+            return 'XOCS'
+        case 'xstore-sim':
+        default:
+            return 'SIM'
+    }
+}
+
+function getProcessingPendingKpiTitle(tabId, t) {
+    return t(`Processing Pending in ${getTargetSystem(tabId)}`)
+}
+
+function getKpiStatus(tabId, selectedKpi) {
+    const target = getTargetSystem(tabId)
+
+    switch (selectedKpi) {
+        case 'matched':
+            return 'MATCHED'
+        case 'missingInSiocs':
+            return `MISSING_IN_${target}`
+        case 'quantityMismatch':
+            return 'QUANTITY_MISMATCH'
+        case 'itemMissing':
+            return 'ITEM_MISSING'
+        case 'processingPending':
+            return `PROCESSING_PENDING_IN_${target}`
+        case 'total':
+        default:
+            return null
+    }
 }
 
 const TAB_COLORS = {
@@ -110,6 +152,8 @@ function getPalette(themeMode) {
 function tabColor(id) {
     return SECURITY_IDS.includes(id)
         ? TAB_COLORS.security
+        : CONFIGURATION_IDS.includes(id)
+            ? {active: '#2563EB', hover: '#1D4ED8'}
         : TAB_COLORS.recon
 }
 
@@ -668,7 +712,7 @@ function ReconContent({tabId, palette, t}) {
     useEffect(() => {
         if (!selectedKpi || !reconView) return
 
-        const reconStatus = KPI_STATUS_MAP[selectedKpi]
+        const reconStatus = getKpiStatus(tabId, selectedKpi)
 
         const load = async () => {
             setLoadingDetail(true)
@@ -727,6 +771,13 @@ function ReconContent({tabId, palette, t}) {
         setSelectedKpi(key)
         setPage(0)
     }
+
+    const pageStart =
+        totalElements === 0 ? 0 : page * PAGE_SIZE + 1
+    const pageEnd =
+        totalElements === 0
+            ? 0
+            : Math.min((page + 1) * PAGE_SIZE, totalElements)
 
     const renderCheckbox = (checked) => (
         <Box
@@ -1079,10 +1130,13 @@ function ReconContent({tabId, palette, t}) {
                     {[
                         {title: t('Total Transactions'), key: 'total'},
                         {title: t('Matched'), key: 'matched'},
-                        {title: t('Missing in SIM'), key: 'missingInSiocs'},
+                        {title: getMissingKpiTitle(tabId, t), key: 'missingInSiocs'},
                         {title: t('Quantity Mismatch'), key: 'quantityMismatch'},
                         {title: t('Item Missing'), key: 'itemMissing'},
-                        {title: t('Processing Pending'), key: 'processingPending'},
+                        {
+                            title: getProcessingPendingKpiTitle(tabId, t),
+                            key: 'processingPending',
+                        },
                     ].map((kpi) => (
                         <Grid item xs={12} sm={6} md={2} key={kpi.key}>
                             <KPI
@@ -1146,6 +1200,13 @@ function ReconContent({tabId, palette, t}) {
                                 <Typography
                                     variant="body2"
                                     sx={{color: palette.textMuted}}
+                                >
+                                    {`Showing ${pageStart}-${pageEnd} of ${totalElements} records`}
+                                </Typography>
+
+                                <Typography
+                                    variant="body2"
+                                    sx={{color: palette.textSoft}}
                                 >
                                     {t('Page {page} of {total}', {
                                         page: page + 1,
@@ -1321,6 +1382,8 @@ export default function Dashboard({
                     >
                         {SECURITY_IDS.includes(tabId) ? (
                             renderSecurityTab(tabId)
+                        ) : CONFIGURATION_IDS.includes(tabId) ? (
+                            <Configurations tabId={tabId} palette={palette} t={t}/>
                         ) : (
                             <ReconContent tabId={tabId} palette={palette} t={t}/>
                         )}

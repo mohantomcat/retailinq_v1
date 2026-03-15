@@ -8,6 +8,7 @@ import com.recon.flink.domain.FlatSimTransaction;
 import com.recon.flink.domain.ItemDiscrepancy;
 import com.recon.flink.domain.ReconEvent;
 import com.recon.flink.processor.ReconciliationProcessor;
+import com.recon.flink.processor.PosToPosReconciliationProcessor;
 import com.recon.flink.sink.ElasticsearchReconSink;
 import com.recon.flink.sink.KafkaSummarySink;
 import com.recon.poller.domain.SimTransactionEvent;
@@ -75,6 +76,17 @@ public class ReconFlinkJob {
                         .setValueOnlyDeserializer(new SimTransactionDeserializer())
                         .build();
 
+        KafkaSource<FlatPosTransaction> xocsSource =
+                KafkaSource.<FlatPosTransaction>builder()
+                        .setBootstrapServers("kafka:29092")
+                        .setTopics("xocs.transactions.raw")
+                        .setGroupId("recon-engine")
+                        .setStartingOffsets(
+                                OffsetsInitializer.committedOffsets(
+                                        OffsetResetStrategy.EARLIEST))
+                        .setValueOnlyDeserializer(new PosTransactionDeserializer())
+                        .build();
+
         DataStream<FlatPosTransaction> xstoreStream =
                 env.fromSource(xstoreSource,
                         WatermarkStrategy
@@ -95,6 +107,18 @@ public class ReconFlinkJob {
                                         parseTs(event.getTransactionDateTime()))
                                 .withIdleness(Duration.ofMinutes(10)),
                         "SIOCS Source");
+
+        DataStream<FlatPosTransaction> xocsStream =
+                env.fromSource(xocsSource,
+                        WatermarkStrategy
+                                .<FlatPosTransaction>forBoundedOutOfOrderness(Duration.ofHours(2))
+                                .withTimestampAssigner((event, ts) -> {
+                                    long eventTs = parseTs(event.getBeginDatetime());
+                                    long now = System.currentTimeMillis();
+                                    return Math.min(eventTs, now + Duration.ofHours(1).toMillis());
+                                })
+                                .withIdleness(Duration.ofMinutes(10)),
+                        "XOCS Source");
 
         DataStream<FlatSimTransaction> simDbStream = siocsStream
                 .filter(event -> "SIOCS".equalsIgnoreCase(event.getSource()))
@@ -117,7 +141,15 @@ public class ReconFlinkJob {
                 .process(new ReconciliationProcessor("XSTORE_SIOCS", "CLOUD_SIM"))
                 .name("Reconciliation Processor - Xstore vs SIOCS");
 
-        DataStream<ReconEvent> reconStream = simReconStream.union(siocsReconStream);
+        DataStream<ReconEvent> xocsReconStream = xstoreStream
+                .keyBy(FlatPosTransaction::getTransactionKey)
+                .connect(xocsStream.keyBy(FlatPosTransaction::getTransactionKey))
+                .process(new PosToPosReconciliationProcessor("XSTORE_XOCS", "XOCS"))
+                .name("Reconciliation Processor - Xstore vs XOCS");
+
+        DataStream<ReconEvent> reconStream = simReconStream
+                .union(siocsReconStream)
+                .union(xocsReconStream);
 
         env.getConfig().registerPojoType(FlatPosTransaction.class);
         env.getConfig().registerPojoType(FlatSimTransaction.class);

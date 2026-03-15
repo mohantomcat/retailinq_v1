@@ -2,13 +2,14 @@ package com.recon.poller;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.TimeZone;
 
 @SpringBootApplication(
-        exclude = {DataSourceAutoConfiguration.class}
+        exclude = {DataSourceAutoConfiguration.class, FlywayAutoConfiguration.class}
 )
 @EnableScheduling
 public class SiocsPollerApplication {

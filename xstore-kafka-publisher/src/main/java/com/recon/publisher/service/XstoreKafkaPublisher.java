@@ -30,6 +30,7 @@ public class XstoreKafkaPublisher {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final PublisherConfig config;
     private final ObjectMapper objectMapper;
+    private final XstoreRuntimeConfigService runtimeConfigService;
 
     @Value("${kafka.topic.pos-transactions}")
     private String topic;
@@ -44,7 +45,7 @@ public class XstoreKafkaPublisher {
 
     @Scheduled(fixedDelayString = "${publisher.poll-interval-ms:30000}")
     public void publishPendingTransactions() {
-        if (!config.isSchedulerEnabled()) {
+        if (!runtimeConfigService.getBoolean("PUBLISHER_SCHEDULER_ENABLED", config.isSchedulerEnabled())) {
             return;
         }
         if (isCircuitOpen()) {
@@ -53,19 +54,29 @@ public class XstoreKafkaPublisher {
         }
 
         try {
-            int released = trackerRepository.releaseStaleClaims(
+            int lockTimeoutMinutes = runtimeConfigService.getInt(
+                    "PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES",
                     config.getProcessingLockTimeoutMinutes());
+            int batchSize = runtimeConfigService.getInt(
+                    "PUBLISHER_BATCH_SIZE",
+                    config.getBatchSize());
+            int maxRetries = runtimeConfigService.getInt(
+                    "PUBLISHER_MAX_RETRIES",
+                    config.getMaxRetries());
+
+            int released = trackerRepository.releaseStaleClaims(
+                    lockTimeoutMinutes);
             if (released > 0) {
                 log.warn("Released {} stale PROCESSING rows back to PENDING", released);
             }
 
-            trackerRepository.seedPendingRows(config.getBatchSize());
+            trackerRepository.seedPendingRows(batchSize);
             String workerId = UUID.randomUUID().toString();
             List<PoslogRecord> records = trackerRepository.claimBatch(
                     workerId,
-                    config.getBatchSize(),
-                    config.getMaxRetries(),
-                    config.getProcessingLockTimeoutMinutes());
+                    batchSize,
+                    maxRetries,
+                    lockTimeoutMinutes);
 
             log.info("Poll complete: {} records claimed", records.size());
             records.forEach(this::processRecord);
@@ -167,7 +178,8 @@ public class XstoreKafkaPublisher {
     }
 
     private void checkAndMoveToDlq(PoslogRecord record) {
-        if (trackerRepository.getRetryCount(record) >= config.getMaxRetries()) {
+        int maxRetries = runtimeConfigService.getInt("PUBLISHER_MAX_RETRIES", config.getMaxRetries());
+        if (trackerRepository.getRetryCount(record) >= maxRetries) {
             trackerRepository.markDlq(record);
             log.error("Record moved to DLQ store={} seq={}",
                     record.getRtlLocId(), record.getTransSeq());

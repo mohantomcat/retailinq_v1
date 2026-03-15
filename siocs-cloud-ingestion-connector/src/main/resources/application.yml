@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: siocs-cloud-ingestion-connector
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    table: cloud_flyway_schema_history
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+
+cloud:
+  connector:
+    enabled: ${CLOUD_CONNECTOR_ENABLED:false}
+    connector-name: ${CLOUD_CONNECTOR_NAME:siocs-rest-main}
+    source-name: ${CLOUD_SOURCE_NAME:SIOCS}
+    tenant-id: ${TENANT_ID:tenant-india}
+    tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+    org-id: ${ORG_ID:1}
+    download-interval-ms: ${CLOUD_DOWNLOAD_INTERVAL_MS:300000}
+    publish-interval-ms: ${CLOUD_PUBLISH_INTERVAL_MS:30000}
+    batch-size: ${CLOUD_BATCH_SIZE:500}
+    publisher-batch-size: ${CLOUD_PUBLISHER_BATCH_SIZE:200}
+    overlap-minutes: ${CLOUD_OVERLAP_MINUTES:10}
+    processing-lock-timeout-minutes: ${CLOUD_PROCESSING_LOCK_TIMEOUT_MINUTES:15}
+    max-retries: ${CLOUD_MAX_RETRIES:5}
+    connect-timeout-ms: ${CLOUD_CONNECT_TIMEOUT_MS:10000}
+    read-timeout-ms: ${CLOUD_READ_TIMEOUT_MS:30000}
+    metrics-refresh-interval-ms: ${CLOUD_METRICS_REFRESH_INTERVAL_MS:60000}
+    retry-max-attempts: ${CLOUD_RETRY_MAX_ATTEMPTS:3}
+    retry-initial-interval-ms: ${CLOUD_RETRY_INITIAL_INTERVAL_MS:1000}
+    retry-multiplier: ${CLOUD_RETRY_MULTIPLIER:2.0}
+    retry-max-interval-ms: ${CLOUD_RETRY_MAX_INTERVAL_MS:10000}
+    auth-type: ${CLOUD_AUTH_TYPE:IDCS}
+    auth-header-name: ${CLOUD_AUTH_HEADER_NAME:X-API-Key}
+    bearer-token: ${CLOUD_BEARER_TOKEN:}
+    basic-username: ${CLOUD_BASIC_USERNAME:}
+    basic-password: ${CLOUD_BASIC_PASSWORD:}
+    idcs-token-url: ${CLOUD_IDCS_TOKEN_URL:}
+    idcs-client-id: ${CLOUD_IDCS_CLIENT_ID:}
+    idcs-client-secret: ${CLOUD_IDCS_CLIENT_SECRET:}
+    idcs-scope: ${CLOUD_IDCS_SCOPE:}
+    idcs-grant-type: ${CLOUD_IDCS_GRANT_TYPE:client_credentials}
+    idcs-refresh-skew-seconds: ${CLOUD_IDCS_REFRESH_SKEW_SECONDS:60}
+    base-url: ${CLOUD_API_BASE_URL:}
+    transactions-path: ${CLOUD_API_TRANSACTIONS_PATH:}
+    api-key: ${CLOUD_API_KEY:}
+    scheduler-enabled: ${CLOUD_SCHEDULER_ENABLED:true}
+    normalized-retention-days: ${CLOUD_NORMALIZED_RETENTION_DAYS:35}
+    raw-retention-days: ${CLOUD_RAW_RETENTION_DAYS:10}
+    error-retention-days: ${CLOUD_ERROR_RETENTION_DAYS:35}
+    retention-interval-ms: ${CLOUD_RETENTION_INTERVAL_MS:86400000}
+
+kafka:
+  topic:
+    sim-transactions: ${KAFKA_SIM_TOPIC:siocs.transactions.raw}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,cloudConnector
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+logging:
+  level:
+    com.recon: DEBUG

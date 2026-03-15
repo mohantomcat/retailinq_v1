@@ -30,7 +30,8 @@
     <modules>
         <module>xstore-kafka-publisher</module>
         <module>siocs-kafka-poller</module>
-        <module>cloud-rest-ingestion-connector</module>
+        <module>siocs-cloud-ingestion-connector</module>
+        <module>xocs-cloud-ingestion-connector</module>
         <module>recon-flink-engine</module>
         <module>recon-api</module>
     </modules>

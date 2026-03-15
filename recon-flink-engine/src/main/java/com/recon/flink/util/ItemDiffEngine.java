@@ -16,14 +16,22 @@ public class ItemDiffEngine {
     public static List<ItemDiscrepancy> diff(
             FlatLineItem[] xstoreItems,
             FlatLineItem[] siocsItems) {
+        return diff(xstoreItems, siocsItems, "Xstore", "SIOCS");
+    }
+
+    public static List<ItemDiscrepancy> diff(
+            FlatLineItem[] leftItems,
+            FlatLineItem[] rightItems,
+            String leftLabel,
+            String rightLabel) {
 
         List<ItemDiscrepancy> discrepancies = new ArrayList<>();
 
-        if (xstoreItems == null) xstoreItems = new FlatLineItem[0];
-        if (siocsItems == null) siocsItems = new FlatLineItem[0];
+        if (leftItems == null) leftItems = new FlatLineItem[0];
+        if (rightItems == null) rightItems = new FlatLineItem[0];
 
-        Map<String, AggregatedItem> xstoreMap = aggregate(xstoreItems);
-        Map<String, AggregatedItem> siocsMap = aggregate(siocsItems);
+        Map<String, AggregatedItem> xstoreMap = aggregate(leftItems);
+        Map<String, AggregatedItem> siocsMap = aggregate(rightItems);
 
         for (Map.Entry<String, AggregatedItem> entry : xstoreMap.entrySet()) {
             String compositeKey = entry.getKey();
@@ -37,7 +45,7 @@ public class ItemDiffEngine {
                         .xstoreQuantity(xItem.quantity)
                         .xstoreUom(xItem.uom)
                         .description(xItem.lineType + " item " + xItem.itemId +
-                                " present in Xstore but missing in SIOCS")
+                                " present in " + leftLabel + " but missing in " + rightLabel)
                         .build());
                 continue;
             }
@@ -51,8 +59,8 @@ public class ItemDiffEngine {
                         .xstoreUom(xItem.uom)
                         .siocsUom(sItem.uom)
                         .description(xItem.lineType + " item " + xItem.itemId +
-                                " qty mismatch: Xstore=" + xItem.quantity +
-                                " SIOCS=" + sItem.quantity)
+                                " qty mismatch: " + leftLabel + "=" + xItem.quantity +
+                                " " + rightLabel + "=" + sItem.quantity)
                         .build());
             }
 
@@ -67,8 +75,8 @@ public class ItemDiffEngine {
                         .xstoreUom(xItem.uom)
                         .siocsUom(sItem.uom)
                         .description(xItem.lineType + " item " + xItem.itemId +
-                                " UOM mismatch: Xstore=" + xItem.uom +
-                                " SIOCS=" + sItem.uom)
+                                " UOM mismatch: " + leftLabel + "=" + xItem.uom +
+                                " " + rightLabel + "=" + sItem.uom)
                         .build());
             }
         }
@@ -82,7 +90,7 @@ public class ItemDiffEngine {
                         .siocsQuantity(sItem.quantity)
                         .siocsUom(sItem.uom)
                         .description(sItem.lineType + " item " + sItem.itemId +
-                                " present in SIOCS but missing in Xstore")
+                                " present in " + rightLabel + " but missing in " + leftLabel)
                         .build());
             }
         }

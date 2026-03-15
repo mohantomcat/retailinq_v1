@@ -91,20 +91,15 @@ public class ReconQueryService {
 
         long matched =
                 byStatus.getOrDefault("MATCHED", 0L);
-        long missing =
-                byStatus.getOrDefault("MISSING_IN_SIOCS", 0L);
+        long missing = countStatus(byStatus, reconView, "MISSING_IN_");
         long itemMissing =
                 byStatus.getOrDefault("ITEM_MISSING", 0L);
         long qtyMismatch =
                 byStatus.getOrDefault("QUANTITY_MISMATCH", 0L);
-        long pending =
-                byStatus.getOrDefault("PROCESSING_PENDING", 0L);
-        long failed =
-                byStatus.getOrDefault("PROCESSING_FAILED", 0L);
-        long duplicate =
-                byStatus.getOrDefault("DUPLICATE_IN_SIOCS", 0L);
-        long awaiting =
-                byStatus.getOrDefault("AWAITING_SIM", 0L);
+        long pending = countStatus(byStatus, reconView, "PROCESSING_PENDING_IN_");
+        long failed = countStatus(byStatus, reconView, "PROCESSING_FAILED_IN_");
+        long duplicate = countStatus(byStatus, reconView, "DUPLICATE_IN_");
+        long awaiting = countStatus(byStatus, reconView, "AWAITING_");
 
         long total = byStatus.values().stream()
                 .mapToLong(Long::longValue).sum();
@@ -130,6 +125,30 @@ public class ReconQueryService {
                 .byStore(byStore)
                 .byStatus(byStatus)
                 .build();
+    }
+
+    private long countStatus(Map<String, Long> byStatus,
+                             String reconView,
+                             String prefix) {
+        if (reconView != null && !reconView.isBlank()) {
+            return byStatus.getOrDefault(prefix + targetSystem(reconView), 0L);
+        }
+
+        return byStatus.entrySet().stream()
+                .filter(entry -> entry.getKey() != null
+                        && entry.getKey().startsWith(prefix))
+                .mapToLong(Map.Entry::getValue)
+                .sum();
+    }
+
+    private String targetSystem(String reconView) {
+        if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
+            return "SIOCS";
+        }
+        if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
+            return "XOCS";
+        }
+        return "SIM";
     }
 
     public List<ReconSummary> getMismatches(

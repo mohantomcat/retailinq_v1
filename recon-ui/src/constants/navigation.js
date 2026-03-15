@@ -11,6 +11,11 @@ export const SECURITY_TAB_IDS = [
     'manage-perms',
 ]
 
+export const CONFIGURATION_TAB_IDS = [
+    'module-configs',
+    'system-configs',
+]
+
 export function getTabLabel(t, id) {
     switch (id) {
         case 'xstore-sim':
@@ -27,6 +32,10 @@ export function getTabLabel(t, id) {
             return t('Manage Roles')
         case 'manage-perms':
             return t('Manage Permissions')
+        case 'module-configs':
+            return t('Module Configurations')
+        case 'system-configs':
+            return t('System Configurations')
         default:
             return id
     }

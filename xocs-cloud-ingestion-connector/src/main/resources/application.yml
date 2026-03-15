@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: xocs-cloud-ingestion-connector
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    table: xocs_flyway_schema_history
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+
+xocs:
+  connector:
+    enabled: ${XOCS_CONNECTOR_ENABLED:false}
+    connector-name: ${XOCS_CONNECTOR_NAME:xocs-cloud-main}
+    source-name: ${XOCS_SOURCE_NAME:XOCS}
+    tenant-id: ${TENANT_ID:tenant-india}
+    tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+    org-id: ${ORG_ID:1}
+    download-interval-ms: ${XOCS_DOWNLOAD_INTERVAL_MS:300000}
+    publish-interval-ms: ${XOCS_PUBLISH_INTERVAL_MS:30000}
+    batch-size: ${XOCS_BATCH_SIZE:500}
+    publisher-batch-size: ${XOCS_PUBLISHER_BATCH_SIZE:200}
+    overlap-minutes: ${XOCS_OVERLAP_MINUTES:10}
+    processing-lock-timeout-minutes: ${XOCS_PROCESSING_LOCK_TIMEOUT_MINUTES:15}
+    max-retries: ${XOCS_MAX_RETRIES:5}
+    connect-timeout-ms: ${XOCS_CONNECT_TIMEOUT_MS:10000}
+    read-timeout-ms: ${XOCS_READ_TIMEOUT_MS:30000}
+    retry-max-attempts: ${XOCS_RETRY_MAX_ATTEMPTS:3}
+    retry-initial-interval-ms: ${XOCS_RETRY_INITIAL_INTERVAL_MS:1000}
+    retry-multiplier: ${XOCS_RETRY_MULTIPLIER:2.0}
+    retry-max-interval-ms: ${XOCS_RETRY_MAX_INTERVAL_MS:10000}
+    auth-type: ${XOCS_AUTH_TYPE:IDCS}
+    auth-header-name: ${XOCS_AUTH_HEADER_NAME:X-API-Key}
+    api-key: ${XOCS_API_KEY:}
+    bearer-token: ${XOCS_BEARER_TOKEN:}
+    basic-username: ${XOCS_BASIC_USERNAME:}
+    basic-password: ${XOCS_BASIC_PASSWORD:}
+    idcs-token-url: ${XOCS_IDCS_TOKEN_URL:}
+    idcs-client-id: ${XOCS_IDCS_CLIENT_ID:}
+    idcs-client-secret: ${XOCS_IDCS_CLIENT_SECRET:}
+    idcs-scope: ${XOCS_IDCS_SCOPE:}
+    idcs-grant-type: ${XOCS_IDCS_GRANT_TYPE:client_credentials}
+    idcs-refresh-skew-seconds: ${XOCS_IDCS_REFRESH_SKEW_SECONDS:60}
+    base-url: ${XOCS_API_BASE_URL:}
+    transactions-path: ${XOCS_API_TRANSACTIONS_PATH:}
+    scheduler-enabled: ${XOCS_SCHEDULER_ENABLED:true}
+    normalized-retention-days: ${XOCS_NORMALIZED_RETENTION_DAYS:35}
+    raw-retention-days: ${XOCS_RAW_RETENTION_DAYS:10}
+    error-retention-days: ${XOCS_ERROR_RETENTION_DAYS:35}
+    retention-interval-ms: ${XOCS_RETENTION_INTERVAL_MS:86400000}
+    poll-business-days: ${XOCS_POLL_BUSINESS_DAYS:2}
+
+kafka:
+  topic:
+    xocs-transactions: ${KAFKA_XOCS_TOPIC:xocs.transactions.raw}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.recon: DEBUG

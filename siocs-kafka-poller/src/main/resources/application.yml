@@ -43,17 +43,17 @@ siocs:
     org-id: ${ORG_ID:1}
     tenant-id: ${TENANT_ID:tenant-india}
     tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
-    poll-interval-ms: 300000
-    safety-margin-min: 10
-    page-size: 500
-    max-retries: 5
+    poll-interval-ms: ${SIOCS_POLLER_INTERVAL_MS:300000}
+    safety-margin-min: ${SIOCS_POLLER_SAFETY_MARGIN_MIN:10}
+    page-size: ${SIOCS_POLLER_PAGE_SIZE:500}
+    max-retries: ${SIOCS_POLLER_MAX_RETRIES:5}
     lease-timeout-seconds: ${SIOCS_POLLER_LEASE_TIMEOUT_SECONDS:900}
     scheduler-enabled: ${SIOCS_POLLER_SCHEDULER_ENABLED:true}
 
 kafka:
   topic:
-    sim-transactions: sim.transactions.raw
-    dlq: recon.dlq
+    sim-transactions: ${KAFKA_SIM_TOPIC:sim.transactions.raw}
+    dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
 
 management:
   endpoints:

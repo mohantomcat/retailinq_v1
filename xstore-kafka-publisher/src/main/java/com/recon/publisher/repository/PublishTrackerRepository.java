@@ -82,8 +82,7 @@ public class PublishTrackerRepository {
                 UPDATE recon.xstore_kafka_publish_tracker
                 SET STATUS = 'PENDING',
                     LOCK_OWNER = NULL,
-                    LOCK_EXPIRES_AT = NULL,
-                    UPDATED_AT = SYSTIMESTAMP
+                    LOCK_EXPIRES_AT = NULL
                 WHERE STATUS = 'PROCESSING'
                   AND LOCK_EXPIRES_AT < SYSTIMESTAMP
                   AND LOCK_EXPIRES_AT IS NOT NULL
@@ -119,22 +118,12 @@ public class PublishTrackerRepository {
                                          int maxRetries,
                                          int processingLockTimeoutMinutes) {
         String selectSql = """
-                SELECT p.ORGANIZATION_ID, p.RTL_LOC_ID, p.BUSINESS_DATE,
-                       p.WKSTN_ID, p.TRANS_SEQ, p.POSLOG_BYTES,
-                       p.CREATE_DATE, p.UPDATE_DATE,
-                       t.ROWID AS TRACKER_ROWID
+                SELECT t.ORGANIZATION_ID, t.RTL_LOC_ID, t.BUSINESS_DATE,
+                       t.WKSTN_ID, t.TRANS_SEQ, t.ROWID AS TRACKER_ROWID
                 FROM recon.xstore_kafka_publish_tracker t
-                JOIN TRN_POSLOG_DATA p
-                  ON p.ORGANIZATION_ID = t.ORGANIZATION_ID
-                 AND p.RTL_LOC_ID = t.RTL_LOC_ID
-                 AND p.BUSINESS_DATE = t.BUSINESS_DATE
-                 AND p.WKSTN_ID = t.WKSTN_ID
-                 AND p.TRANS_SEQ = t.TRANS_SEQ
                 WHERE t.STATUS IN ('PENDING', 'FAILED')
                   AND t.RETRY_COUNT < ?
-                  AND DBMS_LOB.GETLENGTH(p.POSLOG_BYTES) > 0
-                ORDER BY p.BUSINESS_DATE ASC, p.TRANS_SEQ ASC
-                FETCH FIRST ? ROWS ONLY
+                  AND ROWNUM <= ?
                 FOR UPDATE SKIP LOCKED
                 """;
         List<ClaimedRow> claimed = jdbcTemplate.query(
@@ -159,7 +148,11 @@ public class PublishTrackerRepository {
                     processingLockTimeoutMinutes,
                     row.trackerRowId());
         }
-        return claimed.stream().map(ClaimedRow::record).toList();
+        return claimed.stream()
+                .map(ClaimedRow::record)
+                .map(this::loadPoslogRecord)
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     public void markPublished(PoslogRecord record, String externalId,
@@ -311,11 +304,44 @@ public class PublishTrackerRepository {
                 .businessDate(rs.getDate("BUSINESS_DATE").toLocalDate())
                 .wkstnId(rs.getLong("WKSTN_ID"))
                 .transSeq(rs.getLong("TRANS_SEQ"))
-                .poslogBytes(rs.getBytes("POSLOG_BYTES"))
-                .createDate(rs.getTimestamp("CREATE_DATE"))
-                .updateDate(rs.getTimestamp("UPDATE_DATE"))
                 .build();
         return new ClaimedRow(record, rs.getString("TRACKER_ROWID"));
+    }
+
+    private PoslogRecord loadPoslogRecord(PoslogRecord trackerRecord) {
+        String sql = """
+                SELECT ORGANIZATION_ID, RTL_LOC_ID, BUSINESS_DATE,
+                       WKSTN_ID, TRANS_SEQ, POSLOG_BYTES,
+                       CREATE_DATE, UPDATE_DATE
+                FROM TRN_POSLOG_DATA
+                WHERE ORGANIZATION_ID = ?
+                  AND RTL_LOC_ID = ?
+                  AND BUSINESS_DATE = ?
+                  AND WKSTN_ID = ?
+                  AND TRANS_SEQ = ?
+                  AND DBMS_LOB.GETLENGTH(POSLOG_BYTES) > 0
+                """;
+        try {
+            return jdbcTemplate.queryForObject(
+                    sql,
+                    (rs, rn) -> PoslogRecord.builder()
+                            .organizationId(rs.getLong("ORGANIZATION_ID"))
+                            .rtlLocId(rs.getLong("RTL_LOC_ID"))
+                            .businessDate(rs.getDate("BUSINESS_DATE").toLocalDate())
+                            .wkstnId(rs.getLong("WKSTN_ID"))
+                            .transSeq(rs.getLong("TRANS_SEQ"))
+                            .poslogBytes(rs.getBytes("POSLOG_BYTES"))
+                            .createDate(rs.getTimestamp("CREATE_DATE"))
+                            .updateDate(rs.getTimestamp("UPDATE_DATE"))
+                            .build(),
+                    trackerRecord.getOrganizationId(),
+                    trackerRecord.getRtlLocId(),
+                    java.sql.Date.valueOf(trackerRecord.getBusinessDate()),
+                    trackerRecord.getWkstnId(),
+                    trackerRecord.getTransSeq());
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private record ClaimedRow(PoslogRecord record, String trackerRowId) {

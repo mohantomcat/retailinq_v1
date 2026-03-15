@@ -1,12 +1,24 @@
 package com.recon.api.controller;
 
-import com.recon.api.domain.*;
+import com.recon.api.domain.ApiResponse;
+import com.recon.api.domain.DashboardStats;
+import com.recon.api.domain.PagedResult;
+import com.recon.api.domain.ReconSearchRequest;
+import com.recon.api.domain.ReconSummary;
+import com.recon.api.domain.TenantConfig;
+import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.ReconQueryService;
 import com.recon.api.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -26,30 +38,21 @@ public class ReconController {
     }
 
     @GetMapping("/tenants")
-    public ResponseEntity<ApiResponse<List<TenantConfig>>>
-    getTenants() {
+    public ResponseEntity<ApiResponse<List<TenantConfig>>> getTenants() {
         return ResponseEntity.ok(
                 ApiResponse.ok(tenantService.getAllTenants()));
     }
 
-    /**
-     * GET /api/v1/recon/dashboard
-     * ?tenantId=tenant-india
-     * &businessDate=15-01-2024  (in tenant's date format)
-     */
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<DashboardStats>> getDashboard(
-            @RequestParam(name = "tenantId",
-                    defaultValue = "tenant-india") String tenantId,
-            @RequestParam(name = "storeIds", required = false)
-            List<String> storeIds,
-            @RequestParam(name = "reconView", required = false)
-            String reconView,
-            @RequestParam(name = "fromBusinessDate", required = false)
-            String fromBusinessDate,
-            @RequestParam(name = "toBusinessDate", required = false)
-            String toBusinessDate) {
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
+            @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
+            requireReconAccess(principal, reconView);
             TenantConfig tenant = tenantService.getTenant(tenantId);
             DashboardStats stats = queryService.getDashboardStats(
                     storeIds, fromBusinessDate, toBusinessDate, reconView, tenant);
@@ -61,40 +64,23 @@ public class ReconController {
         }
     }
 
-    /**
-     * GET /api/v1/recon/transactions
-     * ?tenantId=tenant-india
-     * &storeId=1001
-     * &businessDate=15-01-2024
-     * &reconStatus=MISSING_IN_SIOCS
-     * &page=0&size=20
-     */
     @GetMapping("/transactions")
-    public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>>
-    getTransactions(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId,
-            @RequestParam(name = "storeIds", required = false)
-            List<String> storeIds,
-            @RequestParam(name = "wkstnIds", required = false)
-            List<String> wkstnIds,
-            @RequestParam(name = "fromBusinessDate", required = false)
-            String fromBusinessDate,
-            @RequestParam(name = "toBusinessDate", required = false)
-            String toBusinessDate,
-            @RequestParam(name = "reconStatus", required = false)
-            String reconStatus,
-            @RequestParam(name = "reconView", required = false)
-            String reconView,
-            @RequestParam(name = "transactionKey", required = false)
-            String transactionKey,
-            @RequestParam(name = "fromDate", required = false)
-            String fromDate,
-            @RequestParam(name = "toDate", required = false)
-            String toDate,
+    public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>> getTransactions(
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "wkstnIds", required = false) List<String> wkstnIds,
+            @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
+            @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
+            @RequestParam(name = "reconStatus", required = false) String reconStatus,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "transactionKey", required = false) String transactionKey,
+            @RequestParam(name = "fromDate", required = false) String fromDate,
+            @RequestParam(name = "toDate", required = false) String toDate,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size) {
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
+            requireReconAccess(principal, reconView);
             TenantConfig tenant = tenantService.getTenant(tenantId);
             ReconSearchRequest req = ReconSearchRequest.builder()
                     .storeIds(storeIds)
@@ -109,8 +95,7 @@ public class ReconController {
                     .page(page)
                     .size(Math.min(size, 100))
                     .build();
-            PagedResult<ReconSummary> result =
-                    queryService.search(req, tenant);
+            PagedResult<ReconSummary> result = queryService.search(req, tenant);
             return ResponseEntity.ok(ApiResponse.ok(result));
         } catch (Exception e) {
             log.error("Search error: {}", e.getMessage(), e);
@@ -120,23 +105,20 @@ public class ReconController {
     }
 
     @GetMapping("/transactions/{transactionKey}")
-    public ResponseEntity<ApiResponse<ReconSummary>>
-    getTransaction(
+    public ResponseEntity<ApiResponse<ReconSummary>> getTransaction(
             @PathVariable("transactionKey") String transactionKey,
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId) {
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
-            TenantConfig tenant =
-                    tenantService.getTenant(tenantId);
-            ReconSummary summary =
-                    queryService.getByTransactionKey(
-                            transactionKey, tenant);
-            if (summary == null)
+            requireGenericReconAccess(principal);
+            TenantConfig tenant = tenantService.getTenant(tenantId);
+            ReconSummary summary = queryService.getByTransactionKey(transactionKey, tenant);
+            if (summary == null) {
                 return ResponseEntity.notFound().build();
+            }
             return ResponseEntity.ok(ApiResponse.ok(summary));
         } catch (Exception e) {
-            log.error("Get transaction error: {}",
-                    e.getMessage(), e);
+            log.error("Get transaction error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error(e.getMessage()));
         }
@@ -144,21 +126,18 @@ public class ReconController {
 
     @GetMapping("/mismatches")
     public ResponseEntity<ApiResponse<List<ReconSummary>>> getMismatches(
-            @RequestParam(name = "tenantId",
-                    defaultValue = "tenant-india") String tenantId,
-            @RequestParam(name = "storeIds", required = false)
-            List<String> storeIds,
-            @RequestParam(name = "fromBusinessDate", required = false)
-            String fromBusinessDate,
-            @RequestParam(name = "toBusinessDate", required = false)
-            String toBusinessDate,
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
+            @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "50") int size) {
+            @RequestParam(name = "size", defaultValue = "50") int size,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
+            requireGenericReconAccess(principal);
             TenantConfig tenant = tenantService.getTenant(tenantId);
             List<ReconSummary> results = queryService.getMismatches(
-                    storeIds, fromBusinessDate, toBusinessDate,
-                    page, size, tenant);
+                    storeIds, fromBusinessDate, toBusinessDate, page, size, tenant);
             return ResponseEntity.ok(ApiResponse.ok(results));
         } catch (Exception e) {
             log.error("Mismatches error: {}", e.getMessage(), e);
@@ -168,30 +147,28 @@ public class ReconController {
     }
 
     @GetMapping("/missing")
-    public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>>
-    getMissing(
-            @RequestParam(name = "tenantId",
-                    defaultValue = "tenant-india") String tenantId,
-            @RequestParam(name = "storeIds", required = false)
-            List<String> storeIds,
-            @RequestParam(name = "fromBusinessDate", required = false)
-            String fromBusinessDate,
-            @RequestParam(name = "toBusinessDate", required = false)
-            String toBusinessDate,
+    public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>> getMissing(
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
+            @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size) {
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
+            requireReconAccess(principal, reconView);
             TenantConfig tenant = tenantService.getTenant(tenantId);
             ReconSearchRequest req = ReconSearchRequest.builder()
                     .storeIds(storeIds)
                     .fromBusinessDate(fromBusinessDate)
                     .toBusinessDate(toBusinessDate)
-                    .reconStatus("MISSING_IN_SIOCS")
+                    .reconView(reconView)
+                    .reconStatus(resolveMissingStatus(reconView))
                     .page(page)
                     .size(size)
                     .build();
-            PagedResult<ReconSummary> result =
-                    queryService.search(req, tenant);
+            PagedResult<ReconSummary> result = queryService.search(req, tenant);
             return ResponseEntity.ok(ApiResponse.ok(result));
         } catch (Exception e) {
             log.error("Missing error: {}", e.getMessage(), e);
@@ -202,11 +179,11 @@ public class ReconController {
 
     @GetMapping("/stores")
     public ResponseEntity<ApiResponse<List<String>>> getStores(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId,
-            @RequestParam(name = "reconView", required = false)
-            String reconView) {
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
+            requireReconAccess(principal, reconView);
             List<String> stores = queryService.getStores(reconView);
             return ResponseEntity.ok(ApiResponse.ok(stores));
         } catch (Exception e) {
@@ -217,19 +194,51 @@ public class ReconController {
 
     @GetMapping("/registers")
     public ResponseEntity<ApiResponse<List<String>>> getRegisters(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId,
-            @RequestParam(name = "reconView", required = false)
-            String reconView,
-            @RequestParam(name = "storeIds", required = false)
-            List<String> storeIds) {
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
-            List<String> registers =
-                    queryService.getRegisters(storeIds, reconView);
+            requireReconAccess(principal, reconView);
+            List<String> registers = queryService.getRegisters(storeIds, reconView);
             return ResponseEntity.ok(ApiResponse.ok(registers));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    private String resolveMissingStatus(String reconView) {
+        if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
+            return "MISSING_IN_SIOCS";
+        }
+        if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
+            return "MISSING_IN_XOCS";
+        }
+        return "MISSING_IN_SIM";
+    }
+
+    private void requireGenericReconAccess(ReconUserPrincipal principal) {
+        if (!principal.hasPermission("RECON_VIEW")) {
+            throw new AccessDeniedException("Missing permission: RECON_VIEW");
+        }
+    }
+
+    private void requireReconAccess(ReconUserPrincipal principal, String reconView) {
+        requireGenericReconAccess(principal);
+        if (reconView == null || reconView.isBlank()) {
+            return;
+        }
+
+        String requiredPermission = switch (reconView.toUpperCase()) {
+            case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
+            case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
+            case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
+            default -> null;
+        };
+
+        if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
+            throw new AccessDeniedException("Missing permission: " + requiredPermission);
         }
     }
 }

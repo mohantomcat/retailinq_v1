@@ -37,6 +37,11 @@ const MODULE_COLORS = {
         color: '#ca8a04',
         light: '#fffef6',
     },
+    CONFIGURATIONS: {
+        bg: '#eff6ff',
+        color: '#1d4ed8',
+        light: '#f8fbff',
+    },
     ADMIN: {
         bg: '#fdf4ff',
         color: '#9333ea',
@@ -48,6 +53,7 @@ const MODULE_ORDER = [
     'RECONCILIATION',
     'REPORTS',
     'SETTINGS',
+    'CONFIGURATIONS',
     'ADMIN',
 ]
 

@@ -9,7 +9,7 @@ RetailINQ is a reconciliation platform for comparing Xstore transaction data wit
 - `recon-flink-engine`: Flink reconciliation engine
 - `xstore-kafka-publisher`: Xstore database connector and Kafka publisher
 - `siocs-kafka-poller`: SIOCS/SIM database connector and Kafka publisher
-- `cloud-rest-ingestion-connector`: SIOCS cloud API connector with local staging and Kafka publishing
+- `siocs-cloud-ingestion-connector`: SIOCS cloud API connector with local staging and Kafka publishing
 
 ## Main Reconciliation Views
 
@@ -23,7 +23,7 @@ Xstore DB --------------------> xstore-kafka-publisher -----------+
                                                                   |
 SIM/SIOCS DB ----------------> siocs-kafka-poller ---------------+|
                                                                  ||
-SIOCS Cloud REST API --------> cloud-rest-ingestion-connector ---+|
+SIOCS Cloud REST API --------> siocs-cloud-ingestion-connector --+|
                                                                   v
                                                         Kafka topics
                                                                   v
@@ -90,7 +90,7 @@ mvn -pl siocs-kafka-poller spring-boot:run
 
 ```powershell
 cd D:\Projects\recon-platform
-mvn -pl cloud-rest-ingestion-connector spring-boot:run
+mvn -pl siocs-cloud-ingestion-connector spring-boot:run
 ```
 
 Run the UI separately:

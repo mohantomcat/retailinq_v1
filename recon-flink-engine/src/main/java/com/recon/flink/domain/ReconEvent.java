@@ -42,7 +42,7 @@ public class ReconEvent implements Serializable {
         return base(xstore)
                 .reconView(reconView)
                 .simSource(simSource)
-                .reconStatus(ReconStatus.AWAITING_SIM.name())
+                .reconStatus(awaitingStatus(reconView))
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -68,7 +68,22 @@ public class ReconEvent implements Serializable {
         return base(xstore)
                 .reconView(reconView)
                 .simSource(simSource)
-                .reconStatus(ReconStatus.MISSING_IN_SIOCS.name())
+                .reconStatus(missingStatus(reconView))
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent matchedPos(FlatPosTransaction xstore,
+                                        FlatPosTransaction counter,
+                                        String reconView,
+                                        String counterSource) {
+        return base(xstore)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(ReconStatus.MATCHED.name())
+                .xstoreChecksum(xstore.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(true)
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -97,7 +112,7 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.DUPLICATE_IN_SIOCS.name())
+                .reconStatus(duplicateStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .duplicateFlag(true)
                 .duplicatePostingCount(siocs.getDuplicatePostingCount())
@@ -118,7 +133,7 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.PROCESSING_FAILED.name())
+                .reconStatus(processingFailedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .reconciledAt(Instant.now().toString())
                 .build();
@@ -136,7 +151,7 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.REVERTED.name())
+                .reconStatus(revertedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .reconciledAt(Instant.now().toString())
                 .build();
@@ -155,7 +170,7 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.PROCESSING_PENDING.name())
+                .reconStatus(processingPendingStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .reconciledAt(Instant.now().toString())
                 .build();
@@ -197,6 +212,42 @@ public class ReconEvent implements Serializable {
                 .build();
     }
 
+    public static ReconEvent itemMissingPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            String counterSource) {
+        return base(xstore)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(ReconStatus.ITEM_MISSING.name())
+                .xstoreChecksum(xstore.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent quantityMismatchPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            String counterSource) {
+        return base(xstore)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(ReconStatus.QUANTITY_MISMATCH.name())
+                .xstoreChecksum(xstore.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
     public static ReconEvent correctionMismatch(
             FlatSimTransaction siocs,
             String prevStatus,
@@ -212,7 +263,7 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.CORRECTED.name())
+                .reconStatus(correctedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .siocsChecksum(siocs.getChecksum())
                 .xstoreChecksum(prevChecksum)
@@ -235,10 +286,52 @@ public class ReconEvent implements Serializable {
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
                 .simSource(siocs.getSource())
-                .reconStatus(ReconStatus.LATE_MATCH.name())
+                .reconStatus(lateMatchStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
                 .reconciledAt(Instant.now().toString())
                 .build();
+    }
+
+    private static String awaitingStatus(String reconView) {
+        return "AWAITING_" + targetSystem(reconView);
+    }
+
+    private static String missingStatus(String reconView) {
+        return "MISSING_IN_" + targetSystem(reconView);
+    }
+
+    private static String duplicateStatus(String reconView) {
+        return "DUPLICATE_IN_" + targetSystem(reconView);
+    }
+
+    private static String processingPendingStatus(String reconView) {
+        return "PROCESSING_PENDING_IN_" + targetSystem(reconView);
+    }
+
+    private static String processingFailedStatus(String reconView) {
+        return "PROCESSING_FAILED_IN_" + targetSystem(reconView);
+    }
+
+    private static String revertedStatus(String reconView) {
+        return "REVERTED_IN_" + targetSystem(reconView);
+    }
+
+    private static String correctedStatus(String reconView) {
+        return "CORRECTED_IN_" + targetSystem(reconView);
+    }
+
+    private static String lateMatchStatus(String reconView) {
+        return "LATE_MATCH_IN_" + targetSystem(reconView);
+    }
+
+    private static String targetSystem(String reconView) {
+        if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
+            return "SIOCS";
+        }
+        if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
+            return "XOCS";
+        }
+        return "SIM";
     }
 
     // Helper to derive wkstnId from externalId

@@ -27,22 +27,32 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 
+runtime-config:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 2
+      connection-timeout: 30000
+
 publisher:
   store-id: ${STORE_ID:1007}
   org-id: ${ORG_ID:1}
   tenant-id: ${TENANT_ID:tenant-india}
   tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
-  poll-interval-ms: 30000
-  batch-size: 100
-  max-retries: 5
-  lookback-hours: 96
+  poll-interval-ms: ${PUBLISHER_POLL_INTERVAL_MS:30000}
+  batch-size: ${PUBLISHER_BATCH_SIZE:100}
+  max-retries: ${PUBLISHER_MAX_RETRIES:5}
+  lookback-hours: ${PUBLISHER_LOOKBACK_HOURS:96}
   processing-lock-timeout-minutes: ${PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES:15}
   scheduler-enabled: ${PUBLISHER_SCHEDULER_ENABLED:true}
 
 kafka:
   topic:
-    pos-transactions: pos.transactions.raw
-    dlq: recon.dlq
+    pos-transactions: ${KAFKA_POS_TOPIC:pos.transactions.raw}
+    dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
 
 management:
   endpoints:
