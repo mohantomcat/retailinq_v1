@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -162,6 +163,7 @@ public class ReconElasticsearchRepository {
 
     public Map<String, Long> aggregateByStatus(
             List<String> storeIds,
+            List<String> wkstnIds,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -179,6 +181,15 @@ public class ReconElasticsearchRepository {
                                 .field("storeId.keyword")
                                 .terms(tv -> tv.value(
                                         storeIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (wkstnIds != null && !wkstnIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("wkstnId.keyword")
+                                .terms(tv -> tv.value(
+                                        wkstnIds.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -216,6 +227,7 @@ public class ReconElasticsearchRepository {
 
     public Map<String, Long> aggregateByStore(
             List<String> storeIds,
+            List<String> wkstnIds,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -233,6 +245,15 @@ public class ReconElasticsearchRepository {
                                 .field("storeId.keyword")
                                 .terms(tv -> tv.value(
                                         storeIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (wkstnIds != null && !wkstnIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("wkstnId.keyword")
+                                .terms(tv -> tv.value(
+                                        wkstnIds.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -365,6 +386,162 @@ public class ReconElasticsearchRepository {
     }
 
     // ── Private helpers ────────────────────────────────────
+
+    public Map<String, Map<String, Long>> aggregateByBusinessDateAndStatus(
+            List<String> storeIds,
+            List<String> wkstnIds,
+            String fromBusinessDate,
+            String toBusinessDate,
+            String reconView) {
+        try {
+            List<Query> filters = new ArrayList<>();
+            if (reconView != null && !reconView.isBlank()) {
+                filters.add(Query.of(q -> q
+                        .term(t -> t
+                                .field("reconView.keyword")
+                                .value(reconView))));
+            }
+            if (storeIds != null && !storeIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("storeId.keyword")
+                                .terms(tv -> tv.value(
+                                        storeIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (wkstnIds != null && !wkstnIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("wkstnId.keyword")
+                                .terms(tv -> tv.value(
+                                        wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            addBusinessDateFilter(filters, fromBusinessDate, toBusinessDate);
+
+            Query query = filters.isEmpty()
+                    ? Query.of(q -> q.matchAll(m -> m))
+                    : Query.of(q -> q.bool(b -> b.filter(filters)));
+
+            SearchRequest esReq = SearchRequest.of(s -> s
+                    .index(INDEX)
+                    .query(query)
+                    .size(0)
+                    .aggregations("by_day", a -> a
+                            .dateHistogram(h -> h
+                                    .field("businessDate")
+                                    .calendarInterval(co.elastic.clients.elasticsearch._types.aggregations.CalendarInterval.Day)
+                                    .format("yyyy-MM-dd"))
+                            .aggregations("by_status", sub -> sub
+                                    .terms(t -> t
+                                            .field("reconStatus.keyword")
+                                            .size(20)))));
+
+            SearchResponse<Void> response = esClient.search(esReq, Void.class);
+            Map<String, Map<String, Long>> result = new HashMap<>();
+
+            var dayAgg = response.aggregations().get("by_day");
+            if (dayAgg == null || dayAgg.dateHistogram() == null) {
+                return result;
+            }
+
+            for (var bucket : dayAgg.dateHistogram().buckets().array()) {
+                Map<String, Long> statusCounts = new HashMap<>();
+                var subAgg = bucket.aggregations().get("by_status");
+                if (subAgg != null && subAgg.sterms() != null) {
+                    for (var statusBucket : subAgg.sterms().buckets().array()) {
+                        statusCounts.put(statusBucket.key().stringValue(), statusBucket.docCount());
+                    }
+                }
+                result.put(bucket.keyAsString(), statusCounts);
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("ES business-date/status aggregation failed: {}", e.getMessage(), e);
+            return new HashMap<>();
+        }
+    }
+
+    public Map<String, Map<String, Long>> aggregateByFieldAndStatus(
+            String field,
+            int size,
+            List<String> storeIds,
+            List<String> wkstnIds,
+            String fromBusinessDate,
+            String toBusinessDate,
+            String reconView) {
+        try {
+            List<Query> filters = new ArrayList<>();
+            if (reconView != null && !reconView.isBlank()) {
+                filters.add(Query.of(q -> q
+                        .term(t -> t
+                                .field("reconView.keyword")
+                                .value(reconView))));
+            }
+            if (storeIds != null && !storeIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("storeId.keyword")
+                                .terms(tv -> tv.value(
+                                        storeIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (wkstnIds != null && !wkstnIds.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("wkstnId.keyword")
+                                .terms(tv -> tv.value(
+                                        wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            addBusinessDateFilter(filters, fromBusinessDate, toBusinessDate);
+
+            Query query = filters.isEmpty()
+                    ? Query.of(q -> q.matchAll(m -> m))
+                    : Query.of(q -> q.bool(b -> b.filter(filters)));
+
+            SearchRequest esReq = SearchRequest.of(s -> s
+                    .index(INDEX)
+                    .query(query)
+                    .size(0)
+                    .aggregations("primary", a -> a
+                            .terms(t -> t
+                                    .field(field.endsWith(".keyword") ? field : field + ".keyword")
+                                    .size(size))
+                            .aggregations("by_status", sub -> sub
+                                    .terms(t -> t
+                                            .field("reconStatus.keyword")
+                                            .size(20)))));
+
+            SearchResponse<Void> response = esClient.search(esReq, Void.class);
+            Map<String, Map<String, Long>> result = new HashMap<>();
+            var primaryAgg = response.aggregations().get("primary");
+            if (primaryAgg == null || primaryAgg.sterms() == null) {
+                return result;
+            }
+
+            for (var bucket : primaryAgg.sterms().buckets().array()) {
+                Map<String, Long> statusCounts = new HashMap<>();
+                var subAgg = bucket.aggregations().get("by_status");
+                if (subAgg != null && subAgg.sterms() != null) {
+                    for (var statusBucket : subAgg.sterms().buckets().array()) {
+                        statusCounts.put(statusBucket.key().stringValue(), statusBucket.docCount());
+                    }
+                }
+                result.put(bucket.key().stringValue(), statusCounts);
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("ES field/status aggregation failed field={}: {}", field, e.getMessage(), e);
+            return new HashMap<>();
+        }
+    }
 
     private List<Query> buildFilters(ReconSearchRequest req) {
         List<Query> filters = new ArrayList<>();

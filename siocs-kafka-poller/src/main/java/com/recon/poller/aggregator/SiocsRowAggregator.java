@@ -92,6 +92,17 @@ public class SiocsRowAggregator {
                 .filter(Objects::nonNull)
                 .distinct()
                 .count();
+        long duplicateItemKeys = rows.stream()
+                .filter(row -> row.getRequestId() != null
+                        && row.getExternalId() != null
+                        && row.getItemId() != null)
+                .collect(Collectors.groupingBy(
+                        row -> row.getRequestId() + "|" + row.getExternalId() + "|" + row.getItemId(),
+                        LinkedHashMap::new,
+                        Collectors.counting()))
+                .values().stream()
+                .filter(count -> count > 1)
+                .count();
 
         List<SiocsLineItem> lineItems = rows.stream()
                 .map(this::mapToLineItem)
@@ -102,7 +113,7 @@ public class SiocsRowAggregator {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        int postingCount = (int) distinctExtendedIds;
+        int postingCount = (int) Math.max(distinctExtendedIds, duplicateItemKeys + 1);
 
         return SiocsTransactionRow.builder()
                 .externalId(externalId)
@@ -116,7 +127,7 @@ public class SiocsRowAggregator {
                 .lineItemCount(lineItems.size())
                 .totalQuantity(totalQty)
                 .postingCount(postingCount)
-                .duplicateFlag(postingCount > 1)
+                .duplicateFlag(distinctExtendedIds > 1 || duplicateItemKeys > 0)
                 .build();
     }
 

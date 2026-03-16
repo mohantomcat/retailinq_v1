@@ -28,9 +28,6 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @RequiredArgsConstructor
 public class SiocsKafkaPoller {
-
-    private static final String POLLER_ID = "siocs-main";
-
     private final SiocsRepository siocsRepository;
     private final CheckpointRepository checkpointRepository;
     private final SiocsRowAggregator aggregator;
@@ -55,16 +52,17 @@ public class SiocsKafkaPoller {
     }
 
     public void runPollCycle() {
+        String pollerId = config.getPollerId();
         String leaseOwner = UUID.randomUUID().toString();
         int leaseTimeoutSeconds = runtimeConfigService.getInt(
                 "SIOCS_POLLER_LEASE_TIMEOUT_SECONDS",
                 config.getLeaseTimeoutSeconds());
         SiocsPollCheckpoint cp =
-                checkpointRepository.findOrCreate(POLLER_ID, config.getTenantId());
+                checkpointRepository.findOrCreate(pollerId, config.getTenantId());
         boolean acquired = checkpointRepository.tryAcquireLease(
-                POLLER_ID, leaseOwner, leaseTimeoutSeconds);
+                pollerId, leaseOwner, leaseTimeoutSeconds);
         if (!acquired) {
-            log.info("Skipping poll: lease already held for {}", POLLER_ID);
+            log.info("Skipping poll: lease already held for {}", pollerId);
             return;
         }
 
@@ -81,19 +79,19 @@ public class SiocsKafkaPoller {
             String fromExtId = cp.getLastProcessedExternalId();
             long fromId = cp.getLastProcessedId() == null ? 0L : cp.getLastProcessedId();
 
-            checkpointRepository.markStarted(POLLER_ID);
+            checkpointRepository.markStarted(pollerId);
             log.info("Poll started from={} extId={} id={} ({}min overlap)",
                     fromTs, fromExtId, fromId, safetyMarginMinutes);
 
             int total = pollAllPages(fromTs, fromExtId, fromId, pageSize);
-            checkpointRepository.markCompleted(POLLER_ID, total);
+            checkpointRepository.markCompleted(pollerId, total);
             log.info("Poll completed. Total transactions: {}", total);
 
         } catch (Exception e) {
-            checkpointRepository.markFailed(POLLER_ID, e.getMessage());
+            checkpointRepository.markFailed(pollerId, e.getMessage());
             log.error("Poll failed: {}", e.getMessage(), e);
         } finally {
-            checkpointRepository.releaseLease(POLLER_ID, leaseOwner);
+            checkpointRepository.releaseLease(pollerId, leaseOwner);
         }
     }
 
@@ -133,7 +131,7 @@ public class SiocsKafkaPoller {
             fromExtId = last.getExternalId();
             fromId = last.getId();
             checkpointRepository.updateComposite(
-                    POLLER_ID, fromTs, fromExtId, fromId);
+                    config.getPollerId(), fromTs, fromExtId, fromId);
 
         } while (page.size() >= pageSize);
 

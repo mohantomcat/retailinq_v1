@@ -9,6 +9,7 @@ import java.util.Set;
 @AllArgsConstructor
 public class ReconUserPrincipal {
     private final String userId;
+    private final String username;
     private final String tenantId;
     private final Set<String> permissions;
     private final Set<String> storeIds;

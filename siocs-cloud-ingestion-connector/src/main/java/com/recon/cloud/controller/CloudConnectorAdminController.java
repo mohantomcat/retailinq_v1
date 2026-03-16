@@ -2,6 +2,7 @@ package com.recon.cloud.controller;
 
 import com.recon.cloud.domain.CloudConnectorActionResponse;
 import com.recon.cloud.domain.CloudConnectorStatusResponse;
+import com.recon.cloud.domain.ReplayWindowRequest;
 import com.recon.cloud.domain.ResetCheckpointRequest;
 import com.recon.cloud.service.CloudConnectorAdminService;
 import jakarta.validation.Valid;
@@ -57,5 +58,11 @@ public class CloudConnectorAdminController {
     @PostMapping("/actions/requeue-dlq")
     public CloudConnectorActionResponse requeueDlq() {
         return adminService.requeueDlq();
+    }
+
+    @PostMapping("/actions/replay-window")
+    public CloudConnectorActionResponse replayWindow(
+            @RequestBody ReplayWindowRequest request) {
+        return adminService.replayWindow(request);
     }
 }

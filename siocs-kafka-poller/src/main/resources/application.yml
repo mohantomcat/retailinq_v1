@@ -41,6 +41,7 @@ checkpoint:
 siocs:
   poller:
     org-id: ${ORG_ID:1}
+    poller-id: ${SIM_POLLER_ID:sim-main}
     tenant-id: ${TENANT_ID:tenant-india}
     tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
     poll-interval-ms: ${SIOCS_POLLER_INTERVAL_MS:300000}

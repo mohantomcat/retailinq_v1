@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "siocs.poller")
 public class PollerConfig {
     private long orgId;
+    private String pollerId = "sim-main";
     private int pollIntervalMs = 300000;
     private int safetyMarginMin = 10;
     private int pageSize = 500;

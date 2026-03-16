@@ -45,6 +45,8 @@ public class JwtAuthenticationFilter
                         tokenProvider.getStoreIdsFromToken(token);
                 String tenantId =
                         tokenProvider.getTenantIdFromToken(token);
+                String username =
+                        tokenProvider.getUsernameFromToken(token);
 
                 var authorities = permissions.stream()
                         .map(p -> new SimpleGrantedAuthority(
@@ -53,7 +55,7 @@ public class JwtAuthenticationFilter
 
                 ReconUserPrincipal principal =
                         new ReconUserPrincipal(
-                                userId, tenantId,
+                                userId, username, tenantId,
                                 permissions, storeIds);
 
                 var auth =

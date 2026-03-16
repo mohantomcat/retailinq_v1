@@ -20,7 +20,8 @@ public class XocsCheckpointRepository {
                                                 String tenantId) {
         List<XocsIngestionCheckpoint> rows = jdbcTemplate.query("""
                 SELECT connector_name, source_name, tenant_id,
-                       last_cursor_id, last_success_timestamp
+                       last_cursor_id, last_success_timestamp,
+                       last_poll_status, last_error_message
                 FROM recon.xocs_ingestion_checkpoint
                 WHERE connector_name = ?
                 """, (rs, rn) -> XocsIngestionCheckpoint.builder()
@@ -29,6 +30,8 @@ public class XocsCheckpointRepository {
                 .tenantId(rs.getString("tenant_id"))
                 .lastCursorId(rs.getObject("last_cursor_id", Long.class))
                 .lastSuccessTimestamp(rs.getTimestamp("last_success_timestamp"))
+                .lastPollStatus(rs.getString("last_poll_status"))
+                .lastErrorMessage(rs.getString("last_error_message"))
                 .build(), connectorName);
 
         if (!rows.isEmpty()) {
@@ -48,6 +51,7 @@ public class XocsCheckpointRepository {
                 .sourceName(sourceName)
                 .tenantId(tenantId)
                 .lastSuccessTimestamp(Timestamp.from(Instant.EPOCH))
+                .lastPollStatus("READY")
                 .build();
     }
 
@@ -90,5 +94,22 @@ public class XocsCheckpointRepository {
                     updated_at = NOW()
                 WHERE connector_name = ?
                 """, errorMessage, connectorName);
+    }
+
+    public void reset(String connectorName, Long lastCursorId, Timestamp lastSuccessTimestamp) {
+        jdbcTemplate.update("""
+                UPDATE recon.xocs_ingestion_checkpoint
+                SET last_cursor_id = ?,
+                    last_success_timestamp = ?,
+                    last_poll_started_at = NULL,
+                    last_poll_completed_at = NULL,
+                    last_poll_status = 'READY',
+                    last_run_started_at = NULL,
+                    last_run_completed_at = NULL,
+                    last_run_status = 'READY',
+                    last_error_message = NULL,
+                    updated_at = NOW()
+                WHERE connector_name = ?
+                """, lastCursorId, lastSuccessTimestamp, connectorName);
     }
 }

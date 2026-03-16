@@ -5,10 +5,11 @@ import {useAuth} from './context/AuthContext'
 import {I18nProvider, useI18n} from './context/I18nContext'
 import DashboardWrapper from './pages/DashboardWrapper'
 import Dashboard from './pages/Dashboard'
+import KpiMockup from './pages/KpiMockup'
 import Login from './pages/Login'
 import Unauthorized from './pages/Unauthorized'
 import ProtectedRoute from './components/ProtectedRoute'
-import {CONFIGURATION_TAB_IDS, RECONCILIATION_TAB_IDS, getTabLabel} from './constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, getTabLabel} from './constants/navigation'
 
 function buildTheme() {
     return createTheme({
@@ -163,6 +164,18 @@ function AppRoutes() {
         id,
         label: getTabLabel(t, id),
     }))
+    const alertPairs = ALERT_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const operationsPairs = OPERATIONS_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const activityPairs = ACTIVITY_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const configurationPairs = CONFIGURATION_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
@@ -197,11 +210,14 @@ function AppRoutes() {
     }
 
     const wrapper = (child) => (
-        <DashboardWrapper
-            drawerWidth={drawerWidth}
-            modules={reconciliationPairs}
-            configurations={configurationPairs}
-            activeTab={activeTab}
+            <DashboardWrapper
+                drawerWidth={drawerWidth}
+                modules={reconciliationPairs}
+                alerts={alertPairs}
+                operations={operationsPairs}
+                activity={activityPairs}
+                configurations={configurationPairs}
+                activeTab={activeTab}
             onSelectTab={handleSidebarClick}
             sidebarCollapsed={sidebarCollapsed}
             onSidebarCollapse={setSidebarCollapsed}
@@ -237,6 +253,15 @@ function AppRoutes() {
                                 handleCloseTab={handleCloseTab}
                             />
                         )}
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/kpi-mockup"
+                element={
+                    <ProtectedRoute>
+                        <KpiMockup/>
                     </ProtectedRoute>
                 }
             />

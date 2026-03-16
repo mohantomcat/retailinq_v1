@@ -37,6 +37,26 @@ export const reconApi = {
         return json.data
     },
 
+    getDashboardAnalytics: async ({
+                                      storeIds = [],
+                                      wkstnIds = [],
+                                      reconView = null,
+                                  } = {}) => {
+        const params = new URLSearchParams({tenantId: TENANT})
+        if (storeIds?.length) {
+            storeIds.forEach((s) => params.append('storeIds', s))
+        }
+        if (wkstnIds?.length) {
+            wkstnIds.forEach((w) => params.append('wkstnIds', w))
+        }
+        if (reconView) {
+            params.append('reconView', reconView)
+        }
+        const res = await apiFetch(`${BASE}/dashboard/analytics?${params}`)
+        const json = await res.json()
+        return json.data
+    },
+
     getTransactions: async ({
                                 storeIds, wkstnIds,
                                 reconView,

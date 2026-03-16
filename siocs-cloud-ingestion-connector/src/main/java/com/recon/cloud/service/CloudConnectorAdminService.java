@@ -4,6 +4,7 @@ import com.recon.cloud.config.CloudConnectorProperties;
 import com.recon.cloud.domain.CloudConnectorActionResponse;
 import com.recon.cloud.domain.CloudConnectorStatusResponse;
 import com.recon.cloud.domain.CloudIngestionCheckpoint;
+import com.recon.cloud.domain.ReplayWindowRequest;
 import com.recon.cloud.repository.CloudCheckpointRepository;
 import com.recon.cloud.repository.CloudErrorRepository;
 import com.recon.cloud.repository.CloudTransactionRepository;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
@@ -83,6 +85,19 @@ public class CloudConnectorAdminService {
         int updated = transactionRepository.requeueStatus("DLQ");
         return action("requeueDlq", "OK",
                 "Moved " + updated + " DLQ rows to READY");
+    }
+
+    public CloudConnectorActionResponse replayWindow(ReplayWindowRequest request) {
+        LocalDate fromDate = LocalDate.parse(request.getFromBusinessDate());
+        LocalDate toDate = request.getToBusinessDate() == null || request.getToBusinessDate().isBlank()
+                ? fromDate
+                : LocalDate.parse(request.getToBusinessDate());
+        int updated = transactionRepository.replayWindow(
+                fromDate,
+                toDate,
+                request.getStoreId());
+        return action("replay-window", "OK",
+                "Queued " + updated + " staged SIOCS rows for replay");
     }
 
     private CloudConnectorActionResponse action(String action,

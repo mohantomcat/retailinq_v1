@@ -132,6 +132,17 @@ public class CloudIngestionPublisher {
                 .filter(Objects::nonNull)
                 .distinct()
                 .count();
+        long duplicateItemKeys = rows.stream()
+                .filter(row -> row.getRequestId() != null
+                        && row.getExternalId() != null
+                        && row.getItemId() != null)
+                .collect(Collectors.groupingBy(
+                        row -> row.getRequestId() + "|" + row.getExternalId() + "|" + row.getItemId(),
+                        LinkedHashMap::new,
+                        Collectors.counting()))
+                .values().stream()
+                .filter(count -> count > 1)
+                .count();
         BigDecimal totalQuantity = lineItems.stream()
                 .map(CloudLineItem::getQuantity)
                 .filter(Objects::nonNull)
@@ -150,8 +161,8 @@ public class CloudIngestionPublisher {
                 .lineItems(lineItems)
                 .lineItemCount(lineItems.size())
                 .totalQuantity(totalQuantity)
-                .postingCount(postingCount)
-                .duplicateFlag(postingCount > 1)
+                .postingCount((int) Math.max(postingCount, duplicateItemKeys + 1))
+                .duplicateFlag(postingCount > 1 || duplicateItemKeys > 0)
                 .build();
     }
 }

@@ -76,6 +76,7 @@ public class ReconQueryService {
 
     public DashboardStats getDashboardStats(
             List<String> storeIds,
+            List<String> wkstnIds,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView,
@@ -83,10 +84,11 @@ public class ReconQueryService {
 
         Map<String, Long> byStatus =
                 esRepository.aggregateByStatus(
-                        storeIds, fromBusinessDate, toBusinessDate, reconView);
+                        storeIds, wkstnIds, fromBusinessDate, toBusinessDate, reconView);
         Map<String, Long> byStore =
                 esRepository.aggregateByStore(
                         storeIds,
+                        wkstnIds,
                         fromBusinessDate, toBusinessDate, reconView);
 
         long matched =
@@ -96,6 +98,8 @@ public class ReconQueryService {
                 byStatus.getOrDefault("ITEM_MISSING", 0L);
         long qtyMismatch =
                 byStatus.getOrDefault("QUANTITY_MISMATCH", 0L);
+        long totalMismatch =
+                byStatus.getOrDefault("TOTAL_MISMATCH", 0L);
         long pending = countStatus(byStatus, reconView, "PROCESSING_PENDING_IN_");
         long failed = countStatus(byStatus, reconView, "PROCESSING_FAILED_IN_");
         long duplicate = countStatus(byStatus, reconView, "DUPLICATE_IN_");
@@ -115,9 +119,11 @@ public class ReconQueryService {
                 .missingInSiocs(missing)
                 .itemMissing(itemMissing)
                 .quantityMismatch(qtyMismatch)
+                .transactionTotalMismatch(totalMismatch)
                 .processingPending(pending)
                 .processingFailed(failed)
                 .duplicateInSiocs(duplicate)
+                .duplicateTransactions(duplicate)
                 .awaitingSim(awaiting)
                 .matchRate(matchRate)
                 .asOf(TimezoneConverter.toDisplay(
@@ -125,6 +131,15 @@ public class ReconQueryService {
                 .byStore(byStore)
                 .byStatus(byStatus)
                 .build();
+    }
+
+    public DashboardStats getDashboardStats(
+            List<String> storeIds,
+            String fromBusinessDate,
+            String toBusinessDate,
+            String reconView,
+            TenantConfig tenant) {
+        return getDashboardStats(storeIds, null, fromBusinessDate, toBusinessDate, reconView, tenant);
     }
 
     private long countStatus(Map<String, Long> byStatus,

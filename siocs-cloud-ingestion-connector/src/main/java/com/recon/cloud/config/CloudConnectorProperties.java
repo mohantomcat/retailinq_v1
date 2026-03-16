@@ -11,7 +11,7 @@ import java.util.Map;
 @Configuration
 @ConfigurationProperties(prefix = "cloud.connector")
 public class CloudConnectorProperties {
-    private String connectorName = "siocs-rest-main";
+    private String connectorName = "siocs-cloud-main";
     private String sourceName = "SIOCS";
     private String tenantId = "tenant-india";
     private String tenantTimezone = "UTC";

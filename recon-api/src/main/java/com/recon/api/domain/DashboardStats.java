@@ -17,9 +17,11 @@ public class DashboardStats {
     private long missingInSiocs;
     private long itemMissing;
     private long quantityMismatch;
+    private long transactionTotalMismatch;
     private long processingPending;
     private long processingFailed;
     private long duplicateInSiocs;
+    private long duplicateTransactions;
     private long awaitingSim;
     private double matchRate;
     private String asOf;

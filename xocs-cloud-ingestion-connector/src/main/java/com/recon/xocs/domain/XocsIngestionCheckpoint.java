@@ -17,4 +17,6 @@ public class XocsIngestionCheckpoint {
     private String tenantId;
     private Long lastCursorId;
     private Timestamp lastSuccessTimestamp;
+    private String lastPollStatus;
+    private String lastErrorMessage;
 }

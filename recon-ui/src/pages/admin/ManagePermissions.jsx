@@ -42,6 +42,26 @@ const MODULE_COLORS = {
         color: '#1d4ed8',
         light: '#f8fbff',
     },
+    ALERTS: {
+        bg: '#fef2f2',
+        color: '#dc2626',
+        light: '#fff7f7',
+    },
+    OPERATIONS: {
+        bg: '#f5f3ff',
+        color: '#7c3aed',
+        light: '#faf7ff',
+    },
+    AUDIT: {
+        bg: '#ecfeff',
+        color: '#0f7c86',
+        light: '#f3ffff',
+    },
+    EXCEPTIONS: {
+        bg: '#ecfeff',
+        color: '#0f7c86',
+        light: '#f3ffff',
+    },
     ADMIN: {
         bg: '#fdf4ff',
         color: '#9333ea',
@@ -54,6 +74,10 @@ const MODULE_ORDER = [
     'REPORTS',
     'SETTINGS',
     'CONFIGURATIONS',
+    'ALERTS',
+    'OPERATIONS',
+    'AUDIT',
+    'EXCEPTIONS',
     'ADMIN',
 ]
 
@@ -478,6 +502,7 @@ export default function ManagePermissions() {
         REPORTS: true,
         SETTINGS: true,
         ADMIN: true,
+        AUDIT: true,
     })
 
     useEffect(() => {

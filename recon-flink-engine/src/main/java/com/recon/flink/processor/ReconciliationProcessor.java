@@ -15,7 +15,10 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
 import org.apache.flink.util.Collector;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 public class ReconciliationProcessor
@@ -117,11 +120,6 @@ public class ReconciliationProcessor
             return;
         }
 
-        if (siocs.isDuplicateFlag()) {
-            out.collect(ReconEvent.duplicate(siocs, reconView));
-            return;
-        }
-
         Integer lastStatus = lastSiocsStatus.value();
         if (lastStatus != null && lastStatus.equals(siocs.getProcessingStatus())) {
             log.debug("True duplicate SIOCS dropped key={}", siocs.getTransactionKey());
@@ -186,6 +184,12 @@ public class ReconciliationProcessor
                            FlatSimTransaction siocs,
                            Collector<ReconEvent> out) throws Exception {
 
+        if (hasDuplicateItemsInTargetComparedToXstore(xstore, siocs)) {
+            out.collect(ReconEvent.duplicate(siocs, reconView));
+            clearAllState(duplicateStatus(), xstore.getChecksum());
+            return;
+        }
+
         if (xstore.getChecksum() != null
                 && xstore.getChecksum().equals(siocs.getChecksum())) {
             out.collect(ReconEvent.matched(xstore, siocs, reconView));
@@ -212,6 +216,40 @@ public class ReconciliationProcessor
             out.collect(ReconEvent.quantityMismatch(xstore, siocs, discrepancies, reconView));
             clearAllState("QUANTITY_MISMATCH", xstore.getChecksum());
         }
+    }
+
+    private boolean hasDuplicateItemsInTargetComparedToXstore(FlatPosTransaction xstore,
+                                                              FlatSimTransaction siocs) {
+        Map<String, Integer> xstoreCounts = itemOccurrenceCounts(xstore.getLineItems());
+        Map<String, Integer> siocsCounts = itemOccurrenceCounts(siocs.getLineItems());
+
+        for (Map.Entry<String, Integer> entry : siocsCounts.entrySet()) {
+            int xstoreCount = xstoreCounts.getOrDefault(entry.getKey(), 0);
+            if (entry.getValue() > xstoreCount && xstoreCount > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Map<String, Integer> itemOccurrenceCounts(com.recon.flink.domain.FlatLineItem[] items) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        if (items == null) {
+            return counts;
+        }
+        for (com.recon.flink.domain.FlatLineItem item : items) {
+            if (item == null || item.getItemId() == null || item.getItemId().isBlank()) {
+                continue;
+            }
+            String key = normalize(item.getLineType(), "Unknown") + "|" + item.getItemId().trim();
+            counts.merge(key, 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private String normalize(String value, String fallback) {
+        String normalized = Objects.toString(value, "").trim();
+        return normalized.isEmpty() ? fallback : normalized;
     }
 
     private void handleCorrection(FlatSimTransaction siocs,
@@ -260,6 +298,12 @@ public class ReconciliationProcessor
         return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
                 ? "REVERTED_IN_SIOCS"
                 : "REVERTED_IN_SIM";
+    }
+
+    private String duplicateStatus() {
+        return "XSTORE_SIOCS".equalsIgnoreCase(reconView)
+                ? "DUPLICATE_IN_SIOCS"
+                : "DUPLICATE_IN_SIM";
     }
 
     private String correctedStatus() {

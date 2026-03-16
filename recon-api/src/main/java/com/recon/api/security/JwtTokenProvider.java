@@ -103,6 +103,10 @@ public class JwtTokenProvider {
         return (String) parseToken(token).get("tenantId");
     }
 
+    public String getUsernameFromToken(String token) {
+        return (String) parseToken(token).get("username");
+    }
+
     public long getExpirationMs() {
         return jwtExpirationMs;
     }

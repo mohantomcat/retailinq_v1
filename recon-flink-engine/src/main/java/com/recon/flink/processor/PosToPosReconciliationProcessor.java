@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
 import org.apache.flink.util.Collector;
 
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<String, FlatPosTransaction, FlatPosTransaction, ReconEvent> {
@@ -102,6 +103,11 @@ public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<Stri
                 xstore.getLineItems(), counter.getLineItems(), "Xstore", counterSource);
 
         if (discrepancies.isEmpty()) {
+            if (!amountEquals(xstore.getTotalAmount(), counter.getTotalAmount())) {
+                out.collect(ReconEvent.totalMismatchPos(
+                        xstore, counter, reconView, counterSource));
+                return;
+            }
             out.collect(ReconEvent.matchedPos(xstore, counter, reconView, counterSource));
             return;
         }
@@ -117,6 +123,16 @@ public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<Stri
             out.collect(ReconEvent.quantityMismatchPos(
                     xstore, counter, discrepancies, reconView, counterSource));
         }
+    }
+
+    private boolean amountEquals(java.math.BigDecimal left, java.math.BigDecimal right) {
+        if (left == null && right == null) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.compareTo(right) == 0;
     }
 
     private <T> ValueState<T> registerState(String name, Class<T> clazz, StateTtlConfig ttl) {

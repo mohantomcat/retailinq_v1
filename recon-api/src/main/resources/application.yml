@@ -41,6 +41,16 @@ app:
     secret: your-256-bit-secret-key-change-in-production-must-be-long
     expiration-ms: 86400000
     refresh-expiration-ms: 604800000
+  alerting:
+    enabled: ${APP_ALERTING_ENABLED:true}
+    generation-interval-ms: ${APP_ALERTING_GENERATION_INTERVAL_MS:300000}
+  operations:
+    connector-admin-user: ${CONNECTOR_ADMIN_USER:connector-admin}
+    connector-admin-password: ${CONNECTOR_ADMIN_PASSWORD:}
+    xstore-base-url: ${OPS_XSTORE_BASE_URL:http://localhost:8181}
+    sim-base-url: ${OPS_SIM_BASE_URL:http://localhost:8182}
+    siocs-cloud-base-url: ${OPS_SIOCS_CLOUD_BASE_URL:http://localhost:8184}
+    xocs-cloud-base-url: ${OPS_XOCS_CLOUD_BASE_URL:http://localhost:8183}
 
 logging:
   level:

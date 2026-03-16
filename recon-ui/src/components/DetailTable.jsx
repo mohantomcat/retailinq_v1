@@ -48,6 +48,8 @@ const buildButtonStyle = (palette) => ({
 const DetailTable = ({
                          title = 'Detail Records',
                          data = [],
+                         onRowSelect,
+                         selectedRowKey = null,
                      }) => {
     const [themeMode, setThemeMode] = useState(getThemeMode())
     const {t} = useI18n()
@@ -67,7 +69,11 @@ const DetailTable = ({
 
     const palette = useMemo(() => getPalette(themeMode), [themeMode])
 
-    const exportData = data || []
+    const exportData = (data || []).map((row) =>
+        Object.fromEntries(
+            Object.entries(row).filter(([key]) => !key.startsWith('__'))
+        )
+    )
 
     const handleExportCSV = () => {
         if (!exportData.length) return
@@ -227,23 +233,33 @@ const DetailTable = ({
                     </thead>
 
                     <tbody>
-                    {exportData.map((row, index) => (
+                    {(data || []).map((row, index) => (
                         <tr
                             key={index}
                             style={{
                                 borderBottom: `1px solid ${palette.borderSoft}`,
                                 transition: 'background-color 0.2s ease',
+                                cursor: onRowSelect ? 'pointer' : 'default',
+                                backgroundColor:
+                                    selectedRowKey && row.__rowKey === selectedRowKey
+                                        ? palette.rowHover
+                                        : 'transparent',
                             }}
+                            onClick={() => onRowSelect?.(row)}
                             onMouseEnter={(e) =>
                                 (e.currentTarget.style.backgroundColor =
                                     palette.rowHover)
                             }
                             onMouseLeave={(e) =>
                                 (e.currentTarget.style.backgroundColor =
-                                    'transparent')
+                                    selectedRowKey && row.__rowKey === selectedRowKey
+                                        ? palette.rowHover
+                                        : 'transparent')
                             }
                         >
-                            {Object.values(row).map((value, i) => (
+                            {Object.entries(row)
+                                .filter(([key]) => !key.startsWith('__'))
+                                .map(([, value], i) => (
                                 <td
                                     key={i}
                                     style={{
@@ -254,7 +270,7 @@ const DetailTable = ({
                                 >
                                     {value}
                                 </td>
-                            ))}
+                                ))}
                         </tr>
                     ))}
                     </tbody>

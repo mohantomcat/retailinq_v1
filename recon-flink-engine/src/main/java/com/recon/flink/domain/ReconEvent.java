@@ -248,6 +248,22 @@ public class ReconEvent implements Serializable {
                 .build();
     }
 
+    public static ReconEvent totalMismatchPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            String reconView,
+            String counterSource) {
+        return base(xstore)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(ReconStatus.TOTAL_MISMATCH.name())
+                .xstoreChecksum(xstore.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
     public static ReconEvent correctionMismatch(
             FlatSimTransaction siocs,
             String prevStatus,

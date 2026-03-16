@@ -43,4 +43,11 @@ public class XocsErrorRepository {
                 WHERE created_at < NOW() - (? * INTERVAL '1 day')
                 """, retentionDays);
     }
+
+    public long countAll() {
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM recon.xocs_ingestion_error",
+                Long.class);
+        return count == null ? 0L : count;
+    }
 }

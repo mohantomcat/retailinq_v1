@@ -1,6 +1,7 @@
 package com.recon.api.controller;
 
 import com.recon.api.domain.ApiResponse;
+import com.recon.api.domain.DashboardAnalyticsResponse;
 import com.recon.api.domain.DashboardStats;
 import com.recon.api.domain.PagedResult;
 import com.recon.api.domain.ReconSearchRequest;
@@ -8,6 +9,7 @@ import com.recon.api.domain.ReconSummary;
 import com.recon.api.domain.TenantConfig;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.ReconQueryService;
+import com.recon.api.service.DashboardAnalyticsService;
 import com.recon.api.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ import java.util.List;
 public class ReconController {
 
     private final ReconQueryService queryService;
+    private final DashboardAnalyticsService analyticsService;
     private final TenantService tenantService;
 
     @GetMapping("/health")
@@ -59,6 +62,25 @@ public class ReconController {
             return ResponseEntity.ok(ApiResponse.ok(stats));
         } catch (Exception e) {
             log.error("Dashboard error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/dashboard/analytics")
+    public ResponseEntity<ApiResponse<DashboardAnalyticsResponse>> getDashboardAnalytics(
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "wkstnIds", required = false) List<String> wkstnIds,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        try {
+            requireReconAccess(principal, reconView);
+            DashboardAnalyticsResponse analytics = analyticsService.getAnalytics(
+                    storeIds, wkstnIds, reconView);
+            return ResponseEntity.ok(ApiResponse.ok(analytics));
+        } catch (Exception e) {
+            log.error("Dashboard analytics error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error(e.getMessage()));
         }

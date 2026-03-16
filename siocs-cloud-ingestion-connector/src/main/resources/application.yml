@@ -28,7 +28,7 @@ spring:
 cloud:
   connector:
     enabled: ${CLOUD_CONNECTOR_ENABLED:false}
-    connector-name: ${CLOUD_CONNECTOR_NAME:siocs-rest-main}
+    connector-name: ${CLOUD_CONNECTOR_NAME:siocs-cloud-main}
     source-name: ${CLOUD_SOURCE_NAME:SIOCS}
     tenant-id: ${TENANT_ID:tenant-india}
     tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}

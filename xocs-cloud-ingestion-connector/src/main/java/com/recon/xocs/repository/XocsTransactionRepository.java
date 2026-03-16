@@ -9,7 +9,11 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 @RequiredArgsConstructor
@@ -215,6 +219,68 @@ public class XocsTransactionRepository {
                 DELETE FROM recon.xocs_ingestion_transaction
                 WHERE business_date < CURRENT_DATE - (? * INTERVAL '1 day')
                 """, retentionDays);
+    }
+
+    public Map<String, Long> countByStatus() {
+        Map<String, Long> counts = new HashMap<>();
+        jdbcTemplate.query("""
+                SELECT ingestion_status, COUNT(*) AS cnt
+                FROM recon.xocs_ingestion_transaction
+                GROUP BY ingestion_status
+                """, (rs, rn) -> {
+            counts.put(rs.getString("ingestion_status"), rs.getLong("cnt"));
+            return null;
+        });
+        return counts;
+    }
+
+    public Timestamp oldestTimestampForStatus(String status) {
+        List<Timestamp> rows = jdbcTemplate.query("""
+                SELECT MIN(COALESCE(source_update_date, updated_at, created_at)) AS oldest
+                FROM recon.xocs_ingestion_transaction
+                WHERE ingestion_status = ?
+                """, (rs, rn) -> rs.getTimestamp("oldest"), status);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public int requeueStatus(String status) {
+        return jdbcTemplate.update("""
+                UPDATE recon.xocs_ingestion_transaction
+                SET ingestion_status = 'READY',
+                    claimed_by = NULL,
+                    claimed_at = NULL,
+                    updated_at = NOW()
+                WHERE ingestion_status = ?
+                """, status);
+    }
+
+    public int replayWindow(LocalDate fromBusinessDate,
+                            LocalDate toBusinessDate,
+                            Long rtlLocId,
+                            Long wkstnId) {
+        StringBuilder sql = new StringBuilder("""
+                UPDATE recon.xocs_ingestion_transaction
+                SET ingestion_status = 'READY',
+                    claimed_by = NULL,
+                    claimed_at = NULL,
+                    last_error_message = NULL,
+                    updated_at = NOW()
+                WHERE ingestion_status IN ('PUBLISHED', 'FAILED', 'DLQ')
+                  AND business_date >= ?
+                  AND business_date <= ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(fromBusinessDate);
+        args.add(toBusinessDate);
+        if (rtlLocId != null) {
+            sql.append(" AND rtl_loc_id = ?");
+            args.add(rtlLocId);
+        }
+        if (wkstnId != null) {
+            sql.append(" AND wkstn_id = ?");
+            args.add(wkstnId);
+        }
+        return jdbcTemplate.update(sql.toString(), args.toArray());
     }
 
     private Timestamp toTimestamp(Instant instant) {

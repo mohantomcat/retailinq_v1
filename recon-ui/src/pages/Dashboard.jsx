@@ -20,8 +20,13 @@ import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSetting
 import CompareArrowsRoundedIcon from '@mui/icons-material/CompareArrowsRounded'
 import KPI from '../components/KPI'
 import DetailTable from '../components/DetailTable'
+import ExceptionWorkbenchPanel from '../components/ExceptionWorkbenchPanel'
+import LineChartComponent from '../components/LineChartComponent'
 import {reconApi} from '../services/reconApi'
+import Alerts from './Alerts'
+import Activity from './Activity'
 import Configurations from './Configurations'
+import Operations from './Operations'
 import ManageUsers from './admin/ManageUsers'
 import ManageRoles from './admin/ManageRoles'
 import ManagePermissions from './admin/ManagePermissions'
@@ -30,10 +35,13 @@ import {DatePicker} from '@mui/x-date-pickers/DatePicker'
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import {useI18n} from '../context/I18nContext'
-import {CONFIGURATION_TAB_IDS, getTabLabel} from '../constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS} from '../constants/navigation'
 
 const PAGE_SIZE = 20
 const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms']
+const ALERT_IDS = ALERT_TAB_IDS
+const OPERATION_IDS = OPERATIONS_TAB_IDS
+const ACTIVITY_IDS = ACTIVITY_TAB_IDS
 const CONFIGURATION_IDS = CONFIGURATION_TAB_IDS
 const RECON_VIEW_BY_TAB = {
     'xstore-sim': 'XSTORE_SIM',
@@ -69,6 +77,43 @@ function getProcessingPendingKpiTitle(tabId, t) {
     return t(`Processing Pending in ${getTargetSystem(tabId)}`)
 }
 
+function getDuplicateKpiTitle(tabId, t) {
+    return t(`Duplicate Transactions in ${getTargetSystem(tabId)}`)
+}
+
+function getKpiSections(tabId, t) {
+    const summary = [
+        {title: t('Total Transactions'), key: 'total'},
+        {title: t('Matched'), key: 'matched'},
+        {title: getMissingKpiTitle(tabId, t), key: 'missingInSiocs'},
+        ...(tabId === 'xstore-xocs'
+            ? []
+            : [{
+                title: getProcessingPendingKpiTitle(tabId, t),
+                key: 'processingPending',
+            }]),
+    ]
+
+    const transactionIssues = [
+        ...(tabId === 'xstore-xocs'
+            ? [{title: t('Transaction Total Mismatch'), key: 'totalMismatch'}]
+            : []),
+        ...((tabId === 'xstore-siocs' || tabId === 'xstore-sim')
+            ? [{title: getDuplicateKpiTitle(tabId, t), key: 'duplicateTransactions'}]
+            : []),
+    ]
+
+    const itemIssues = [
+        {title: t('Item Missing'), key: 'itemMissing'},
+        {title: t('Quantity Mismatch'), key: 'quantityMismatch'},
+    ]
+
+    return {
+        summary,
+        issues: [...transactionIssues, ...itemIssues],
+    }
+}
+
 function getKpiStatus(tabId, selectedKpi) {
     const target = getTargetSystem(tabId)
 
@@ -79,8 +124,12 @@ function getKpiStatus(tabId, selectedKpi) {
             return `MISSING_IN_${target}`
         case 'quantityMismatch':
             return 'QUANTITY_MISMATCH'
+        case 'totalMismatch':
+            return 'TOTAL_MISMATCH'
         case 'itemMissing':
             return 'ITEM_MISSING'
+        case 'duplicateTransactions':
+            return `DUPLICATE_IN_${target}`
         case 'processingPending':
             return `PROCESSING_PENDING_IN_${target}`
         case 'total':
@@ -298,7 +347,7 @@ function WelcomeLanding({palette, t}) {
     ]
 
     return (
-        <Box sx={{px: 4, py: 4, maxWidth: 1480}}>
+        <Box sx={{px: {xs: 2, md: 3}, py: {xs: 2, md: 2.5}, maxWidth: 1440}}>
             <Paper
                 elevation={0}
                 sx={{
@@ -307,9 +356,9 @@ function WelcomeLanding({palette, t}) {
                     borderRadius: '28px',
                     border: `1px solid ${palette.border}`,
                     background: palette.heroBg,
-                    px: {xs: 3, md: 4},
-                    py: {xs: 3.5, md: 4.5},
-                    mb: 3,
+                    px: {xs: 2.5, md: 3},
+                    py: {xs: 2.5, md: 3},
+                    mb: 2,
                 }}
             >
                 <Box
@@ -342,8 +391,8 @@ function WelcomeLanding({palette, t}) {
                         position: 'relative',
                         zIndex: 1,
                         display: 'grid',
-                        gridTemplateColumns: {xs: '1fr', lg: '1.4fr 0.9fr'},
-                        gap: 3,
+                        gridTemplateColumns: {xs: '1fr', lg: '1.32fr 0.88fr'},
+                        gap: 2,
                         alignItems: 'center',
                     }}
                 >
@@ -364,12 +413,12 @@ function WelcomeLanding({palette, t}) {
 
                         <Typography
                             sx={{
-                                fontSize: {xs: '2rem', md: '2.5rem'},
+                                fontSize: {xs: '1.75rem', md: '2.15rem'},
                                 fontWeight: 700,
                                 color: palette.text,
-                                lineHeight: 1.1,
+                                lineHeight: 1.04,
                                 letterSpacing: '-0.6px',
-                                mb: 1.25,
+                                mb: 0.8,
                             }}
                         >
                             {t('Welcome to RetailINQ')}
@@ -377,10 +426,10 @@ function WelcomeLanding({palette, t}) {
 
                         <Typography
                             sx={{
-                                fontSize: {xs: '1rem', md: '1.06rem'},
+                                fontSize: {xs: '0.92rem', md: '0.96rem'},
                                 color: palette.textMuted,
-                                lineHeight: 1.7,
-                                maxWidth: 760,
+                                lineHeight: 1.55,
+                                maxWidth: 680,
                             }}
                         >
                             {t(
@@ -393,7 +442,7 @@ function WelcomeLanding({palette, t}) {
                                 display: 'flex',
                                 gap: 1.25,
                                 flexWrap: 'wrap',
-                                mt: 2.5,
+                                mt: 1.5,
                             }}
                         >
                             <Chip
@@ -430,28 +479,28 @@ function WelcomeLanding({palette, t}) {
                         sx={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                            gap: 1.5,
+                            gap: 1,
                         }}
                     >
                         {[
                             [t('Workspace'), 'RetailINQ', t('Unified operations console')],
                             [t('Experience'), t('Premium SaaS'), t('Secure, modern, scalable')],
-                            [t('Core Focus'), t('Reconciliation'), t('Exceptions, trends, controls')],
-                            [t('Administration'), t('Users & Roles'), t('Access and governance')],
+                            [t('Core Focus'), t('Reconciliation'), t('Exceptions and controls')],
+                            [t('Administration'), t('Users & Roles'), t('Access governance')],
                         ].map(([label, title, desc]) => (
                             <Paper
                                 key={label}
                                 elevation={0}
                                 sx={{
-                                    p: 2.25,
-                                    borderRadius: '22px',
+                                    p: 1.5,
+                                    borderRadius: '18px',
                                     border: `1px solid ${palette.border}`,
                                     backgroundColor: palette.cardBg,
                                 }}
                             >
                                 <Typography
                                     sx={{
-                                        fontSize: '0.78rem',
+                                        fontSize: '0.72rem',
                                         color: palette.textMuted,
                                         textTransform: 'uppercase',
                                         letterSpacing: '0.5px',
@@ -463,7 +512,7 @@ function WelcomeLanding({palette, t}) {
                                 </Typography>
                                 <Typography
                                     sx={{
-                                        fontSize: '1.2rem',
+                                        fontSize: '1rem',
                                         fontWeight: 700,
                                         color: palette.text,
                                     }}
@@ -472,8 +521,8 @@ function WelcomeLanding({palette, t}) {
                                 </Typography>
                                 <Typography
                                     sx={{
-                                        mt: 0.5,
-                                        fontSize: '0.84rem',
+                                        mt: 0.35,
+                                        fontSize: '0.76rem',
                                         color: palette.textMuted,
                                     }}
                                 >
@@ -490,9 +539,9 @@ function WelcomeLanding({palette, t}) {
                     display: 'grid',
                     gridTemplateColumns: {
                         xs: '1fr',
-                        md: 'repeat(3, minmax(0, 1fr))',
+                        md: 'repeat(4, minmax(0, 1fr))',
                     },
-                    gap: 2,
+                    gap: 1.25,
                 }}
             >
                 {reconModules.map((module) => (
@@ -500,8 +549,8 @@ function WelcomeLanding({palette, t}) {
                         key={module.id}
                         elevation={0}
                         sx={{
-                            p: 2.5,
-                            borderRadius: '24px',
+                            p: 1.8,
+                            borderRadius: '20px',
                             border: `1px solid ${palette.border}`,
                             backgroundColor: palette.cardBg,
                             transition: 'all 0.18s ease',
@@ -515,15 +564,15 @@ function WelcomeLanding({palette, t}) {
                     >
                         <Box
                             sx={{
-                                width: 44,
-                                height: 44,
-                                borderRadius: '14px',
+                                width: 38,
+                                height: 38,
+                                borderRadius: '12px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 backgroundColor: module.bg,
                                 color: module.accent,
-                                mb: 1.5,
+                                mb: 1,
                             }}
                         >
                             {module.icon}
@@ -533,7 +582,7 @@ function WelcomeLanding({palette, t}) {
                             label={module.badge}
                             size="small"
                             sx={{
-                                mb: 1.25,
+                                mb: 0.8,
                                 backgroundColor: module.bg,
                                 color: module.accent,
                                 fontWeight: 700,
@@ -543,10 +592,10 @@ function WelcomeLanding({palette, t}) {
 
                         <Typography
                             sx={{
-                                fontSize: '1.02rem',
+                                fontSize: '0.94rem',
                                 fontWeight: 700,
                                 color: palette.text,
-                                mb: 0.75,
+                                mb: 0.45,
                             }}
                         >
                             {module.title}
@@ -554,10 +603,10 @@ function WelcomeLanding({palette, t}) {
 
                         <Typography
                             sx={{
-                                fontSize: '0.88rem',
+                                fontSize: '0.8rem',
                                 color: palette.textMuted,
-                                lineHeight: 1.65,
-                                mb: 1.75,
+                                lineHeight: 1.45,
+                                mb: 1.1,
                             }}
                         >
                             {module.desc}
@@ -573,7 +622,7 @@ function WelcomeLanding({palette, t}) {
                         >
                             <Typography
                                 sx={{
-                                    fontSize: '0.84rem',
+                                    fontSize: '0.78rem',
                                     fontWeight: 700,
                                 }}
                             >
@@ -644,9 +693,12 @@ function ReconContent({tabId, palette, t}) {
     const [kpis, setKpis] = useState({})
     const [selectedKpi, setSelectedKpi] = useState(null)
     const [detailData, setDetailData] = useState([])
+    const [selectedDetailRow, setSelectedDetailRow] = useState(null)
     const [detailTitle, setDetailTitle] = useState('')
+    const [analytics, setAnalytics] = useState(null)
     const [loadingKpis, setLoadingKpis] = useState(false)
     const [loadingDetail, setLoadingDetail] = useState(false)
+    const [loadingAnalytics, setLoadingAnalytics] = useState(false)
     const [page, setPage] = useState(0)
     const [totalElements, setTotalElements] = useState(0)
     const [stores, setStores] = useState([])
@@ -674,6 +726,8 @@ function ReconContent({tabId, palette, t}) {
             setKpis({})
             setSelectedKpi(null)
             setDetailData([])
+            setSelectedDetailRow(null)
+            setAnalytics(null)
             return
         }
 
@@ -692,7 +746,9 @@ function ReconContent({tabId, palette, t}) {
                     matched: stats.matched,
                     missingInSiocs: stats.missingInSiocs,
                     quantityMismatch: stats.quantityMismatch,
+                    totalMismatch: stats.transactionTotalMismatch,
                     itemMissing: stats.itemMissing,
+                    duplicateTransactions: stats.duplicateTransactions,
                     processingPending: stats.processingPending,
                 })
             } catch (e) {
@@ -705,9 +761,35 @@ function ReconContent({tabId, palette, t}) {
         load()
         setSelectedKpi(null)
         setDetailData([])
+        setSelectedDetailRow(null)
         setDetailTitle('')
         setPage(0)
     }, [reconView, selectedStores, fromDate, toDate])
+
+    useEffect(() => {
+        if (!reconView) {
+            setAnalytics(null)
+            return
+        }
+
+        const loadAnalytics = async () => {
+            setLoadingAnalytics(true)
+            try {
+                const response = await reconApi.getDashboardAnalytics({
+                    storeIds: selectedStores,
+                    wkstnIds: selectedRegisters,
+                    reconView,
+                })
+                setAnalytics(response)
+            } catch (e) {
+                console.error('Failed to load dashboard analytics', e)
+            } finally {
+                setLoadingAnalytics(false)
+            }
+        }
+
+        loadAnalytics()
+    }, [reconView, selectedStores, selectedRegisters])
 
     useEffect(() => {
         if (!selectedKpi || !reconView) return
@@ -734,6 +816,8 @@ function ReconContent({tabId, palette, t}) {
 
                 setDetailData(
                     (result.content || []).map((t) => ({
+                        __rowKey: t.transactionKey,
+                        __meta: t,
                         'Transaction ID': getTransactionIdFromExternalId(
                             t.externalId,
                             '-'
@@ -746,6 +830,11 @@ function ReconContent({tabId, palette, t}) {
                         Status: t.reconStatus,
                         'Reconciled At': t.reconciledAt,
                     }))
+                )
+                setSelectedDetailRow(
+                    (result.content || []).length > 0
+                        ? (result.content || [])[0]
+                        : null
                 )
                 setTotalElements(result.totalElements || 0)
             } catch (e) {
@@ -770,6 +859,7 @@ function ReconContent({tabId, palette, t}) {
         setDetailTitle(title)
         setSelectedKpi(key)
         setPage(0)
+        setSelectedDetailRow(null)
     }
 
     const pageStart =
@@ -778,6 +868,24 @@ function ReconContent({tabId, palette, t}) {
         totalElements === 0
             ? 0
             : Math.min((page + 1) * PAGE_SIZE, totalElements)
+
+    const trend7Data = (analytics?.last7Days || []).map((point) => ({
+        date: point.businessDate?.slice(5) || point.businessDate,
+        matchRate: point.matchRate,
+        missing: point.missing,
+        duplicates: point.duplicates,
+    }))
+
+    const trend30Data = (analytics?.last30Days || []).map((point) => ({
+        date: point.businessDate?.slice(5) || point.businessDate,
+        exceptionCount:
+            (point.missing || 0) +
+            (point.duplicates || 0) +
+            (point.quantityMismatch || 0) +
+            (point.totalMismatch || 0) +
+            (point.itemMissing || 0),
+        total: point.totalTransactions,
+    }))
 
     const renderCheckbox = (checked) => (
         <Box
@@ -1126,31 +1234,374 @@ function ReconContent({tabId, palette, t}) {
                     <CircularProgress/>
                 </Box>
             ) : (
-                <Grid container spacing={3} sx={{mb: 4}}>
-                    {[
-                        {title: t('Total Transactions'), key: 'total'},
-                        {title: t('Matched'), key: 'matched'},
-                        {title: getMissingKpiTitle(tabId, t), key: 'missingInSiocs'},
-                        {title: t('Quantity Mismatch'), key: 'quantityMismatch'},
-                        {title: t('Item Missing'), key: 'itemMissing'},
-                        {
-                            title: getProcessingPendingKpiTitle(tabId, t),
-                            key: 'processingPending',
-                        },
-                    ].map((kpi) => (
-                        <Grid item xs={12} sm={6} md={2} key={kpi.key}>
-                            <KPI
-                                title={kpi.title}
-                                value={kpis[kpi.key]}
-                                onClick={() =>
-                                    handleKpiClick(kpi.title, kpi.key)
-                                }
-                                selected={selectedKpi === kpi.key}
+                <Box sx={{mb: 4, display: 'flex', flexDirection: 'column', gap: 2.5}}>
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: {xs: 2, md: 2.25},
+                            borderRadius: 4,
+                            border: `1px solid ${palette.border}`,
+                            background: palette.heroBg,
+                            position: 'relative',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                position: 'absolute',
+                                inset: 0,
+                                pointerEvents: 'none',
+                                backgroundImage: `${palette.overlay1}, ${palette.overlay2}`,
+                                backgroundSize: '320px 320px, 260px 260px',
+                                backgroundPosition: 'right -140px top -130px, left -140px bottom -140px',
+                                backgroundRepeat: 'no-repeat',
+                                opacity: 0.75,
+                            }}
+                        />
+
+                        <Box sx={{position: 'relative'}}>
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 2,
+                                    mb: 1.75,
+                                    flexWrap: 'wrap',
+                                }}
+                            >
+                                <Box>
+                                    <Typography
+                                        sx={{
+                                            fontSize: '1rem',
+                                            fontWeight: 800,
+                                            color: palette.text,
+                                            letterSpacing: '-0.01em',
+                                        }}
+                                    >
+                                        {t('Reconciliation Summary')}
+                                    </Typography>
+                                    <Typography
+                                        sx={{
+                                            mt: 0.35,
+                                            fontSize: '0.84rem',
+                                            color: palette.textMuted,
+                                        }}
+                                    >
+                                        {t('Top-line transaction outcomes for the selected filters')}
+                                    </Typography>
+                                </Box>
+                                <Chip
+                                    label={getTargetSystem(tabId)}
+                                    size="small"
+                                    sx={{
+                                        backgroundColor: palette.blueChipBg,
+                                        color: palette.blueChipText,
+                                        fontWeight: 700,
+                                    }}
+                                />
+                            </Box>
+
+                            <Grid container spacing={2}>
+                                {getKpiSections(tabId, t).summary.map((kpi) => (
+                                    <Grid item xs={12} sm={6} lg={3} key={kpi.key}>
+                                        <KPI
+                                            title={kpi.title}
+                                            value={kpis[kpi.key]}
+                                            onClick={() =>
+                                                handleKpiClick(kpi.title, kpi.key)
+                                            }
+                                            selected={selectedKpi === kpi.key}
+                                        />
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        </Box>
+                    </Paper>
+
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: {xs: 2, md: 2.25},
+                            borderRadius: 4,
+                            border: `1px solid ${palette.border}`,
+                            backgroundColor: palette.cardBg,
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 2,
+                                mb: 1.75,
+                                flexWrap: 'wrap',
+                            }}
+                        >
+                            <Box>
+                                <Typography
+                                    sx={{
+                                        fontSize: '0.98rem',
+                                        fontWeight: 800,
+                                        color: palette.text,
+                                    }}
+                                >
+                                    {t('Exception Metrics')}
+                                </Typography>
+                                <Typography
+                                    sx={{
+                                        mt: 0.35,
+                                        fontSize: '0.82rem',
+                                        color: palette.textMuted,
+                                    }}
+                                >
+                                    {t('Transaction and item discrepancies requiring operational review')}
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        <Grid container spacing={2}>
+                            {getKpiSections(tabId, t).issues.map((kpi) => (
+                                <Grid item xs={12} sm={6} lg={3} key={kpi.key}>
+                                    <KPI
+                                        title={kpi.title}
+                                        value={kpis[kpi.key]}
+                                        onClick={() =>
+                                            handleKpiClick(kpi.title, kpi.key)
+                                        }
+                                        selected={selectedKpi === kpi.key}
+                                    />
+                                </Grid>
+                            ))}
+                        </Grid>
+                    </Paper>
+                </Box>
+            )}
+
+            <Paper
+                elevation={0}
+                sx={{
+                    p: {xs: 2, md: 2.25},
+                    mb: 4,
+                    borderRadius: 4,
+                    border: `1px solid ${palette.border}`,
+                    backgroundColor: palette.cardBg,
+                }}
+            >
+                <Box
+                    sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 2,
+                        flexWrap: 'wrap',
+                        mb: 2,
+                    }}
+                >
+                    <Box>
+                        <Typography
+                            sx={{
+                                fontSize: '1rem',
+                                fontWeight: 800,
+                                color: palette.text,
+                            }}
+                        >
+                            {t('Operational Trends')}
+                        </Typography>
+                        <Typography
+                            sx={{
+                                mt: 0.35,
+                                fontSize: '0.84rem',
+                                color: palette.textMuted,
+                            }}
+                        >
+                            {t('Trend lines, failing locations, and exception aging for the selected reconciliation lane')}
+                        </Typography>
+                    </Box>
+                    <Chip
+                        label={t('Phase 1')}
+                        size="small"
+                        sx={{
+                            backgroundColor: palette.blueChipBg,
+                            color: palette.blueChipText,
+                            fontWeight: 700,
+                        }}
+                    />
+                </Box>
+
+                {loadingAnalytics ? (
+                    <Box sx={{display: 'flex', justifyContent: 'center', py: 5}}>
+                        <CircularProgress size={28}/>
+                    </Box>
+                ) : (
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} lg={6}>
+                            <LineChartComponent
+                                data={trend7Data}
+                                dataKey="matchRate"
+                                title={t('7-Day Match Rate Trend')}
                             />
                         </Grid>
-                    ))}
-                </Grid>
-            )}
+                        <Grid item xs={12} lg={6}>
+                            <LineChartComponent
+                                data={trend30Data}
+                                dataKey="exceptionCount"
+                                title={t('30-Day Exception Trend')}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} md={6} lg={4}>
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2.25,
+                                    height: '100%',
+                                    borderRadius: 3,
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    backgroundColor: palette.cardBgAlt,
+                                }}
+                            >
+                                <Typography sx={{fontSize: '0.92rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
+                                    {t('Top Failing Stores')}
+                                </Typography>
+                                {(analytics?.topFailingStores || []).length > 0 ? (
+                                    <Box sx={{display: 'flex', flexDirection: 'column', gap: 1.1}}>
+                                        {analytics.topFailingStores.map((item, index) => (
+                                            <Box
+                                                key={`${item.key}-${index}`}
+                                                sx={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    gap: 1.5,
+                                                    p: 1.3,
+                                                    borderRadius: 2.5,
+                                                    backgroundColor: palette.cardBg,
+                                                    border: `1px solid ${palette.border}`,
+                                                }}
+                                            >
+                                                <Box>
+                                                    <Typography sx={{fontSize: '0.88rem', fontWeight: 700, color: palette.text}}>
+                                                        {t('Store')} {item.key}
+                                                    </Typography>
+                                                    <Typography sx={{fontSize: '0.78rem', color: palette.textMuted}}>
+                                                        {t('Exceptions')}: {item.exceptionCount} • {t('Match Rate')}: {item.matchRate}%
+                                                    </Typography>
+                                                </Box>
+                                                <Chip
+                                                    label={item.missing}
+                                                    size="small"
+                                                    sx={{backgroundColor: palette.tealChipBg, color: palette.tealChipText, fontWeight: 700}}
+                                                />
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                ) : (
+                                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                                        {t('No store trend data available.')}
+                                    </Typography>
+                                )}
+                            </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} md={6} lg={4}>
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2.25,
+                                    height: '100%',
+                                    borderRadius: 3,
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    backgroundColor: palette.cardBgAlt,
+                                }}
+                            >
+                                <Typography sx={{fontSize: '0.92rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
+                                    {t('Top Failing Registers')}
+                                </Typography>
+                                {(analytics?.topFailingRegisters || []).length > 0 ? (
+                                    <Box sx={{display: 'flex', flexDirection: 'column', gap: 1.1}}>
+                                        {analytics.topFailingRegisters.map((item, index) => (
+                                            <Box
+                                                key={`${item.key}-${index}`}
+                                                sx={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    gap: 1.5,
+                                                    p: 1.3,
+                                                    borderRadius: 2.5,
+                                                    backgroundColor: palette.cardBg,
+                                                    border: `1px solid ${palette.border}`,
+                                                }}
+                                            >
+                                                <Box>
+                                                    <Typography sx={{fontSize: '0.88rem', fontWeight: 700, color: palette.text}}>
+                                                        {t('Register')} {item.key}
+                                                    </Typography>
+                                                    <Typography sx={{fontSize: '0.78rem', color: palette.textMuted}}>
+                                                        {t('Duplicates')}: {item.duplicates} • {t('Match Rate')}: {item.matchRate}%
+                                                    </Typography>
+                                                </Box>
+                                                <Chip
+                                                    label={item.exceptionCount}
+                                                    size="small"
+                                                    sx={{backgroundColor: palette.blueChipBg, color: palette.blueChipText, fontWeight: 700}}
+                                                />
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                ) : (
+                                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                                        {t('No register trend data available.')}
+                                    </Typography>
+                                )}
+                            </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} lg={4}>
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2.25,
+                                    height: '100%',
+                                    borderRadius: 3,
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    backgroundColor: palette.cardBgAlt,
+                                }}
+                            >
+                                <Typography sx={{fontSize: '0.92rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
+                                    {t('Exception Aging')}
+                                </Typography>
+                                {(analytics?.exceptionAging || []).length > 0 ? (
+                                    <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.2}}>
+                                        {analytics.exceptionAging.map((bucket) => (
+                                            <Paper
+                                                key={bucket.label}
+                                                elevation={0}
+                                                sx={{
+                                                    p: 1.5,
+                                                    borderRadius: 2.5,
+                                                    border: `1px solid ${palette.border}`,
+                                                    backgroundColor: palette.cardBg,
+                                                }}
+                                            >
+                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted, fontWeight: 700}}>
+                                                    {bucket.label}
+                                                </Typography>
+                                                <Typography sx={{mt: 0.4, fontSize: '1.4rem', color: palette.text, fontWeight: 800}}>
+                                                    {bucket.count}
+                                                </Typography>
+                                            </Paper>
+                                        ))}
+                                    </Box>
+                                ) : (
+                                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                                        {t('No exception aging data available.')}
+                                    </Typography>
+                                )}
+                            </Paper>
+                        </Grid>
+                    </Grid>
+                )}
+            </Paper>
 
             {selectedKpi &&
                 (loadingDetail ? (
@@ -1168,7 +1619,11 @@ function ReconContent({tabId, palette, t}) {
                         <DetailTable
                             title={`${detailTitle} — ${totalElements} records`}
                             data={detailData}
+                            onRowSelect={(row) => setSelectedDetailRow(row.__meta || null)}
+                            selectedRowKey={selectedDetailRow?.transactionKey || null}
                         />
+
+                        <ExceptionWorkbenchPanel record={selectedDetailRow}/>
 
                         {totalElements > PAGE_SIZE && (
                             <Box
@@ -1382,6 +1837,12 @@ export default function Dashboard({
                     >
                         {SECURITY_IDS.includes(tabId) ? (
                             renderSecurityTab(tabId)
+                        ) : ALERT_IDS.includes(tabId) ? (
+                            <Alerts palette={palette} t={t}/>
+                        ) : OPERATION_IDS.includes(tabId) ? (
+                            <Operations palette={palette} t={t}/>
+                        ) : ACTIVITY_IDS.includes(tabId) ? (
+                            <Activity palette={palette} t={t}/>
                         ) : CONFIGURATION_IDS.includes(tabId) ? (
                             <Configurations tabId={tabId} palette={palette} t={t}/>
                         ) : (

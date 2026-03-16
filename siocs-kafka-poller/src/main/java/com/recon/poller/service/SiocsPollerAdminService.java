@@ -15,17 +15,15 @@ import java.time.Instant;
 @Service
 @RequiredArgsConstructor
 public class SiocsPollerAdminService {
-
-    private static final String POLLER_ID = "siocs-main";
-
     private final PollerConfig config;
     private final CheckpointRepository checkpointRepository;
     private final SiocsKafkaPoller poller;
 
     public SiocsPollerStatusResponse getStatus() {
-        SiocsPollCheckpoint cp = checkpointRepository.findOrCreate(POLLER_ID, config.getTenantId());
+        String pollerId = config.getPollerId();
+        SiocsPollCheckpoint cp = checkpointRepository.findOrCreate(pollerId, config.getTenantId());
         return SiocsPollerStatusResponse.builder()
-                .service("siocs-kafka-poller")
+                .service("sim-kafka-poller")
                 .schedulerEnabled(config.isSchedulerEnabled())
                 .pageSize(config.getPageSize())
                 .safetyMarginMin(config.getSafetyMarginMin())
@@ -55,7 +53,7 @@ public class SiocsPollerAdminService {
     }
 
     public SiocsPollerActionResponse releaseLease() {
-        checkpointRepository.forceReleaseLease(POLLER_ID);
+        checkpointRepository.forceReleaseLease(config.getPollerId());
         return SiocsPollerActionResponse.builder()
                 .action("release-lease")
                 .status("OK")
@@ -71,12 +69,12 @@ public class SiocsPollerAdminService {
                 ? ""
                 : request.getLastProcessedExternalId();
         long lastProcessedId = request.getLastProcessedId() == null ? 0L : request.getLastProcessedId();
-        checkpointRepository.findOrCreate(POLLER_ID, config.getTenantId());
-        checkpointRepository.resetCheckpoint(POLLER_ID, ts, extId, lastProcessedId);
+        checkpointRepository.findOrCreate(config.getPollerId(), config.getTenantId());
+        checkpointRepository.resetCheckpoint(config.getPollerId(), ts, extId, lastProcessedId);
         return SiocsPollerActionResponse.builder()
                 .action("reset-checkpoint")
                 .status("OK")
-                .message("Reset checkpoint for " + POLLER_ID)
+                .message("Reset checkpoint for " + config.getPollerId())
                 .build();
     }
 

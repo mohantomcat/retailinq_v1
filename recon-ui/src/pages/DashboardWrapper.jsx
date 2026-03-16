@@ -12,6 +12,9 @@ const THEME_KEY = 'recon_ui_theme'
 export default function DashboardWrapper({
     children,
     modules,
+    alerts,
+    operations,
+    activity,
     configurations,
     activeTab,
     onSelectTab,
@@ -260,6 +263,9 @@ export default function DashboardWrapper({
                 collapsed={sidebarCollapsed}
                 onCollapse={onSidebarCollapse}
                 modules={modules}
+                alerts={alerts}
+                operations={operations}
+                activity={activity}
                 configurations={configurations}
                 activeTab={activeTab}
                 onSelect={onSelectTab}

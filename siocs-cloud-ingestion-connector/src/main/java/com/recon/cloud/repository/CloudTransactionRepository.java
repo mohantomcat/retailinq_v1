@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -198,6 +199,30 @@ public class CloudTransactionRepository {
                 WHERE ingestion_status = ?
                 """;
         return jdbcTemplate.update(sql, status);
+    }
+
+    public int replayWindow(LocalDate fromBusinessDate,
+                            LocalDate toBusinessDate,
+                            String storeId) {
+        StringBuilder sql = new StringBuilder("""
+                UPDATE recon.siocs_ingestion_transaction
+                SET ingestion_status = 'READY',
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    last_error_message = NULL,
+                    updated_at = NOW()
+                WHERE ingestion_status IN ('PUBLISHED', 'FAILED', 'DLQ')
+                  AND DATE(COALESCE(transaction_date_time, update_date_time, created_at)) >= ?
+                  AND DATE(COALESCE(transaction_date_time, update_date_time, created_at)) <= ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(fromBusinessDate);
+        args.add(toBusinessDate);
+        if (storeId != null && !storeId.isBlank()) {
+            sql.append(" AND store_id = ?");
+            args.add(storeId);
+        }
+        return jdbcTemplate.update(sql.toString(), args.toArray());
     }
 
     public void markPublished(List<Long> ids) {

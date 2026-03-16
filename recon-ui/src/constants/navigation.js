@@ -11,6 +11,18 @@ export const SECURITY_TAB_IDS = [
     'manage-perms',
 ]
 
+export const ALERT_TAB_IDS = [
+    'alerts',
+]
+
+export const OPERATIONS_TAB_IDS = [
+    'operations',
+]
+
+export const ACTIVITY_TAB_IDS = [
+    'audit-activity',
+]
+
 export const CONFIGURATION_TAB_IDS = [
     'module-configs',
     'system-configs',
@@ -32,6 +44,12 @@ export function getTabLabel(t, id) {
             return t('Manage Roles')
         case 'manage-perms':
             return t('Manage Permissions')
+        case 'alerts':
+            return t('Alerts')
+        case 'operations':
+            return t('Operations')
+        case 'audit-activity':
+            return t('Audit & Activity')
         case 'module-configs':
             return t('Module Configurations')
         case 'system-configs':

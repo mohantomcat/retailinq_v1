@@ -27,11 +27,13 @@ import TuneIcon from '@mui/icons-material/Tune'
 import PeopleIcon from '@mui/icons-material/People'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import SecurityIcon from '@mui/icons-material/Security'
+import NotificationsActiveRoundedIcon from '@mui/icons-material/NotificationsActiveRounded'
+import BuildCircleRoundedIcon from '@mui/icons-material/BuildCircleRounded'
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest'
 import DnsRoundedIcon from '@mui/icons-material/DnsRounded'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
-import {CONFIGURATION_TAB_IDS, getTabLabel, SECURITY_TAB_IDS} from '../constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, SECURITY_TAB_IDS} from '../constants/navigation'
 
 const ITEM_PERMISSIONS = {
     'xstore-sim': 'RECON_XSTORE_SIM',
@@ -40,6 +42,9 @@ const ITEM_PERMISSIONS = {
     'sim-rms': 'RECON_SIM_RMS',
     reports: 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
+    alerts: 'ALERT_VIEW',
+    operations: 'OPS_VIEW',
+    'audit-activity': 'AUDIT_VIEW',
     'manage-users': 'ADMIN_USERS',
     'manage-roles': 'ADMIN_ROLES',
     'manage-perms': 'ADMIN_PERMISSIONS',
@@ -51,6 +56,9 @@ const SECTION_PERMISSIONS = {
     reconciliation: 'RECON_VIEW',
     reports: 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
+    alerts: 'ALERT_VIEW',
+    operations: 'OPS_VIEW',
+    activity: 'AUDIT_VIEW',
     configurations: ['CONFIG_MODULE_VIEW', 'CONFIG_SYSTEM_VIEW'],
     security: 'ADMIN_USERS',
 }
@@ -59,6 +67,9 @@ const SECTION_ICONS = {
     reconciliation: <CompareArrowsIcon sx={{fontSize: 18}}/>,
     reports: <AssessmentIcon sx={{fontSize: 18}}/>,
     settings: <SettingsIcon sx={{fontSize: 18}}/>,
+    alerts: <NotificationsActiveRoundedIcon sx={{fontSize: 18}}/>,
+    operations: <BuildCircleRoundedIcon sx={{fontSize: 18}}/>,
+    activity: <AssessmentIcon sx={{fontSize: 18}}/>,
     configurations: <SettingsSuggestIcon sx={{fontSize: 18}}/>,
     security: <AdminPanelSettingsIcon sx={{fontSize: 18}}/>,
 }
@@ -75,6 +86,18 @@ const SECTION_COLORS = {
     settings: {
         icon: '#D97706',
         bg: '#FFF7ED',
+    },
+    alerts: {
+        icon: '#DC2626',
+        bg: '#FEF2F2',
+    },
+    operations: {
+        icon: '#7C3AED',
+        bg: '#F5F3FF',
+    },
+    activity: {
+        icon: '#0F7C86',
+        bg: '#ECFEFF',
     },
     configurations: {
         icon: '#2563EB',
@@ -93,6 +116,9 @@ const ITEM_ICONS = {
     'sim-rms': <InventoryIcon sx={{fontSize: 17}}/>,
     reports: <BarChartIcon sx={{fontSize: 17}}/>,
     settings: <TuneIcon sx={{fontSize: 17}}/>,
+    alerts: <NotificationsActiveRoundedIcon sx={{fontSize: 17}}/>,
+    operations: <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
+    'audit-activity': <AssessmentIcon sx={{fontSize: 17}}/>,
     'module-configs': <TuneIcon sx={{fontSize: 17}}/>,
     'system-configs': <DnsRoundedIcon sx={{fontSize: 17}}/>,
     'manage-users': <PeopleIcon sx={{fontSize: 17}}/>,
@@ -105,6 +131,9 @@ export default function Sidebar({
                                     collapsed,
                                     onCollapse,
                                     modules = [],
+                                    alerts = [],
+                                    operations = [],
+                                    activity = [],
                                     configurations = [],
                                     reports = [],
                                     settings = [],
@@ -119,6 +148,18 @@ export default function Sidebar({
         id,
         label: getTabLabel(t, id),
     }))
+    const alertItems = ALERT_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const operationItems = OPERATIONS_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const activityItems = ACTIVITY_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const configurationItems = CONFIGURATION_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
@@ -126,6 +167,9 @@ export default function Sidebar({
 
     const [openGroups, setOpenGroups] = useState({
         reconciliation: true,
+        alerts: false,
+        operations: false,
+        activity: false,
         reports: false,
         settings: false,
         configurations: false,
@@ -474,6 +518,9 @@ export default function Sidebar({
 
             <List sx={{pt: 0.75, flexGrow: 1}}>
                 {renderGroup(t('Reconciliation'), modules, 'reconciliation')}
+                {renderGroup(t('Alerts'), alerts.length ? alerts : alertItems, 'alerts')}
+                {renderGroup(t('Operations'), operations.length ? operations : operationItems, 'operations')}
+                {renderGroup(t('Audit & Activity'), activity.length ? activity : activityItems, 'activity')}
                 {renderGroup(t('Configurations'), configurations.length ? configurations : configurationItems, 'configurations')}
                 {renderGroup(t('Reports'), reports, 'reports')}
                 {renderGroup(t('Settings'), settings, 'settings')}
