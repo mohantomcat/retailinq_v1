@@ -4,64 +4,55 @@ import com.recon.api.domain.TenantConfig;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import java.util.Objects;
 
 public class TimezoneConverter {
 
-    // Universal wire format — ISO 8601, never changes
     private static final DateTimeFormatter ISO_DATE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter LOCAL_INPUT_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
 
-    /**
-     * Convert UTC timestamp to tenant local display format.
-     * e.g. "2025-11-26T10:30:00Z" ->
-     * "26-Nov-2025 16:00:00 IST" for India tenant
-     */
-    public static String toDisplay(String utcTimestamp,
+    private TimezoneConverter() {
+    }
+
+    public static String toDisplay(String timestamp,
                                    TenantConfig tenant) {
-        if (utcTimestamp == null || tenant == null)
-            return utcTimestamp;
+        if (timestamp == null || tenant == null) {
+            return timestamp;
+        }
         try {
-            ZoneId zone = ZoneId.of(tenant.getTimezone());
-            String displayFmt = tenant.getDateDisplayFormat() != null
-                    ? tenant.getDateDisplayFormat() : "dd-MMM-yyyy";
-            String pattern = displayFmt + " HH:mm:ss z";
-            return Instant.parse(utcTimestamp)
-                    .atZone(zone)
-                    .format(DateTimeFormatter
-                            .ofPattern(pattern)
-                            .withZone(zone));
+            ZonedDateTime zonedDateTime = parseTimestamp(timestamp, tenant);
+            String pattern = resolveDisplayPattern(tenant) + " HH:mm:ss z";
+            return zonedDateTime.format(DateTimeFormatter.ofPattern(pattern, resolveLocale(tenant)));
         } catch (Exception e) {
-            return utcTimestamp;
+            return timestamp;
         }
     }
 
-    /**
-     * Format ISO date for display in tenant locale.
-     * e.g. "2025-11-26" -> "26-Nov-2025" for India
-     * -> "11/26/2025" for US
-     * -> "26/11/2025" for UK
-     */
     public static String dateToDisplay(String isoDate,
                                        TenantConfig tenant) {
-        if (isoDate == null || tenant == null) return isoDate;
+        if (isoDate == null || tenant == null) {
+            return isoDate;
+        }
         try {
-            String displayFmt = tenant.getDateDisplayFormat() != null
-                    ? tenant.getDateDisplayFormat() : "dd-MMM-yyyy";
             return LocalDate.parse(isoDate, ISO_DATE)
-                    .format(DateTimeFormatter.ofPattern(displayFmt));
+                    .format(DateTimeFormatter.ofPattern(resolveDisplayPattern(tenant), resolveLocale(tenant)));
         } catch (Exception e) {
             return isoDate;
         }
     }
 
-    /**
-     * Validate incoming API date is ISO 8601 yyyy-MM-dd.
-     * All API consumers must send dates in this format.
-     */
     public static boolean isValidIsoDate(String date) {
-        if (date == null || date.isBlank()) return false;
+        if (date == null || date.isBlank()) {
+            return false;
+        }
         try {
             LocalDate.parse(date, ISO_DATE);
             return true;
@@ -70,23 +61,18 @@ public class TimezoneConverter {
         }
     }
 
-    /**
-     * Convert ISO business date to UTC timestamp range
-     * for reconciledAt range queries in Elasticsearch.
-     * Accounts for tenant timezone — a business date of
-     * 2025-11-26 in IST (UTC+5:30) spans
-     * 2025-11-25T18:30:00Z to 2025-11-26T18:29:59Z
-     */
     public static String[] toUtcDateRange(String isoDate,
                                           TenantConfig tenant) {
-        if (isoDate == null || tenant == null)
+        if (isoDate == null || tenant == null) {
             return new String[]{null, null};
+        }
         try {
-            ZoneId zone = ZoneId.of(tenant.getTimezone());
+            ZoneId zone = resolveZone(tenant);
             LocalDate date = LocalDate.parse(isoDate, ISO_DATE);
             Instant start = date.atStartOfDay(zone).toInstant();
             Instant end = date.atTime(23, 59, 59)
-                    .atZone(zone).toInstant();
+                    .atZone(zone)
+                    .toInstant();
             return new String[]{
                     start.toString(),
                     end.toString()
@@ -96,7 +82,74 @@ public class TimezoneConverter {
         }
     }
 
+    public static String toLocalDateTimeInput(String timestamp, TenantConfig tenant) {
+        if (timestamp == null || tenant == null) {
+            return timestamp;
+        }
+        try {
+            return parseTimestamp(timestamp, tenant)
+                    .toLocalDateTime()
+                    .format(LOCAL_INPUT_FORMATTER);
+        } catch (Exception ex) {
+            return timestamp;
+        }
+    }
+
+    public static LocalDateTime parseLocalDateTimeInput(String localDateTimeValue, TenantConfig tenant) {
+        if (localDateTimeValue == null || tenant == null) {
+            return null;
+        }
+        try {
+            LocalDateTime tenantLocal = LocalDateTime.parse(localDateTimeValue, LOCAL_INPUT_FORMATTER);
+            return tenantLocal.atZone(resolveZone(tenant))
+                    .withZoneSameInstant(ZoneId.systemDefault())
+                    .toLocalDateTime();
+        } catch (Exception ex) {
+            return LocalDateTime.parse(localDateTimeValue);
+        }
+    }
+
     public static String nowUtc() {
         return Instant.now().toString();
+    }
+
+    private static ZonedDateTime parseTimestamp(String timestamp, TenantConfig tenant) {
+        ZoneId tenantZone = resolveZone(tenant);
+        if (timestamp.endsWith("Z")) {
+            return Instant.parse(timestamp).atZone(tenantZone);
+        }
+        try {
+            return OffsetDateTime.parse(timestamp)
+                    .atZoneSameInstant(tenantZone);
+        } catch (Exception ignored) {
+            return LocalDateTime.parse(timestamp)
+                    .atZone(ZoneId.systemDefault())
+                    .withZoneSameInstant(tenantZone);
+        }
+    }
+
+    private static String resolveDisplayPattern(TenantConfig tenant) {
+        String pattern = Objects.toString(tenant.getDateDisplayFormat(), "").trim();
+        return pattern.isEmpty() ? "dd-MMM-yyyy" : pattern;
+    }
+
+    private static ZoneId resolveZone(TenantConfig tenant) {
+        try {
+            return ZoneId.of(tenant.getTimezone());
+        } catch (Exception ex) {
+            return ZoneId.systemDefault();
+        }
+    }
+
+    private static Locale resolveLocale(TenantConfig tenant) {
+        String localeCode = Objects.toString(tenant.getLocaleCode(), "").trim();
+        if (localeCode.isEmpty()) {
+            return Locale.getDefault();
+        }
+        try {
+            return Locale.forLanguageTag(localeCode);
+        } catch (Exception ex) {
+            return Locale.getDefault();
+        }
     }
 }

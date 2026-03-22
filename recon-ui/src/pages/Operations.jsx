@@ -29,6 +29,53 @@ function formatValue(value) {
     return String(value)
 }
 
+function formatDateTimeValue(value) {
+    if (!value) return '-'
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? value.replace('T', ' ') : parsed.toLocaleString()
+}
+
+function formatLagValue(minutes, t) {
+    if (minutes == null || minutes === 0) return t('Current')
+    if (minutes < 60) return `${minutes} ${t('min')}`
+    if (minutes < 1440) return `${(minutes / 60).toFixed(1)} ${t('hrs')}`
+    return `${(minutes / 1440).toFixed(1)} ${t('days')}`
+}
+
+function healthChipStyles(value, palette) {
+    switch ((value || '').toUpperCase()) {
+        case 'CRITICAL':
+            return {backgroundColor: '#FEF2F2', color: '#B91C1C'}
+        case 'WARNING':
+            return {backgroundColor: '#FFF7ED', color: '#C2410C'}
+        case 'HEALTHY':
+            return {backgroundColor: palette.tealChipBg, color: palette.tealChipText}
+        default:
+            return {backgroundColor: palette.cardBgAlt, color: palette.textMuted}
+    }
+}
+
+function freshnessChipStyles(value, palette) {
+    switch ((value || '').toUpperCase()) {
+        case 'STALE':
+            return {backgroundColor: '#FFF7ED', color: '#C2410C'}
+        case 'FRESH':
+            return {backgroundColor: palette.tealChipBg, color: palette.tealChipText}
+        default:
+            return {backgroundColor: palette.cardBgAlt, color: palette.textMuted}
+    }
+}
+
+function SummaryCard({label, value, supporting, tone, palette}) {
+    return (
+        <Paper elevation={0} sx={{p: 2, borderRadius: '20px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
+            <Typography sx={{fontSize: '0.78rem', fontWeight: 700, color: palette.textMuted}}>{label}</Typography>
+            <Typography sx={{mt: 0.65, fontSize: '1.55rem', fontWeight: 800, color: tone}}>{value}</Typography>
+            <Typography sx={{mt: 0.45, fontSize: '0.76rem', color: palette.textMuted}}>{supporting}</Typography>
+        </Paper>
+    )
+}
+
 function OperationCard({
     module,
     palette,
@@ -42,6 +89,7 @@ function OperationCard({
 }) {
     const status = module.status || {}
     const advancedActions = module.advancedActions || []
+    const highlights = module.statusHighlights || []
 
     return (
         <Paper
@@ -54,7 +102,7 @@ function OperationCard({
                 height: '100%',
             }}
         >
-            <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', mb: 1.5}}>
+            <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', mb: 1.5, flexWrap: 'wrap'}}>
                 <Box>
                     <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text}}>
                         {module.moduleLabel}
@@ -63,29 +111,59 @@ function OperationCard({
                         {module.reconView}
                     </Typography>
                 </Box>
-                <Chip
-                    size="small"
-                    label={module.reachable ? t('Reachable') : t('Unavailable')}
-                    sx={{
-                        backgroundColor: module.reachable ? palette.tealChipBg : '#FEF2F2',
-                        color: module.reachable ? palette.tealChipText : '#DC2626',
-                        fontWeight: 700,
-                    }}
-                />
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                    <Chip
+                        size="small"
+                        label={module.reachable ? t('Reachable') : t('Unavailable')}
+                        sx={{
+                            backgroundColor: module.reachable ? palette.tealChipBg : '#FEF2F2',
+                            color: module.reachable ? palette.tealChipText : '#DC2626',
+                            fontWeight: 700,
+                        }}
+                    />
+                    <Chip size="small" label={module.healthStatus || t('Unknown')} sx={{fontWeight: 700, ...healthChipStyles(module.healthStatus, palette)}}/>
+                    <Chip size="small" label={module.freshnessStatus || t('Freshness')} sx={{fontWeight: 700, ...freshnessChipStyles(module.freshnessStatus, palette)}}/>
+                </Stack>
             </Box>
 
             <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, mb: 2}}>
-                {Object.entries(status).slice(0, 6).map(([key, value]) => (
-                    <Box key={key} sx={{p: 1.2, borderRadius: 2, backgroundColor: palette.cardBgAlt, border: `1px solid ${palette.borderSoft}`}}>
+                {[
+                    {label: t('Health Score'), value: module.healthScore != null ? `${module.healthScore}/100` : '-'},
+                    {label: t('Freshness Lag'), value: formatLagValue(module.freshnessLagMinutes, t)},
+                    {label: t('Backlog'), value: module.backlogCount || 0},
+                    {label: t('Active Cases'), value: module.activeCaseCount || 0},
+                    {label: t('Breached Cases'), value: module.breachedCaseCount || 0},
+                    {label: t('Last Success'), value: formatDateTimeValue(module.lastSuccessfulSyncAt)},
+                ].map((item) => (
+                    <Box key={item.label} sx={{p: 1.2, borderRadius: 2, backgroundColor: palette.cardBgAlt, border: `1px solid ${palette.borderSoft}`}}>
                         <Typography sx={{fontSize: '0.72rem', color: palette.textMuted, fontWeight: 700}}>
-                            {key}
+                            {item.label}
                         </Typography>
-                        <Typography sx={{mt: 0.25, fontSize: '0.84rem', color: palette.text, fontWeight: 600}}>
-                            {formatValue(value)}
+                        <Typography sx={{mt: 0.25, fontSize: '0.84rem', color: palette.text, fontWeight: 700}}>
+                            {item.value}
                         </Typography>
                     </Box>
                 ))}
             </Box>
+
+            {module.recommendedAction ? (
+                <Box sx={{mb: 1.8, p: 1.15, borderRadius: 2.5, backgroundColor: palette.cardBgAlt, border: `1px solid ${palette.borderSoft}`}}>
+                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, fontWeight: 700}}>
+                        {t('Recommended Action')}
+                    </Typography>
+                    <Typography sx={{mt: 0.35, fontSize: '0.82rem', color: palette.text}}>
+                        {module.recommendedAction}
+                    </Typography>
+                </Box>
+            ) : null}
+
+            {highlights.length ? (
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{mb: 1.8}}>
+                    {highlights.map((highlight, index) => (
+                        <Chip key={`${highlight}-${index}`} size="small" label={highlight} sx={{backgroundColor: palette.cardBgAlt, color: palette.textMuted}}/>
+                    ))}
+                </Stack>
+            ) : null}
 
             <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, fontWeight: 700, mb: 1}}>
                 {t('Safe Actions')}
@@ -112,7 +190,7 @@ function OperationCard({
                     <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, fontWeight: 700, mb: 1}}>
                         {t('Advanced Actions')}
                     </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{mb: 2}}>
                         {advancedActions.map((action) => {
                             const disabled = !module.reachable
                                 || (action === 'reset-checkpoint' ? !canResetCheckpoint : !canExecuteAdvanced)
@@ -132,6 +210,26 @@ function OperationCard({
                     </Stack>
                 </>
             )}
+
+            {Object.entries(status).length ? (
+                <>
+                    <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, fontWeight: 700, mb: 1}}>
+                        {t('Connector Status')}
+                    </Typography>
+                    <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1}}>
+                        {Object.entries(status).slice(0, 6).map(([key, value]) => (
+                            <Box key={key} sx={{p: 1.1, borderRadius: 2, backgroundColor: palette.cardBg, border: `1px solid ${palette.border}`}}>
+                                <Typography sx={{fontSize: '0.7rem', color: palette.textMuted, fontWeight: 700}}>
+                                    {key}
+                                </Typography>
+                                <Typography sx={{mt: 0.2, fontSize: '0.8rem', color: palette.text}}>
+                                    {formatValue(value)}
+                                </Typography>
+                            </Box>
+                        ))}
+                    </Box>
+                </>
+            ) : null}
         </Paper>
     )
 }
@@ -145,7 +243,6 @@ function AdvancedActionDialog({
     onClose,
     onConfirm,
     submitting,
-    palette,
     t,
 }) {
     if (!open || !module || !actionKey) {
@@ -323,6 +420,7 @@ export default function Operations({palette, t}) {
     const dialogModule = dialogState.module
     const dialogActionKey = dialogState.actionKey
     const submittingAdvanced = Boolean(savingAction) && savingAction.startsWith('advanced:')
+    const summary = data?.summary || {}
 
     const loadOperations = async () => {
         try {
@@ -439,8 +537,8 @@ export default function Operations({palette, t}) {
                         <Typography sx={{fontSize: '1.35rem', fontWeight: 800, color: palette.text}}>
                             {t('Operations')}
                         </Typography>
-                        <Typography sx={{mt: 0.5, fontSize: '0.92rem', color: palette.textMuted, maxWidth: 920}}>
-                            {t('View connector status, checkpoints, and trigger guided operational actions with confirmation, permissions, and audit history.')}
+                        <Typography sx={{mt: 0.5, fontSize: '0.92rem', color: palette.textMuted, maxWidth: 940}}>
+                            {t('Proactively monitor connector health, data freshness, backlog risk, and the case pressure created by unhealthy integrations.')}
                         </Typography>
                     </Box>
                 </Box>
@@ -459,23 +557,34 @@ export default function Operations({palette, t}) {
                     <CircularProgress/>
                 </Box>
             ) : (
-                <Grid container spacing={2}>
-                    {(data?.modules || []).map((module) => (
-                        <Grid item xs={12} md={6} key={module.moduleId}>
-                            <OperationCard
-                                module={module}
-                                palette={palette}
-                                canExecuteSafe={canExecuteSafe}
-                                canExecuteAdvanced={canExecuteAdvanced}
-                                canResetCheckpoint={canResetCheckpoint}
-                                onRunSafe={runSafeAction}
-                                onOpenAdvanced={openAdvancedDialog}
-                                savingAction={savingAction}
-                                t={t}
-                            />
-                        </Grid>
-                    ))}
-                </Grid>
+                <>
+                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(3, minmax(0, 1fr))', xl: 'repeat(6, minmax(0, 1fr))'}, gap: 1.5, mb: 3}}>
+                        <SummaryCard label={t('Healthy Modules')} value={summary.healthyModules || 0} supporting={t('No material connector risk')} tone={palette.tealChipText} palette={palette}/>
+                        <SummaryCard label={t('Warning Modules')} value={summary.warningModules || 0} supporting={t('Need monitoring or queue attention')} tone="#D97706" palette={palette}/>
+                        <SummaryCard label={t('Critical Modules')} value={summary.criticalModules || 0} supporting={t('Direct operational risk')} tone="#B91C1C" palette={palette}/>
+                        <SummaryCard label={t('Stale Modules')} value={summary.staleModules || 0} supporting={t('Data freshness has slipped')} tone={palette.blueChipText} palette={palette}/>
+                        <SummaryCard label={t('Total Backlog')} value={summary.totalBacklogCount || 0} supporting={t('Connector records waiting to clear')} tone="#7C3AED" palette={palette}/>
+                        <SummaryCard label={t('Cases On Unhealthy Modules')} value={summary.activeCasesOnUnhealthyModules || 0} supporting={`${summary.breachedCasesOnUnhealthyModules || 0} ${t('breached')}`} tone={palette.text} palette={palette}/>
+                    </Box>
+
+                    <Grid container spacing={2}>
+                        {(data?.modules || []).map((module) => (
+                            <Grid item xs={12} md={6} key={module.moduleId}>
+                                <OperationCard
+                                    module={module}
+                                    palette={palette}
+                                    canExecuteSafe={canExecuteSafe}
+                                    canExecuteAdvanced={canExecuteAdvanced}
+                                    canResetCheckpoint={canResetCheckpoint}
+                                    onRunSafe={runSafeAction}
+                                    onOpenAdvanced={openAdvancedDialog}
+                                    savingAction={savingAction}
+                                    t={t}
+                                />
+                            </Grid>
+                        ))}
+                    </Grid>
+                </>
             )}
 
             <AdvancedActionDialog
@@ -487,7 +596,6 @@ export default function Operations({palette, t}) {
                 onClose={closeAdvancedDialog}
                 onConfirm={confirmAdvancedAction}
                 submitting={submittingAdvanced}
-                palette={palette}
                 t={t}
             />
         </Box>

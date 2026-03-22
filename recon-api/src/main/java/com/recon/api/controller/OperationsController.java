@@ -29,7 +29,7 @@ public class OperationsController {
     public ResponseEntity<ApiResponse<OperationsResponse>> getOperations(
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
-        return ResponseEntity.ok(ApiResponse.ok(operationsService.getOperations()));
+        return ResponseEntity.ok(ApiResponse.ok(operationsService.getOperations(principal.getTenantId())));
     }
 
     @PostMapping("/{moduleId}/actions/{actionKey}")

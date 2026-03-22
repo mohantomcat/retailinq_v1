@@ -47,6 +47,11 @@ const MODULE_COLORS = {
         color: '#dc2626',
         light: '#fff7f7',
     },
+    SLA: {
+        bg: '#eff6ff',
+        color: '#2563eb',
+        light: '#f8fbff',
+    },
     OPERATIONS: {
         bg: '#f5f3ff',
         color: '#7c3aed',
@@ -75,6 +80,7 @@ const MODULE_ORDER = [
     'SETTINGS',
     'CONFIGURATIONS',
     'ALERTS',
+    'SLA',
     'OPERATIONS',
     'AUDIT',
     'EXCEPTIONS',

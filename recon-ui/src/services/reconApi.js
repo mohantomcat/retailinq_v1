@@ -1,4 +1,4 @@
-import {apiFetch} from './apiFetch'
+import {apiFetch, parseResponse} from './apiFetch'
 
 const BASE = '/api/v1/recon'
 const TENANT = 'tenant-india'
@@ -55,6 +55,29 @@ export const reconApi = {
         const res = await apiFetch(`${BASE}/dashboard/analytics?${params}`)
         const json = await res.json()
         return json.data
+    },
+
+    getScorecards: async ({
+                              storeIds = [],
+                              reconView = null,
+                              fromBusinessDate = null,
+                              toBusinessDate = null,
+                          } = {}) => {
+        const params = new URLSearchParams({tenantId: TENANT})
+        if (storeIds?.length) {
+            storeIds.forEach((s) => params.append('storeIds', s))
+        }
+        if (reconView) {
+            params.append('reconView', reconView)
+        }
+        if (validateIsoDate(fromBusinessDate)) {
+            params.append('fromBusinessDate', fromBusinessDate)
+        }
+        if (validateIsoDate(toBusinessDate)) {
+            params.append('toBusinessDate', toBusinessDate)
+        }
+        const res = await apiFetch(`${BASE}/scorecards?${params}`)
+        return parseResponse(res)
     },
 
     getTransactions: async ({

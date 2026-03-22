@@ -6,10 +6,12 @@ import com.recon.api.domain.DashboardStats;
 import com.recon.api.domain.PagedResult;
 import com.recon.api.domain.ReconSearchRequest;
 import com.recon.api.domain.ReconSummary;
+import com.recon.api.domain.ScorecardsResponse;
 import com.recon.api.domain.TenantConfig;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.ReconQueryService;
 import com.recon.api.service.DashboardAnalyticsService;
+import com.recon.api.service.ScorecardService;
 import com.recon.api.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class ReconController {
 
     private final ReconQueryService queryService;
     private final DashboardAnalyticsService analyticsService;
+    private final ScorecardService scorecardService;
     private final TenantService tenantService;
 
     @GetMapping("/health")
@@ -77,10 +80,37 @@ public class ReconController {
         try {
             requireReconAccess(principal, reconView);
             DashboardAnalyticsResponse analytics = analyticsService.getAnalytics(
-                    storeIds, wkstnIds, reconView);
+                    tenantId, storeIds, wkstnIds, reconView);
             return ResponseEntity.ok(ApiResponse.ok(analytics));
         } catch (Exception e) {
             log.error("Dashboard analytics error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/scorecards")
+    public ResponseEntity<ApiResponse<ScorecardsResponse>> getScorecards(
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
+            @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        try {
+            requireReportsAccess(principal);
+            requireReconAccess(principal, reconView);
+            ScorecardsResponse response = scorecardService.getScorecards(
+                    tenantId,
+                    storeIds,
+                    fromBusinessDate,
+                    toBusinessDate,
+                    reconView,
+                    allowedReconViews(principal)
+            );
+            return ResponseEntity.ok(ApiResponse.ok(response));
+        } catch (Exception e) {
+            log.error("Scorecards error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error(e.getMessage()));
         }
@@ -244,6 +274,26 @@ public class ReconController {
         if (!principal.hasPermission("RECON_VIEW")) {
             throw new AccessDeniedException("Missing permission: RECON_VIEW");
         }
+    }
+
+    private void requireReportsAccess(ReconUserPrincipal principal) {
+        if (!principal.hasPermission("REPORTS_VIEW")) {
+            throw new AccessDeniedException("Missing permission: REPORTS_VIEW");
+        }
+    }
+
+    private List<String> allowedReconViews(ReconUserPrincipal principal) {
+        java.util.ArrayList<String> allowed = new java.util.ArrayList<>();
+        if (principal.hasPermission("RECON_XSTORE_SIM")) {
+            allowed.add("XSTORE_SIM");
+        }
+        if (principal.hasPermission("RECON_XSTORE_SIOCS")) {
+            allowed.add("XSTORE_SIOCS");
+        }
+        if (principal.hasPermission("RECON_XSTORE_XOCS")) {
+            allowed.add("XSTORE_XOCS");
+        }
+        return allowed;
     }
 
     private void requireReconAccess(ReconUserPrincipal principal, String reconView) {

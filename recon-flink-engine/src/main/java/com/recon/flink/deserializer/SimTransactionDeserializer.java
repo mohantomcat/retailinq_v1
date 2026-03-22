@@ -74,7 +74,7 @@ public class SimTransactionDeserializer
                 fli.setItemId(li.getItemId());
                 fli.setQuantity(li.getQuantity());
                 fli.setUnitOfMeasure(li.getUnitOfMeasure());
-                fli.setLineType(li.getLineType());
+                fli.setLineType(resolveLineType(li.getType()));
                 fli.setLineSeq(i + 1);
                 flatItems[i] = fli;
             }
@@ -83,6 +83,16 @@ public class SimTransactionDeserializer
             flat.setLineItems(new FlatLineItem[0]);
         }
         return flat;
+    }
+
+    private String resolveLineType(Integer type) {
+        return switch (type != null ? type : -1) {
+            case 1 -> "Sale";
+            case 2 -> "Return";
+            case 3 -> "VoidSale";
+            case 4 -> "VoidReturn";
+            default -> "Unknown";
+        };
     }
 
     @Override

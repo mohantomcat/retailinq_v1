@@ -23,6 +23,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLedgerService auditLedgerService;
 
     public List<UserDto> getAllUsers(String tenantId) {
         return userRepository.findByTenantId(tenantId)
@@ -39,7 +40,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto createUser(CreateUserRequest req) {
+    public UserDto createUser(CreateUserRequest req, String actorUsername) {
         if (userRepository.existsByUsername(req.getUsername())) {
             throw new RuntimeException(
                     "Username already exists");
@@ -67,14 +68,17 @@ public class UserService {
                 .active(true)
                 .build();
 
-        return toDto(userRepository.save(user));
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_CREATED", "User created", saved.getId().toString(), actorUsername, null, saved);
+        return toDto(saved);
     }
 
     @Transactional
-    public UserDto updateUser(UUID id, CreateUserRequest req) {
+    public UserDto updateUser(UUID id, CreateUserRequest req, String actorUsername) {
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
 
         if (req.getFullName() != null)
             user.setFullName(req.getFullName());
@@ -95,29 +99,36 @@ public class UserService {
                     req.getPassword()));
         }
 
-        return toDto(userRepository.save(user));
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_UPDATED", "User updated", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
     }
 
     @Transactional
-    public void deactivateUser(UUID id) {
+    public void deactivateUser(UUID id, String actorUsername) {
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
         user.setActive(false);
-        userRepository.save(user);
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_DEACTIVATED", "User deactivated", saved.getId().toString(), actorUsername, before, saved);
     }
 
     @Transactional
-    public UserDto activateUser(UUID id) {
+    public UserDto activateUser(UUID id, String actorUsername) {
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
         user.setActive(true);
-        return toDto(userRepository.save(user));
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_ACTIVATED", "User activated", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
     }
 
     @Transactional
-    public void resetPassword(UUID id, ResetPasswordRequest req) {
+    public void resetPassword(UUID id, ResetPasswordRequest req, String actorUsername) {
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
@@ -130,38 +141,89 @@ public class UserService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        recordSecurityAudit(user.getTenantId(), "USER_PASSWORD_RESET", "User password reset", user.getId().toString(), actorUsername, null, java.util.Map.of("passwordReset", true));
     }
 
     @Transactional
-    public void deleteUser(UUID id) {
+    public void deleteUser(UUID id, String actorUsername) {
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
         userRepository.delete(user);
+        recordSecurityAudit(user.getTenantId(), "USER_DELETED", "User deleted", user.getId().toString(), actorUsername, before, null);
     }
 
     @Transactional
     public UserDto assignRoles(UUID userId,
-                               AssignRolesRequest req) {
+                               AssignRolesRequest req,
+                               String actorUsername) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
         Set<Role> roles = new HashSet<>(
                 roleRepository.findAllById(req.getRoleIds()));
         user.setRoles(roles);
-        return toDto(userRepository.save(user));
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_ROLES_ASSIGNED", "User roles assigned", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
     }
 
     @Transactional
     public UserDto assignStores(UUID userId,
-                                AssignStoresRequest req) {
+                                AssignStoresRequest req,
+                                String actorUsername) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
         user.setStoreIds(req.getStoreIds() != null
                 ? req.getStoreIds()
                 : new HashSet<>());
-        return toDto(userRepository.save(user));
+        User saved = userRepository.save(user);
+        recordSecurityAudit(saved.getTenantId(), "USER_STORES_ASSIGNED", "User store scope updated", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
+    }
+
+    private void recordSecurityAudit(String tenantId,
+                                     String actionType,
+                                     String title,
+                                     String entityKey,
+                                     String actorUsername,
+                                     Object before,
+                                     Object after) {
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(tenantId)
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER")
+                .entityKey(entityKey)
+                .actionType(actionType)
+                .title(title)
+                .actor(actorUsername)
+                .status(actionType)
+                .referenceKey(entityKey)
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "USER_ADMIN"))
+                .beforeState(before)
+                .afterState(after)
+                .build());
+    }
+
+    private User cloneForAudit(User user) {
+        return User.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .tenantId(user.getTenantId())
+                .roles(user.getRoles() != null ? new HashSet<>(user.getRoles()) : new HashSet<>())
+                .storeIds(user.getStoreIds() != null ? new HashSet<>(user.getStoreIds()) : new HashSet<>())
+                .active(user.isActive())
+                .createdAt(user.getCreatedAt())
+                .lastLogin(user.getLastLogin())
+                .build();
     }
 
     private UserDto toDto(User user) {

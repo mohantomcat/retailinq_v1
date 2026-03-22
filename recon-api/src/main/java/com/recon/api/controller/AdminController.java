@@ -42,7 +42,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.createUser(req)));
+                userService.createUser(req, principal.getUsername())));
     }
 
     @PutMapping("/users/{id}")
@@ -53,7 +53,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.updateUser(id, req)));
+                userService.updateUser(id, req, principal.getUsername())));
     }
 
     @DeleteMapping("/users/{id}")
@@ -62,7 +62,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.deactivateUser(id);
+        userService.deactivateUser(id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("User deactivated"));
     }
@@ -74,7 +74,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.activateUser(id)));
+                userService.activateUser(id, principal.getUsername())));
     }
 
     @PostMapping("/users/{id}/reset-password")
@@ -84,7 +84,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.resetPassword(id, req);
+        userService.resetPassword(id, req, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("Password reset successfully"));
     }
@@ -95,7 +95,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.deleteUser(id);
+        userService.deleteUser(id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("User deleted permanently"));
     }
@@ -108,7 +108,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.assignRoles(id, req)));
+                userService.assignRoles(id, req, principal.getUsername())));
     }
 
     @PostMapping("/users/{id}/stores")
@@ -119,7 +119,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.assignStores(id, req)));
+                userService.assignStores(id, req, principal.getUsername())));
     }
 
     // ── Roles ─────────────────────────────────────────────
@@ -142,7 +142,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.createRole(req)));
+                roleService.createRole(req, principal.getUsername())));
     }
 
     @PutMapping("/roles/{id}")
@@ -153,7 +153,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.updateRole(id, req)));
+                roleService.updateRole(id, req, principal.getUsername())));
     }
 
     @PostMapping("/roles/{id}/permissions")
@@ -164,7 +164,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.assignPermissions(id, permissionIds)));
+                roleService.assignPermissions(id, permissionIds, principal.getUsername())));
     }
 
     @DeleteMapping("/roles/{id}")
@@ -173,7 +173,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
-        roleService.deleteRole(id);
+        roleService.deleteRole(id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("Role deleted successfully"));
     }

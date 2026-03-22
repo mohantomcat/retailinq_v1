@@ -17,4 +17,5 @@ public class DashboardAnalyticsResponse {
     private List<RankedLocationStat> topFailingStores;
     private List<RankedLocationStat> topFailingRegisters;
     private List<ExceptionAgingBucket> exceptionAging;
+    private SlaSummaryDto slaSummary;
 }

@@ -13,9 +13,12 @@ export default function DashboardWrapper({
     children,
     modules,
     alerts,
+    exceptionItems,
+    slaItems,
     operations,
     activity,
     configurations,
+    reports,
     activeTab,
     onSelectTab,
     drawerWidth = 240,
@@ -264,9 +267,12 @@ export default function DashboardWrapper({
                 onCollapse={onSidebarCollapse}
                 modules={modules}
                 alerts={alerts}
+                exceptionItems={exceptionItems}
+                slaItems={slaItems}
                 operations={operations}
                 activity={activity}
                 configurations={configurations}
+                reports={reports}
                 activeTab={activeTab}
                 onSelect={onSelectTab}
                 themeMode={theme}

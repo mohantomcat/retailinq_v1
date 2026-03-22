@@ -15,15 +15,17 @@ public class TenantConfig {
     private String timezone;
     private String countryCode;
     private String currencyCode;
-    
-    // Wire format — always ISO 8601 yyyy-MM-dd, never changes
-    // dateFormat field kept for backward compat but unused for parsing
+    private String localeCode;
+
+    // Wire format is always ISO 8601 yyyy-MM-dd.
     private String dateFormat;
 
-    // Display format — locale specific, used only for UI display
-    // e.g. dd-MMM-yyyy (India/Egypt), MM/dd/yyyy (US),
-    //      dd/MM/yyyy (UK), yyyy/MM/dd (Japan)
+    // Display-only pattern used for tenant-facing dates.
     private String dateDisplayFormat;
-
+    private String weekStartDay;
+    private String businessDays;
+    private String workdayStartTime;
+    private String workdayEndTime;
+    private String holidayCalendar;
     private boolean active;
 }

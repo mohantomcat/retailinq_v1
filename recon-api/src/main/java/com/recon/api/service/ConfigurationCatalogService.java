@@ -22,6 +22,7 @@ public class ConfigurationCatalogService {
     private static final String APPLY_MODE_LIVE_APPLIED = "LIVE_APPLIED";
 
     private final ConfigurationOverrideRepository configurationOverrideRepository;
+    private final AuditLedgerService auditLedgerService;
 
     public ConfigurationCatalogResponse getCatalog(boolean includeModules,
                                                    boolean includeSystemSections,
@@ -90,7 +91,25 @@ public class ConfigurationCatalogService {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Override value is required");
         }
+        String previousValue = configurationOverrideRepository.findOverride(configKey).orElse(null);
         configurationOverrideRepository.upsertOverride(configKey, value.trim(), changedBy);
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(resolveTenantId())
+                .sourceType("CONFIGURATION")
+                .moduleKey("CONFIGURATIONS")
+                .entityType("CONFIGURATION_OVERRIDE")
+                .entityKey(configKey)
+                .actionType("UPSERT")
+                .title("Configuration override updated")
+                .summary(configKey)
+                .actor(changedBy)
+                .status("UPSERT")
+                .referenceKey(configKey)
+                .controlFamily("ITGC")
+                .evidenceTags(List.of("CONFIG", "CHANGE"))
+                .beforeState(previousValue)
+                .afterState(value.trim())
+                .build());
     }
 
     @Transactional
@@ -99,7 +118,31 @@ public class ConfigurationCatalogService {
         if (!definition.editable() || definition.sensitive()) {
             throw new IllegalArgumentException("Configuration is not editable from the UI: " + configKey);
         }
+        String previousValue = configurationOverrideRepository.findOverride(configKey).orElse(null);
         configurationOverrideRepository.deleteOverride(configKey, changedBy);
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(resolveTenantId())
+                .sourceType("CONFIGURATION")
+                .moduleKey("CONFIGURATIONS")
+                .entityType("CONFIGURATION_OVERRIDE")
+                .entityKey(configKey)
+                .actionType("DELETE")
+                .title("Configuration override cleared")
+                .summary(configKey)
+                .actor(changedBy)
+                .status("DELETE")
+                .referenceKey(configKey)
+                .controlFamily("ITGC")
+                .evidenceTags(List.of("CONFIG", "CHANGE"))
+                .beforeState(previousValue)
+                .afterState(null)
+                .build());
+    }
+
+    private String resolveTenantId() {
+        return System.getenv("TENANT_ID") != null && !System.getenv("TENANT_ID").isBlank()
+                ? System.getenv("TENANT_ID").trim()
+                : "tenant-india";
     }
 
     private ModuleConfigurationDto buildXstoreSim(Map<String, String> overrides) {
@@ -139,6 +182,7 @@ public class ConfigurationCatalogService {
         return List.of(
                 tenantSection(overrides),
                 infrastructureSection(overrides),
+                notificationsSection(overrides),
                 adminSecuritySection(overrides)
         );
     }
@@ -205,6 +249,58 @@ public class ConfigurationCatalogService {
                         entry(overrides, "connectorAdminPassword", "Admin Password",
                                 "Connector admin password for protected operational endpoints.",
                                 "CONNECTOR_ADMIN_PASSWORD", "", true, false, APPLY_MODE_REFERENCE_ONLY)
+                ))
+                .build();
+    }
+
+    private ConfigurationSectionDto notificationsSection(Map<String, String> overrides) {
+        return ConfigurationSectionDto.builder()
+                .id("notifications")
+                .label("Notifications")
+                .description("Alert email and webhook delivery settings, including SMTP and outbound webhook controls.")
+                .entries(List.of(
+                        entry(overrides, "alertEmailEnabled", "Alert Email Enabled",
+                                "Controls whether alert events can send email notifications.",
+                                "APP_ALERTING_EMAIL_ENABLED", "false", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertEmailFrom", "Alert From Address",
+                                "From email address used for alert notifications.",
+                                "APP_ALERTING_EMAIL_FROM", "no-reply@retailinq.local", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertEmailFromName", "Alert From Name",
+                                "Display name used in alert notification emails.",
+                                "APP_ALERTING_EMAIL_FROM_NAME", "RetailINQ Alerts", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertEmailAppBaseUrl", "Alert App Base URL",
+                                "RetailINQ application URL included in alert emails.",
+                                "APP_ALERTING_EMAIL_APP_BASE_URL", "http://localhost:5173", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertWebhookEnabled", "Alert Webhook Enabled",
+                                "Controls whether alert events can send webhook notifications.",
+                                "APP_ALERTING_WEBHOOK_ENABLED", "false", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertWebhookConnectTimeout", "Webhook Connect Timeout (ms)",
+                                "HTTP connect timeout for outbound alert webhooks.",
+                                "APP_ALERTING_WEBHOOK_CONNECT_TIMEOUT_MS", "5000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertWebhookReadTimeout", "Webhook Read Timeout (ms)",
+                                "HTTP read timeout for outbound alert webhooks.",
+                                "APP_ALERTING_WEBHOOK_READ_TIMEOUT_MS", "10000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertWebhookAppBaseUrl", "Webhook App Base URL",
+                                "RetailINQ application URL included in webhook payloads.",
+                                "APP_ALERTING_WEBHOOK_APP_BASE_URL", "http://localhost:5173", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertEscalationEnabled", "Alert Escalation Enabled",
+                                "Controls whether unresolved alerts are escalated automatically.",
+                                "APP_ALERTING_ESCALATION_ENABLED", "true", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "alertEscalationInterval", "Alert Escalation Interval (ms)",
+                                "How often unresolved alert escalation rules are evaluated.",
+                                "APP_ALERTING_ESCALATION_INTERVAL_MS", "300000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "mailHost", "SMTP Host",
+                                "SMTP server host for outbound alert emails.",
+                                "SPRING_MAIL_HOST", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "mailPort", "SMTP Port",
+                                "SMTP server port for outbound alert emails.",
+                                "SPRING_MAIL_PORT", "587", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "mailUsername", "SMTP Username",
+                                "SMTP username for outbound alert emails.",
+                                "SPRING_MAIL_USERNAME", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "mailPassword", "SMTP Password",
+                                "SMTP password for outbound alert emails.",
+                                "SPRING_MAIL_PASSWORD", "", true, false, APPLY_MODE_REFERENCE_ONLY)
                 ))
                 .build();
     }

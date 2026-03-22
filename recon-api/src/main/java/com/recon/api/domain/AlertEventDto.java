@@ -16,6 +16,7 @@ import java.util.UUID;
 public class AlertEventDto {
     private UUID id;
     private UUID ruleId;
+    private UUID anomalyRuleId;
     private String ruleName;
     private String reconView;
     private String metricKey;
@@ -26,6 +27,10 @@ public class AlertEventDto {
     private String alertStatus;
     private BigDecimal metricValue;
     private BigDecimal thresholdValue;
+    private String detectionType;
+    private String anomalyDirection;
+    private BigDecimal baselineValue;
+    private BigDecimal deltaPercentage;
     private String eventMessage;
     private Integer triggerCount;
     private LocalDateTime firstTriggeredAt;

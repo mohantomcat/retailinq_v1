@@ -15,4 +15,8 @@ public class ActivitySummaryDto {
     private long configurationCount;
     private long exceptionCount;
     private long alertCount;
+    private long securityCount;
+    private long slaCount;
+    private long complianceCount;
+    private long archivedCount;
 }

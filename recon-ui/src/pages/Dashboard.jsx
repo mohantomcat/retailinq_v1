@@ -24,9 +24,23 @@ import ExceptionWorkbenchPanel from '../components/ExceptionWorkbenchPanel'
 import LineChartComponent from '../components/LineChartComponent'
 import {reconApi} from '../services/reconApi'
 import Alerts from './Alerts'
+import ApprovalCenter from './ApprovalCenter'
 import Activity from './Activity'
 import Configurations from './Configurations'
+import ExecutiveScorecards from './ExecutiveScorecards'
+import ExceptionQueues from './ExceptionQueues'
+import KnownIssues from './KnownIssues'
+import NoiseSuppression from './NoiseSuppression'
 import Operations from './Operations'
+import OperationsCommandCenter from './OperationsCommandCenter'
+import RegionalIncidentBoard from './RegionalIncidentBoard'
+import RecurrenceAnalytics from './RecurrenceAnalytics'
+import RootCauseAnalytics from './RootCauseAnalytics'
+import RoutingPlaybooks from './RoutingPlaybooks'
+import SlaManagement from './SlaManagement'
+import StoreManagerLite from './StoreManagerLite'
+import StoreScorecards from './StoreScorecards'
+import TicketingCommunications from './TicketingCommunications'
 import ManageUsers from './admin/ManageUsers'
 import ManageRoles from './admin/ManageRoles'
 import ManagePermissions from './admin/ManagePermissions'
@@ -35,14 +49,17 @@ import {DatePicker} from '@mui/x-date-pickers/DatePicker'
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import {useI18n} from '../context/I18nContext'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS} from '../constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 
 const PAGE_SIZE = 20
 const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms']
 const ALERT_IDS = ALERT_TAB_IDS
+const EXCEPTION_IDS = EXCEPTION_TAB_IDS
 const OPERATION_IDS = OPERATIONS_TAB_IDS
+const SLA_IDS = SLA_TAB_IDS
 const ACTIVITY_IDS = ACTIVITY_TAB_IDS
 const CONFIGURATION_IDS = CONFIGURATION_TAB_IDS
+const REPORT_IDS = REPORT_TAB_IDS
 const RECON_VIEW_BY_TAB = {
     'xstore-sim': 'XSTORE_SIM',
     'xstore-siocs': 'XSTORE_SIOCS',
@@ -828,6 +845,8 @@ function ReconContent({tabId, palette, t}) {
                             t.businessDateDisplay || t.businessDate,
                         Type: t.transactionType,
                         Status: t.reconStatus,
+                        'Match Score': t.matchScore ?? '-',
+                        'Match Band': t.matchBand || '-',
                         'Reconciled At': t.reconciledAt,
                     }))
                 )
@@ -1415,11 +1434,11 @@ function ReconContent({tabId, palette, t}) {
                                 color: palette.textMuted,
                             }}
                         >
-                            {t('Trend lines, failing locations, and exception aging for the selected reconciliation lane')}
+                            {t('Trend lines, SLA breaches, failing locations, and exception aging for the selected reconciliation lane')}
                         </Typography>
                     </Box>
                     <Chip
-                        label={t('Phase 1')}
+                        label={t('Phase 2')}
                         size="small"
                         sx={{
                             backgroundColor: palette.blueChipBg,
@@ -1435,6 +1454,79 @@ function ReconContent({tabId, palette, t}) {
                     </Box>
                 ) : (
                     <Grid container spacing={2}>
+                        <Grid item xs={12}>
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2,
+                                    borderRadius: 3,
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    backgroundColor: palette.cardBgAlt,
+                                }}
+                            >
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: {
+                                            xs: 'repeat(2, minmax(0, 1fr))',
+                                            lg: 'repeat(5, minmax(0, 1fr))',
+                                        },
+                                        gap: 1.25,
+                                    }}
+                                >
+                                    {[
+                                        {
+                                            label: t('Active SLA Cases'),
+                                            value: analytics?.slaSummary?.activeCases || 0,
+                                            bg: palette.blueChipBg,
+                                            color: palette.blueChipText,
+                                        },
+                                        {
+                                            label: t('SLA Breaches'),
+                                            value: analytics?.slaSummary?.breachedCases || 0,
+                                            bg: '#FEF2F2',
+                                            color: '#DC2626',
+                                        },
+                                        {
+                                            label: t('Due Soon'),
+                                            value: analytics?.slaSummary?.dueSoonCases || 0,
+                                            bg: '#FFF7ED',
+                                            color: '#D97706',
+                                        },
+                                        {
+                                            label: t('Within SLA'),
+                                            value: analytics?.slaSummary?.withinSlaCases || 0,
+                                            bg: palette.tealChipBg,
+                                            color: palette.tealChipText,
+                                        },
+                                        {
+                                            label: t('Breach Rate'),
+                                            value: `${analytics?.slaSummary?.breachRate || 0}%`,
+                                            bg: '#F5F3FF',
+                                            color: '#7C3AED',
+                                        },
+                                    ].map((item) => (
+                                        <Paper
+                                            key={item.label}
+                                            elevation={0}
+                                            sx={{
+                                                p: 1.5,
+                                                borderRadius: 2.5,
+                                                border: `1px solid ${palette.border}`,
+                                                backgroundColor: palette.cardBg,
+                                            }}
+                                        >
+                                            <Typography sx={{fontSize: '0.76rem', color: palette.textMuted, fontWeight: 700}}>
+                                                {item.label}
+                                            </Typography>
+                                            <Typography sx={{mt: 0.35, fontSize: '1.45rem', color: item.color, fontWeight: 800}}>
+                                                {item.value}
+                                            </Typography>
+                                        </Paper>
+                                    ))}
+                                </Box>
+                            </Paper>
+                        </Grid>
                         <Grid item xs={12} lg={6}>
                             <LineChartComponent
                                 data={trend7Data}
@@ -1837,10 +1929,42 @@ export default function Dashboard({
                     >
                         {SECURITY_IDS.includes(tabId) ? (
                             renderSecurityTab(tabId)
+                        ) : REPORT_IDS.includes(tabId) ? (
+                            tabId === 'operations-command-center' ? (
+                                <OperationsCommandCenter palette={palette} t={t}/>
+                            ) : tabId === 'executive-scorecards' ? (
+                                <ExecutiveScorecards palette={palette} t={t}/>
+                            ) : tabId === 'store-scorecards' ? (
+                                <StoreScorecards palette={palette} t={t}/>
+                            ) : tabId === 'recurrence-analytics' ? (
+                                <RecurrenceAnalytics palette={palette} t={t}/>
+                            ) : (
+                                <RootCauseAnalytics palette={palette} t={t}/>
+                            )
                         ) : ALERT_IDS.includes(tabId) ? (
                             <Alerts palette={palette} t={t}/>
+                        ) : EXCEPTION_IDS.includes(tabId) ? (
+                            tabId === 'approval-center' ? (
+                                <ApprovalCenter palette={palette} t={t}/>
+                            ) : tabId === 'store-manager-lite' ? (
+                                <StoreManagerLite palette={palette} t={t}/>
+                            ) : tabId === 'regional-incident-board' ? (
+                                <RegionalIncidentBoard palette={palette} t={t}/>
+                            ) : tabId === 'noise-suppression' ? (
+                                <NoiseSuppression palette={palette} t={t}/>
+                            ) : tabId === 'known-issues' ? (
+                                <KnownIssues palette={palette} t={t}/>
+                            ) : tabId === 'ticketing-comms' ? (
+                                <TicketingCommunications palette={palette} t={t}/>
+                            ) : tabId === 'routing-playbooks' ? (
+                                <RoutingPlaybooks palette={palette} t={t}/>
+                            ) : (
+                                <ExceptionQueues palette={palette} t={t}/>
+                            )
                         ) : OPERATION_IDS.includes(tabId) ? (
                             <Operations palette={palette} t={t}/>
+                        ) : SLA_IDS.includes(tabId) ? (
+                            <SlaManagement palette={palette} t={t}/>
                         ) : ACTIVITY_IDS.includes(tabId) ? (
                             <Activity palette={palette} t={t}/>
                         ) : CONFIGURATION_IDS.includes(tabId) ? (

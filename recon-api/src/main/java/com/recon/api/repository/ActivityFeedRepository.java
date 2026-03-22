@@ -29,6 +29,7 @@ public class ActivityFeedRepository {
         records.addAll(fetchConfigurationActivity(actor, fromDate, toDate, limit));
         records.addAll(fetchOperationsActivity(tenantId, actor, fromDate, toDate, limit));
         records.addAll(fetchExceptionActivity(tenantId, actor, fromDate, toDate, limit));
+        records.addAll(fetchSlaActivity(tenantId, actor, fromDate, toDate, limit));
         records.addAll(fetchAlertActivity(tenantId, actor, fromDate, toDate, limit));
 
         return records.stream()
@@ -89,6 +90,9 @@ public class ActivityFeedRepository {
                 select module_id,
                        action_key,
                        requested_by,
+                       transaction_key,
+                       recon_view,
+                       playbook_step_title,
                        result_status,
                        result_message,
                        created_at
@@ -108,15 +112,23 @@ public class ActivityFeedRepository {
     private ActivityRecordDto mapOperationsRecord(ResultSet rs, int rowNum) throws SQLException {
         String moduleId = rs.getString("module_id");
         String actionKey = rs.getString("action_key");
+        String transactionKey = rs.getString("transaction_key");
+        String reconView = rs.getString("recon_view");
+        String playbookStepTitle = rs.getString("playbook_step_title");
         String resultStatus = rs.getString("result_status");
         return ActivityRecordDto.builder()
                 .sourceType("OPERATIONS")
-                .moduleKey(mapOperationsModule(moduleId))
-                .actionType(actionKey)
+                .moduleKey(reconView == null || reconView.isBlank() ? mapOperationsModule(moduleId) : reconView)
+                .actionType(playbookStepTitle == null || playbookStepTitle.isBlank() ? actionKey : "PLAYBOOK_STEP_EXECUTED")
                 .actor(rs.getString("requested_by"))
-                .title("Operations action")
-                .summary(moduleId + " -> " + actionKey + " (" + safeValue(rs.getString("result_message")) + ")")
-                .referenceKey(moduleId)
+                .title(playbookStepTitle == null || playbookStepTitle.isBlank() ? "Operations action" : "Playbook action executed")
+                .summary(buildOperationsSummary(
+                        moduleId,
+                        actionKey,
+                        playbookStepTitle,
+                        transactionKey,
+                        rs.getString("result_message")))
+                .referenceKey(transactionKey == null || transactionKey.isBlank() ? moduleId : transactionKey)
                 .status(resultStatus)
                 .eventTimestamp(toLocalDateTime(rs, "created_at"))
                 .build();
@@ -265,6 +277,31 @@ public class ActivityFeedRepository {
         return records;
     }
 
+    private List<ActivityRecordDto> fetchSlaActivity(String tenantId,
+                                                     String actor,
+                                                     LocalDate fromDate,
+                                                     LocalDate toDate,
+                                                     int limit) {
+        StringBuilder sql = new StringBuilder("""
+                select recon_view,
+                       severity,
+                       target_minutes,
+                       created_by,
+                       updated_by,
+                       created_at,
+                       updated_at
+                from recon.exception_sla_rules
+                where tenant_id = ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(tenantId);
+        appendActorFilter(sql, args, "coalesce(updated_by, created_by)", actor);
+        appendDateFilters(sql, args, "greatest(created_at, updated_at)", fromDate, toDate);
+        sql.append(" order by greatest(created_at, updated_at) desc limit ?");
+        args.add(limit);
+        return jdbcTemplate.query(sql.toString(), this::mapSlaRuleRecord, args.toArray());
+    }
+
     private ActivityRecordDto mapAlertRuleRecord(ResultSet rs, int rowNum) throws SQLException {
         LocalDateTime createdAt = toLocalDateTime(rs, "created_at");
         LocalDateTime updatedAt = toLocalDateTime(rs, "updated_at");
@@ -307,6 +344,23 @@ public class ActivityFeedRepository {
                 .referenceKey(rs.getString("rule_name"))
                 .status(status)
                 .eventTimestamp(eventAt)
+                .build();
+    }
+
+    private ActivityRecordDto mapSlaRuleRecord(ResultSet rs, int rowNum) throws SQLException {
+        LocalDateTime createdAt = toLocalDateTime(rs, "created_at");
+        LocalDateTime updatedAt = toLocalDateTime(rs, "updated_at");
+        boolean created = createdAt != null && updatedAt != null && createdAt.equals(updatedAt);
+        return ActivityRecordDto.builder()
+                .sourceType("SLA")
+                .moduleKey(rs.getString("recon_view"))
+                .actionType(created ? "SLA_RULE_CREATED" : "SLA_RULE_UPDATED")
+                .actor(created ? rs.getString("created_by") : rs.getString("updated_by"))
+                .title(created ? "SLA rule created" : "SLA rule updated")
+                .summary(rs.getString("severity") + " -> " + rs.getInt("target_minutes") + " minutes")
+                .referenceKey(rs.getString("recon_view") + ":" + rs.getString("severity"))
+                .status("ACTIVE")
+                .eventTimestamp(created ? createdAt : updatedAt)
                 .build();
     }
 
@@ -356,6 +410,24 @@ public class ActivityFeedRepository {
         if (assigneeUsername != null && !assigneeUsername.isBlank()) {
             summary.append(" / ").append(assigneeUsername);
         }
+        return summary.toString();
+    }
+
+    private String buildOperationsSummary(String moduleId,
+                                          String actionKey,
+                                          String playbookStepTitle,
+                                          String transactionKey,
+                                          String resultMessage) {
+        StringBuilder summary = new StringBuilder(moduleId)
+                .append(" -> ")
+                .append(actionKey);
+        if (playbookStepTitle != null && !playbookStepTitle.isBlank()) {
+            summary.append(" / ").append(playbookStepTitle);
+        }
+        if (transactionKey != null && !transactionKey.isBlank()) {
+            summary.append(" / case ").append(transactionKey);
+        }
+        summary.append(" (").append(safeValue(resultMessage)).append(")");
         return summary.toString();
     }
 

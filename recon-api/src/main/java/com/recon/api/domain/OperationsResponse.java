@@ -12,5 +12,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OperationsResponse {
+    private OperationsHealthSummaryDto summary;
     private List<OperationModuleStatusDto> modules;
 }

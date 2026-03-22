@@ -18,7 +18,11 @@ public class ActivityRecordDto {
     private String actor;
     private String title;
     private String summary;
+    private String reason;
     private String referenceKey;
     private String status;
+    private String controlFamily;
+    private String eventHash;
+    private boolean archived;
     private LocalDateTime eventTimestamp;
 }

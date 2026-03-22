@@ -28,12 +28,15 @@ import PeopleIcon from '@mui/icons-material/People'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import SecurityIcon from '@mui/icons-material/Security'
 import NotificationsActiveRoundedIcon from '@mui/icons-material/NotificationsActiveRounded'
+import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded'
 import BuildCircleRoundedIcon from '@mui/icons-material/BuildCircleRounded'
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest'
 import DnsRoundedIcon from '@mui/icons-material/DnsRounded'
+import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, SECURITY_TAB_IDS} from '../constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SECURITY_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 
 const ITEM_PERMISSIONS = {
     'xstore-sim': 'RECON_XSTORE_SIM',
@@ -41,8 +44,22 @@ const ITEM_PERMISSIONS = {
     'xstore-xocs': 'RECON_XSTORE_XOCS',
     'sim-rms': 'RECON_SIM_RMS',
     reports: 'REPORTS_VIEW',
+    'executive-scorecards': 'REPORTS_VIEW',
+    'operations-command-center': 'REPORTS_VIEW',
+    'store-scorecards': 'REPORTS_VIEW',
+    'root-cause-analytics': 'REPORTS_VIEW',
+    'recurrence-analytics': 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
     alerts: 'ALERT_VIEW',
+    'exception-queues': 'EXCEPTION_QUEUE_VIEW',
+    'store-manager-lite': 'EXCEPTION_QUEUE_VIEW',
+    'regional-incident-board': 'EXCEPTION_QUEUE_VIEW',
+    'noise-suppression': 'EXCEPTION_AUTOMATION_VIEW',
+    'known-issues': 'EXCEPTION_QUEUE_VIEW',
+    'ticketing-comms': 'EXCEPTION_QUEUE_VIEW',
+    'approval-center': 'EXCEPTION_APPROVAL_VIEW',
+    'routing-playbooks': 'EXCEPTION_AUTOMATION_VIEW',
+    'sla-management': 'SLA_VIEW',
     operations: 'OPS_VIEW',
     'audit-activity': 'AUDIT_VIEW',
     'manage-users': 'ADMIN_USERS',
@@ -57,6 +74,8 @@ const SECTION_PERMISSIONS = {
     reports: 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
     alerts: 'ALERT_VIEW',
+    exceptions: 'EXCEPTION_QUEUE_VIEW',
+    sla: 'SLA_VIEW',
     operations: 'OPS_VIEW',
     activity: 'AUDIT_VIEW',
     configurations: ['CONFIG_MODULE_VIEW', 'CONFIG_SYSTEM_VIEW'],
@@ -68,6 +87,8 @@ const SECTION_ICONS = {
     reports: <AssessmentIcon sx={{fontSize: 18}}/>,
     settings: <SettingsIcon sx={{fontSize: 18}}/>,
     alerts: <NotificationsActiveRoundedIcon sx={{fontSize: 18}}/>,
+    exceptions: <FactCheckOutlinedIcon sx={{fontSize: 18}}/>,
+    sla: <TimerOutlinedIcon sx={{fontSize: 18}}/>,
     operations: <BuildCircleRoundedIcon sx={{fontSize: 18}}/>,
     activity: <AssessmentIcon sx={{fontSize: 18}}/>,
     configurations: <SettingsSuggestIcon sx={{fontSize: 18}}/>,
@@ -90,6 +111,14 @@ const SECTION_COLORS = {
     alerts: {
         icon: '#DC2626',
         bg: '#FEF2F2',
+    },
+    exceptions: {
+        icon: '#0F7C86',
+        bg: '#ECFEFF',
+    },
+    sla: {
+        icon: '#2563EB',
+        bg: '#EFF6FF',
     },
     operations: {
         icon: '#7C3AED',
@@ -115,8 +144,22 @@ const ITEM_ICONS = {
     'xstore-xocs': <StorefrontIcon sx={{fontSize: 17}}/>,
     'sim-rms': <InventoryIcon sx={{fontSize: 17}}/>,
     reports: <BarChartIcon sx={{fontSize: 17}}/>,
+    'executive-scorecards': <AssessmentIcon sx={{fontSize: 17}}/>,
+    'operations-command-center': <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
+    'store-scorecards': <BarChartIcon sx={{fontSize: 17}}/>,
+    'root-cause-analytics': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
+    'recurrence-analytics': <AutorenewRoundedIcon sx={{fontSize: 17}}/>,
     settings: <TuneIcon sx={{fontSize: 17}}/>,
     alerts: <NotificationsActiveRoundedIcon sx={{fontSize: 17}}/>,
+    'exception-queues': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
+    'store-manager-lite': <StorefrontIcon sx={{fontSize: 17}}/>,
+    'regional-incident-board': <BarChartIcon sx={{fontSize: 17}}/>,
+    'noise-suppression': <AutorenewRoundedIcon sx={{fontSize: 17}}/>,
+    'known-issues': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
+    'ticketing-comms': <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
+    'approval-center': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
+    'routing-playbooks': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
+    'sla-management': <TimerOutlinedIcon sx={{fontSize: 17}}/>,
     operations: <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
     'audit-activity': <AssessmentIcon sx={{fontSize: 17}}/>,
     'module-configs': <TuneIcon sx={{fontSize: 17}}/>,
@@ -132,6 +175,8 @@ export default function Sidebar({
                                     onCollapse,
                                     modules = [],
                                     alerts = [],
+                                    exceptionItems = [],
+                                    slaItems = [],
                                     operations = [],
                                     activity = [],
                                     configurations = [],
@@ -152,7 +197,15 @@ export default function Sidebar({
         id,
         label: getTabLabel(t, id),
     }))
+    const exceptionTabs = EXCEPTION_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const operationItems = OPERATIONS_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const slaTabs = SLA_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
     }))
@@ -164,10 +217,16 @@ export default function Sidebar({
         id,
         label: getTabLabel(t, id),
     }))
+    const reportItems = REPORT_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
 
     const [openGroups, setOpenGroups] = useState({
         reconciliation: true,
         alerts: false,
+        exceptions: false,
+        sla: false,
         operations: false,
         activity: false,
         reports: false,
@@ -519,10 +578,12 @@ export default function Sidebar({
             <List sx={{pt: 0.75, flexGrow: 1}}>
                 {renderGroup(t('Reconciliation'), modules, 'reconciliation')}
                 {renderGroup(t('Alerts'), alerts.length ? alerts : alertItems, 'alerts')}
+                {renderGroup(t('Exceptions'), exceptionItems.length ? exceptionItems : exceptionTabs, 'exceptions')}
+                {renderGroup(t('SLA & Aging'), slaItems.length ? slaItems : slaTabs, 'sla')}
                 {renderGroup(t('Operations'), operations.length ? operations : operationItems, 'operations')}
                 {renderGroup(t('Audit & Activity'), activity.length ? activity : activityItems, 'activity')}
                 {renderGroup(t('Configurations'), configurations.length ? configurations : configurationItems, 'configurations')}
-                {renderGroup(t('Reports'), reports, 'reports')}
+                {renderGroup(t('Reports'), reports.length ? reports : reportItems, 'reports')}
                 {renderGroup(t('Settings'), settings, 'settings')}
                 {renderGroup(t('Security'), securityItems, 'security')}
             </List>

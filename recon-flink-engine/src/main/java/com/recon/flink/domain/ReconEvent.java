@@ -1,8 +1,10 @@
 package com.recon.flink.domain;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 public class ReconEvent implements Serializable {
 
@@ -27,6 +29,25 @@ public class ReconEvent implements Serializable {
 
     private boolean duplicateFlag;
     private int duplicatePostingCount;
+    private BigDecimal transactionAmount;
+    private BigDecimal amountVariance;
+    private BigDecimal amountVariancePercent;
+    private Integer lineItemCount;
+    private Integer affectedItemCount;
+    private BigDecimal totalQuantity;
+    private BigDecimal quantityImpact;
+
+    private Integer matchScore;
+    private String matchBand;
+    private String matchRule;
+    private String matchSummary;
+    private boolean toleranceApplied;
+    private String toleranceProfile;
+    private Integer matchedLineCount;
+    private Integer discrepantLineCount;
+    private Integer toleratedDiscrepancyCount;
+    private Integer materialDiscrepancyCount;
+    private BigDecimal quantityVariancePercent;
 
     private String reconciledAt;
     private long timerDriftMs;
@@ -50,16 +71,27 @@ public class ReconEvent implements Serializable {
     public static ReconEvent matched(FlatPosTransaction xstore,
                                      FlatSimTransaction siocs,
                                      String reconView) {
-        return base(xstore)
+        return matched(xstore, siocs, reconView, List.of(), null);
+    }
+
+    public static ReconEvent matched(FlatPosTransaction xstore,
+                                     FlatSimTransaction siocs,
+                                     String reconView,
+                                     List<ItemDiscrepancy> discrepancies,
+                                     MatchEvaluation evaluation) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(siocs.getSource())
                 .reconStatus(ReconStatus.MATCHED.name())
                 .processingStatus(siocs.getProcessingStatus())
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(siocs.getChecksum())
-                .checksumMatch(true)
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .checksumMatch(Objects.equals(xstore.getChecksum(), siocs.getChecksum()))
+                .affectedItemCount(discrepancyCount(discrepancies))
+                .quantityImpact(quantityImpact(discrepancies))
+                .discrepancies(toArray(discrepancies))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent missing(FlatPosTransaction xstore,
@@ -77,15 +109,31 @@ public class ReconEvent implements Serializable {
                                         FlatPosTransaction counter,
                                         String reconView,
                                         String counterSource) {
-        return base(xstore)
+        return matchedPos(xstore, counter, reconView, counterSource, List.of(), null, null, null);
+    }
+
+    public static ReconEvent matchedPos(FlatPosTransaction xstore,
+                                        FlatPosTransaction counter,
+                                        String reconView,
+                                        String counterSource,
+                                        List<ItemDiscrepancy> discrepancies,
+                                        MatchEvaluation evaluation,
+                                        BigDecimal amountVariance,
+                                        BigDecimal amountVariancePercent) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(counterSource)
                 .reconStatus(ReconStatus.MATCHED.name())
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(counter.getChecksum())
-                .checksumMatch(true)
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .checksumMatch(Objects.equals(xstore.getChecksum(), counter.getChecksum()))
+                .amountVariance(amountVariance)
+                .amountVariancePercent(amountVariancePercent)
+                .affectedItemCount(discrepancyCount(discrepancies))
+                .quantityImpact(quantityImpact(discrepancies))
+                .discrepancies(toArray(discrepancies))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent softTtlWarning(
@@ -102,7 +150,13 @@ public class ReconEvent implements Serializable {
 
     public static ReconEvent duplicate(FlatSimTransaction siocs,
                                        String reconView) {
-        return builder()
+        return duplicate(siocs, reconView, null);
+    }
+
+    public static ReconEvent duplicate(FlatSimTransaction siocs,
+                                       String reconView,
+                                       MatchEvaluation evaluation) {
+        Builder builder = builder()
                 .transactionKey(siocs.getTransactionKey())
                 .externalId(siocs.getExternalId())
                 .storeId(siocs.getStoreId())
@@ -114,10 +168,12 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(duplicateStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .duplicateFlag(true)
                 .duplicatePostingCount(siocs.getDuplicatePostingCount())
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent processingFailed(
@@ -135,6 +191,8 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(processingFailedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -153,6 +211,8 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(revertedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -172,6 +232,8 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(processingPendingStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -181,7 +243,16 @@ public class ReconEvent implements Serializable {
             FlatSimTransaction siocs,
             List<ItemDiscrepancy> disc,
             String reconView) {
-        return base(xstore)
+        return itemMissing(xstore, siocs, disc, reconView, null);
+    }
+
+    public static ReconEvent itemMissing(
+            FlatPosTransaction xstore,
+            FlatSimTransaction siocs,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            MatchEvaluation evaluation) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(siocs.getSource())
                 .reconStatus(ReconStatus.ITEM_MISSING.name())
@@ -189,9 +260,11 @@ public class ReconEvent implements Serializable {
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(siocs.getChecksum())
                 .checksumMatch(false)
-                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent quantityMismatch(
@@ -199,7 +272,16 @@ public class ReconEvent implements Serializable {
             FlatSimTransaction siocs,
             List<ItemDiscrepancy> disc,
             String reconView) {
-        return base(xstore)
+        return quantityMismatch(xstore, siocs, disc, reconView, null);
+    }
+
+    public static ReconEvent quantityMismatch(
+            FlatPosTransaction xstore,
+            FlatSimTransaction siocs,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            MatchEvaluation evaluation) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(siocs.getSource())
                 .reconStatus(ReconStatus.QUANTITY_MISMATCH.name())
@@ -207,9 +289,11 @@ public class ReconEvent implements Serializable {
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(siocs.getChecksum())
                 .checksumMatch(false)
-                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent itemMissingPos(
@@ -218,16 +302,28 @@ public class ReconEvent implements Serializable {
             List<ItemDiscrepancy> disc,
             String reconView,
             String counterSource) {
-        return base(xstore)
+        return itemMissingPos(xstore, counter, disc, reconView, counterSource, null);
+    }
+
+    public static ReconEvent itemMissingPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            String counterSource,
+            MatchEvaluation evaluation) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(counterSource)
                 .reconStatus(ReconStatus.ITEM_MISSING.name())
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(counter.getChecksum())
                 .checksumMatch(false)
-                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent quantityMismatchPos(
@@ -236,16 +332,32 @@ public class ReconEvent implements Serializable {
             List<ItemDiscrepancy> disc,
             String reconView,
             String counterSource) {
-        return base(xstore)
+        return quantityMismatchPos(xstore, counter, disc, reconView, counterSource, null, null, null);
+    }
+
+    public static ReconEvent quantityMismatchPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            String counterSource,
+            MatchEvaluation evaluation,
+            BigDecimal amountVariance,
+            BigDecimal amountVariancePercent) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(counterSource)
                 .reconStatus(ReconStatus.QUANTITY_MISMATCH.name())
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(counter.getChecksum())
                 .checksumMatch(false)
-                .discrepancies(disc.toArray(new ItemDiscrepancy[0]))
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .amountVariance(amountVariance)
+                .amountVariancePercent(amountVariancePercent)
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent totalMismatchPos(
@@ -253,15 +365,43 @@ public class ReconEvent implements Serializable {
             FlatPosTransaction counter,
             String reconView,
             String counterSource) {
-        return base(xstore)
+        return totalMismatchPos(
+                xstore,
+                counter,
+                List.of(),
+                reconView,
+                counterSource,
+                null,
+                amountVariance(xstore.getTotalAmount(), counter.getTotalAmount()),
+                null
+        );
+    }
+
+    public static ReconEvent totalMismatchPos(
+            FlatPosTransaction xstore,
+            FlatPosTransaction counter,
+            List<ItemDiscrepancy> disc,
+            String reconView,
+            String counterSource,
+            MatchEvaluation evaluation,
+            BigDecimal amountVariance,
+            BigDecimal amountVariancePercent) {
+        Builder builder = base(xstore)
                 .reconView(reconView)
                 .simSource(counterSource)
                 .reconStatus(ReconStatus.TOTAL_MISMATCH.name())
                 .xstoreChecksum(xstore.getChecksum())
                 .siocsChecksum(counter.getChecksum())
                 .checksumMatch(false)
-                .reconciledAt(Instant.now().toString())
-                .build();
+                .amountVariance(amountVariance != null
+                        ? amountVariance
+                        : amountVariance(xstore.getTotalAmount(), counter.getTotalAmount()))
+                .amountVariancePercent(amountVariancePercent)
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
     }
 
     public static ReconEvent correctionMismatch(
@@ -281,6 +421,8 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(correctedStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .siocsChecksum(siocs.getChecksum())
                 .xstoreChecksum(prevChecksum)
                 .checksumMatch(false)
@@ -304,6 +446,8 @@ public class ReconEvent implements Serializable {
                 .simSource(siocs.getSource())
                 .reconStatus(lateMatchStatus(reconView))
                 .processingStatus(siocs.getProcessingStatus())
+                .lineItemCount(siocs.getLineItemCount())
+                .totalQuantity(siocs.getTotalQuantity())
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -352,12 +496,12 @@ public class ReconEvent implements Serializable {
 
     // Helper to derive wkstnId from externalId
     private static String wkstnFromExternal(String externalId) {
-        if (externalId == null || externalId.length() != 22)
+        if (externalId == null || externalId.length() != 22) {
             return null;
+        }
         try {
-            return String.valueOf(
-                    Integer.parseInt(externalId.substring(5, 8)));
-        } catch (Exception e) {
+            return String.valueOf(Integer.parseInt(externalId.substring(5, 8)));
+        } catch (Exception ignored) {
             return null;
         }
     }
@@ -374,10 +518,89 @@ public class ReconEvent implements Serializable {
                 .transactionKey(xstore.getTransactionKey())
                 .externalId(xstore.getExternalId())
                 .storeId(xstore.getStoreId())
-                .wkstnId(String.valueOf(xstore.getWkstnId()))  // ADDED
+                .wkstnId(String.valueOf(xstore.getWkstnId()))
                 .businessDate(xstore.getBusinessDate())
                 .transactionType(xstore.getTransactionType())
+                .transactionAmount(xstore.getTotalAmount())
+                .lineItemCount(lineItemCount(xstore))
+                .totalQuantity(totalQuantity(xstore))
                 .xstoreChecksum(xstore.getChecksum());
+    }
+
+    private static Builder applyMatchEvaluation(Builder builder, MatchEvaluation evaluation) {
+        if (evaluation == null) {
+            return builder;
+        }
+        return builder
+                .matchScore(evaluation.matchScore())
+                .matchBand(evaluation.matchBand())
+                .matchRule(evaluation.matchRule())
+                .matchSummary(evaluation.matchSummary())
+                .toleranceApplied(evaluation.toleranceApplied())
+                .toleranceProfile(evaluation.toleranceProfile())
+                .matchedLineCount(evaluation.matchedLineCount())
+                .discrepantLineCount(evaluation.discrepantLineCount())
+                .toleratedDiscrepancyCount(evaluation.toleratedDiscrepancyCount())
+                .materialDiscrepancyCount(evaluation.materialDiscrepancyCount())
+                .quantityVariancePercent(evaluation.quantityVariancePercent())
+                .amountVariancePercent(evaluation.amountVariancePercent());
+    }
+
+    private static Integer lineItemCount(FlatPosTransaction xstore) {
+        return xstore.getLineItems() != null ? xstore.getLineItems().length : null;
+    }
+
+    private static BigDecimal totalQuantity(FlatPosTransaction xstore) {
+        if (xstore.getLineItems() == null || xstore.getLineItems().length == 0) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (FlatLineItem lineItem : xstore.getLineItems()) {
+            if (lineItem != null && lineItem.getQuantity() != null) {
+                total = total.add(lineItem.getQuantity().abs());
+            }
+        }
+        return total.compareTo(BigDecimal.ZERO) > 0 ? total : null;
+    }
+
+    private static Integer discrepancyCount(List<ItemDiscrepancy> discrepancies) {
+        return discrepancies != null ? discrepancies.size() : 0;
+    }
+
+    private static ItemDiscrepancy[] toArray(List<ItemDiscrepancy> discrepancies) {
+        if (discrepancies == null || discrepancies.isEmpty()) {
+            return new ItemDiscrepancy[0];
+        }
+        return discrepancies.toArray(new ItemDiscrepancy[0]);
+    }
+
+    private static BigDecimal quantityImpact(List<ItemDiscrepancy> discrepancies) {
+        if (discrepancies == null || discrepancies.isEmpty()) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (ItemDiscrepancy discrepancy : discrepancies) {
+            if (discrepancy == null) {
+                continue;
+            }
+            BigDecimal left = discrepancy.getXstoreQuantity();
+            BigDecimal right = discrepancy.getSiocsQuantity();
+            if (left != null && right != null) {
+                total = total.add(left.subtract(right).abs());
+            } else if (left != null) {
+                total = total.add(left.abs());
+            } else if (right != null) {
+                total = total.add(right.abs());
+            }
+        }
+        return total.compareTo(BigDecimal.ZERO) > 0 ? total : null;
+    }
+
+    private static BigDecimal amountVariance(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null) {
+            return null;
+        }
+        return left.subtract(right).abs();
     }
 
     public static class Builder {
@@ -460,6 +683,96 @@ public class ReconEvent implements Serializable {
 
         public Builder duplicatePostingCount(int v) {
             e.duplicatePostingCount = v;
+            return this;
+        }
+
+        public Builder transactionAmount(BigDecimal v) {
+            e.transactionAmount = v;
+            return this;
+        }
+
+        public Builder amountVariance(BigDecimal v) {
+            e.amountVariance = v;
+            return this;
+        }
+
+        public Builder amountVariancePercent(BigDecimal v) {
+            e.amountVariancePercent = v;
+            return this;
+        }
+
+        public Builder lineItemCount(Integer v) {
+            e.lineItemCount = v;
+            return this;
+        }
+
+        public Builder affectedItemCount(Integer v) {
+            e.affectedItemCount = v;
+            return this;
+        }
+
+        public Builder totalQuantity(BigDecimal v) {
+            e.totalQuantity = v;
+            return this;
+        }
+
+        public Builder quantityImpact(BigDecimal v) {
+            e.quantityImpact = v;
+            return this;
+        }
+
+        public Builder matchScore(Integer v) {
+            e.matchScore = v;
+            return this;
+        }
+
+        public Builder matchBand(String v) {
+            e.matchBand = v;
+            return this;
+        }
+
+        public Builder matchRule(String v) {
+            e.matchRule = v;
+            return this;
+        }
+
+        public Builder matchSummary(String v) {
+            e.matchSummary = v;
+            return this;
+        }
+
+        public Builder toleranceApplied(boolean v) {
+            e.toleranceApplied = v;
+            return this;
+        }
+
+        public Builder toleranceProfile(String v) {
+            e.toleranceProfile = v;
+            return this;
+        }
+
+        public Builder matchedLineCount(Integer v) {
+            e.matchedLineCount = v;
+            return this;
+        }
+
+        public Builder discrepantLineCount(Integer v) {
+            e.discrepantLineCount = v;
+            return this;
+        }
+
+        public Builder toleratedDiscrepancyCount(Integer v) {
+            e.toleratedDiscrepancyCount = v;
+            return this;
+        }
+
+        public Builder materialDiscrepancyCount(Integer v) {
+            e.materialDiscrepancyCount = v;
+            return this;
+        }
+
+        public Builder quantityVariancePercent(BigDecimal v) {
+            e.quantityVariancePercent = v;
             return this;
         }
 
@@ -606,6 +919,150 @@ public class ReconEvent implements Serializable {
 
     public void setDuplicatePostingCount(int v) {
         duplicatePostingCount = v;
+    }
+
+    public BigDecimal getTransactionAmount() {
+        return transactionAmount;
+    }
+
+    public void setTransactionAmount(BigDecimal v) {
+        transactionAmount = v;
+    }
+
+    public BigDecimal getAmountVariance() {
+        return amountVariance;
+    }
+
+    public void setAmountVariance(BigDecimal v) {
+        amountVariance = v;
+    }
+
+    public BigDecimal getAmountVariancePercent() {
+        return amountVariancePercent;
+    }
+
+    public void setAmountVariancePercent(BigDecimal v) {
+        amountVariancePercent = v;
+    }
+
+    public Integer getLineItemCount() {
+        return lineItemCount;
+    }
+
+    public void setLineItemCount(Integer v) {
+        lineItemCount = v;
+    }
+
+    public Integer getAffectedItemCount() {
+        return affectedItemCount;
+    }
+
+    public void setAffectedItemCount(Integer v) {
+        affectedItemCount = v;
+    }
+
+    public BigDecimal getTotalQuantity() {
+        return totalQuantity;
+    }
+
+    public void setTotalQuantity(BigDecimal v) {
+        totalQuantity = v;
+    }
+
+    public BigDecimal getQuantityImpact() {
+        return quantityImpact;
+    }
+
+    public void setQuantityImpact(BigDecimal v) {
+        quantityImpact = v;
+    }
+
+    public Integer getMatchScore() {
+        return matchScore;
+    }
+
+    public void setMatchScore(Integer v) {
+        matchScore = v;
+    }
+
+    public String getMatchBand() {
+        return matchBand;
+    }
+
+    public void setMatchBand(String v) {
+        matchBand = v;
+    }
+
+    public String getMatchRule() {
+        return matchRule;
+    }
+
+    public void setMatchRule(String v) {
+        matchRule = v;
+    }
+
+    public String getMatchSummary() {
+        return matchSummary;
+    }
+
+    public void setMatchSummary(String v) {
+        matchSummary = v;
+    }
+
+    public boolean isToleranceApplied() {
+        return toleranceApplied;
+    }
+
+    public void setToleranceApplied(boolean v) {
+        toleranceApplied = v;
+    }
+
+    public String getToleranceProfile() {
+        return toleranceProfile;
+    }
+
+    public void setToleranceProfile(String v) {
+        toleranceProfile = v;
+    }
+
+    public Integer getMatchedLineCount() {
+        return matchedLineCount;
+    }
+
+    public void setMatchedLineCount(Integer v) {
+        matchedLineCount = v;
+    }
+
+    public Integer getDiscrepantLineCount() {
+        return discrepantLineCount;
+    }
+
+    public void setDiscrepantLineCount(Integer v) {
+        discrepantLineCount = v;
+    }
+
+    public Integer getToleratedDiscrepancyCount() {
+        return toleratedDiscrepancyCount;
+    }
+
+    public void setToleratedDiscrepancyCount(Integer v) {
+        toleratedDiscrepancyCount = v;
+    }
+
+    public Integer getMaterialDiscrepancyCount() {
+        return materialDiscrepancyCount;
+    }
+
+    public void setMaterialDiscrepancyCount(Integer v) {
+        materialDiscrepancyCount = v;
+    }
+
+    public BigDecimal getQuantityVariancePercent() {
+        return quantityVariancePercent;
+    }
+
+    public void setQuantityVariancePercent(BigDecimal v) {
+        quantityVariancePercent = v;
     }
 
     public String getReconciledAt() {

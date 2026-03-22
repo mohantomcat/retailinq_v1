@@ -3,13 +3,18 @@ package com.recon.api.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.api.domain.ExceptionCase;
 import com.recon.api.domain.OperationActionResponseDto;
 import com.recon.api.domain.OperationModuleStatusDto;
+import com.recon.api.domain.OperationsHealthSummaryDto;
 import com.recon.api.domain.OperationsActionAudit;
 import com.recon.api.domain.OperationsResponse;
 import com.recon.api.domain.ReplayWindowOperationRequest;
 import com.recon.api.domain.ResetCheckpointOperationRequest;
+import com.recon.api.domain.TenantConfig;
 import com.recon.api.repository.OperationsActionAuditRepository;
+import com.recon.api.repository.ExceptionCaseRepository;
+import com.recon.api.util.TimezoneConverter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -22,18 +27,30 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class OperationsService {
 
     private final OperationsActionAuditRepository auditRepository;
+    private final ExceptionCaseRepository caseRepository;
+    private final ExceptionSlaService exceptionSlaService;
+    private final TenantService tenantService;
+    private final AuditLedgerService auditLedgerService;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -56,15 +73,54 @@ public class OperationsService {
     private String xocsCloudBaseUrl;
 
     @Transactional(readOnly = true)
-    public OperationsResponse getOperations() {
-        return OperationsResponse.builder()
-                .modules(List.of(
+    public OperationsResponse getOperations(String tenantId) {
+        TenantConfig tenant = tenantService.getTenant(tenantId);
+        List<ExceptionCase> activeCases = caseRepository.findActiveCasesForAging(
+                tenantId,
+                null,
+                LocalDateTime.now().minusDays(35)
+        );
+        Map<String, List<ExceptionCase>> casesByReconView = activeCases.stream()
+                .collect(Collectors.groupingBy(
+                        exceptionCase -> Objects.toString(exceptionCase.getReconView(), "").toUpperCase(),
+                        Collectors.toList()));
+
+        List<OperationModuleStatusDto> modules = List.of(
                         fetchStatus("xstore-publisher", "Xstore Publisher", "XSTORE_SIM", "source", xstoreBaseUrl, "/api/xstore-publisher/status", List.of("publish", "release-stale-claims"), List.of(), true),
                         fetchStatus("sim-poller", "SIM Poller", "XSTORE_SIM", "target", simBaseUrl, "/api/siocs-poller/status", List.of("poll", "release-lease"), List.of("reset-checkpoint"), true),
                         fetchStatus("siocs-cloud-connector", "SIOCS Cloud Connector", "XSTORE_SIOCS", "target", siocsCloudBaseUrl, "/api/cloud-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false),
                         fetchStatus("xocs-cloud-connector", "XOCS Cloud Connector", "XSTORE_XOCS", "target", xocsCloudBaseUrl, "/api/xocs-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed"), List.of("reset-checkpoint", "replay-window"), false)
-                ))
+                ).stream()
+                .map(module -> enrichStatus(module, casesByReconView.getOrDefault(module.getReconView(), List.of()), tenant))
+                .toList();
+
+        return OperationsResponse.builder()
+                .summary(buildSummary(modules))
+                .modules(modules)
                 .build();
+    }
+
+    public ActionSupportDescriptor describeAction(String moduleId, String actionKey) {
+        String resolvedModuleId = trimToNull(moduleId);
+        String resolvedActionKey = trimToNull(actionKey);
+        if (resolvedModuleId == null || resolvedActionKey == null) {
+            return new ActionSupportDescriptor(false, false, "NONE", "No linked operation is configured for this playbook step");
+        }
+
+        try {
+            ModuleDef module = module(resolvedModuleId);
+            if (module.safeActions.contains(resolvedActionKey)) {
+                return new ActionSupportDescriptor(true, true, "SAFE", "Ready to run from the exception workbench");
+            }
+            if (module.advancedActions.contains(resolvedActionKey)) {
+                return new ActionSupportDescriptor(true, false, "ADVANCED",
+                        "Use the Operations console because this action requires additional parameters");
+            }
+            return new ActionSupportDescriptor(true, false, "UNSUPPORTED",
+                    "The configured action key is not supported for this operations module");
+        } catch (IllegalArgumentException ex) {
+            return new ActionSupportDescriptor(true, false, "UNSUPPORTED", ex.getMessage());
+        }
     }
 
     @Transactional
@@ -72,6 +128,33 @@ public class OperationsService {
                                                         String moduleId,
                                                         String actionKey,
                                                         String username) {
+        return executeSafeAction(tenantId, moduleId, actionKey, username, null);
+    }
+
+    @Transactional
+    public OperationActionResponseDto executePlaybookAction(String tenantId,
+                                                            String moduleId,
+                                                            String actionKey,
+                                                            String username,
+                                                            String transactionKey,
+                                                            String reconView,
+                                                            UUID playbookId,
+                                                            UUID playbookStepId,
+                                                            String playbookStepTitle) {
+        return executeSafeAction(
+                tenantId,
+                moduleId,
+                actionKey,
+                username,
+                new AuditContext(transactionKey, reconView, playbookId, playbookStepId, trimToNull(playbookStepTitle))
+        );
+    }
+
+    private OperationActionResponseDto executeSafeAction(String tenantId,
+                                                         String moduleId,
+                                                         String actionKey,
+                                                         String username,
+                                                         AuditContext auditContext) {
         ModuleDef def = module(moduleId);
         if (!def.safeActions.contains(actionKey)) {
             throw new IllegalArgumentException("Unsupported safe action: " + actionKey);
@@ -85,27 +168,22 @@ public class OperationsService {
             default -> throw new IllegalArgumentException("Unsupported module: " + moduleId);
         };
 
-        Map<String, Object> response = post(def.baseUrl + path, null, def.basicAuth);
-        OperationActionResponseDto dto = OperationActionResponseDto.builder()
-                .moduleId(moduleId)
-                .actionKey(actionKey)
-                .status(stringValue(response.getOrDefault("status", "OK")))
-                .message(stringValue(response.getOrDefault("message", "Action completed")))
-                .rawResponse(response)
-                .build();
-
-        auditRepository.save(OperationsActionAudit.builder()
-                .tenantId(tenantId)
-                .moduleId(moduleId)
-                .actionKey(actionKey)
-                .actionScope("SAFE")
-                .requestedBy(username)
-                .requestPayload(null)
-                .resultStatus(dto.getStatus())
-                .resultMessage(dto.getMessage())
-                .build());
-
-        return dto;
+        try {
+            Map<String, Object> response = post(def.baseUrl + path, null, def.basicAuth);
+            OperationActionResponseDto dto = OperationActionResponseDto.builder()
+                    .moduleId(moduleId)
+                    .actionKey(actionKey)
+                    .status(stringValue(response.getOrDefault("status", "OK")))
+                    .message(stringValue(response.getOrDefault("message", "Action completed")))
+                    .rawResponse(response)
+                    .build();
+            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, null, dto, auditContext);
+            return dto;
+        } catch (RuntimeException ex) {
+            OperationActionResponseDto failure = failureResponse(moduleId, actionKey, ex);
+            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, null, failure, auditContext);
+            throw ex;
+        }
     }
 
     @Transactional
@@ -131,10 +209,16 @@ public class OperationsService {
             default -> Map.of();
         };
 
-        Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
-        OperationActionResponseDto dto = toActionResponse(moduleId, "reset-checkpoint", response, "Checkpoint reset");
-        saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, payload, dto);
-        return dto;
+        try {
+            Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
+            OperationActionResponseDto dto = toActionResponse(moduleId, "reset-checkpoint", response, "Checkpoint reset");
+            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, payload, dto, null);
+            return dto;
+        } catch (RuntimeException ex) {
+            OperationActionResponseDto failure = failureResponse(moduleId, "reset-checkpoint", ex);
+            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, payload, failure, null);
+            throw ex;
+        }
     }
 
     @Transactional
@@ -154,10 +238,16 @@ public class OperationsService {
         };
 
         Map<String, Object> payload = buildReplayPayload(request);
-        Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
-        OperationActionResponseDto dto = toActionResponse(moduleId, "replay-window", response, "Replay window queued");
-        saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, payload, dto);
-        return dto;
+        try {
+            Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
+            OperationActionResponseDto dto = toActionResponse(moduleId, "replay-window", response, "Replay window queued");
+            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, payload, dto, null);
+            return dto;
+        } catch (RuntimeException ex) {
+            OperationActionResponseDto failure = failureResponse(moduleId, "replay-window", ex);
+            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, payload, failure, null);
+            throw ex;
+        }
     }
 
     private OperationModuleStatusDto fetchStatus(String moduleId,
@@ -193,6 +283,73 @@ public class OperationsService {
                     .status(Map.of("error", ex.getMessage()))
                     .build();
         }
+    }
+
+    private OperationModuleStatusDto enrichStatus(OperationModuleStatusDto module,
+                                                  List<ExceptionCase> activeCases,
+                                                  TenantConfig tenant) {
+        Map<String, Object> status = module.getStatus() == null ? Map.of() : module.getStatus();
+        Instant lastSuccess = resolveLastSuccess(status);
+        long freshnessLagMinutes = resolveFreshnessLagMinutes(status, lastSuccess);
+        long backlogCount = resolveBacklogCount(status);
+        long activeCaseCount = activeCases.size();
+        long breachedCaseCount = activeCases.stream()
+                .filter(exceptionCase -> "BREACHED".equalsIgnoreCase(exceptionSlaService.evaluateSlaStatus(exceptionCase)))
+                .count();
+        String freshnessStatus = resolveFreshnessStatus(module.getModuleId(), module.isReachable(), freshnessLagMinutes);
+        String healthStatus = resolveHealthStatus(module.isReachable(), freshnessStatus, backlogCount, breachedCaseCount);
+        int healthScore = resolveHealthScore(module.isReachable(), freshnessLagMinutes, backlogCount, breachedCaseCount);
+        List<String> highlights = buildStatusHighlights(status, freshnessLagMinutes, backlogCount, activeCaseCount, breachedCaseCount);
+
+        return OperationModuleStatusDto.builder()
+                .moduleId(module.getModuleId())
+                .moduleLabel(module.getModuleLabel())
+                .reconView(module.getReconView())
+                .category(module.getCategory())
+                .reachable(module.isReachable())
+                .availableActions(module.getAvailableActions())
+                .advancedActions(module.getAdvancedActions())
+                .status(module.getStatus())
+                .healthStatus(healthStatus)
+                .healthScore(healthScore)
+                .freshnessStatus(freshnessStatus)
+                .freshnessLagMinutes(freshnessLagMinutes > 0 ? freshnessLagMinutes : null)
+                .backlogCount(backlogCount > 0 ? backlogCount : 0L)
+                .activeCaseCount(activeCaseCount)
+                .breachedCaseCount(breachedCaseCount)
+                .lastSuccessfulSyncAt(lastSuccess != null
+                        ? TimezoneConverter.toDisplay(lastSuccess.toString(), tenant)
+                        : null)
+                .statusHighlights(highlights)
+                .recommendedAction(recommendedAction(healthStatus, freshnessStatus, backlogCount, breachedCaseCount))
+                .build();
+    }
+
+    private OperationsHealthSummaryDto buildSummary(List<OperationModuleStatusDto> modules) {
+        return OperationsHealthSummaryDto.builder()
+                .totalModules(modules.size())
+                .healthyModules(modules.stream().filter(module -> "HEALTHY".equalsIgnoreCase(module.getHealthStatus())).count())
+                .warningModules(modules.stream().filter(module -> "WARNING".equalsIgnoreCase(module.getHealthStatus())).count())
+                .criticalModules(modules.stream().filter(module -> "CRITICAL".equalsIgnoreCase(module.getHealthStatus())).count())
+                .staleModules(modules.stream().filter(module -> "STALE".equalsIgnoreCase(module.getFreshnessStatus())).count())
+                .totalBacklogCount(modules.stream()
+                        .map(OperationModuleStatusDto::getBacklogCount)
+                        .filter(Objects::nonNull)
+                        .mapToLong(Long::longValue)
+                        .sum())
+                .activeCasesOnUnhealthyModules(modules.stream()
+                        .filter(module -> !"HEALTHY".equalsIgnoreCase(module.getHealthStatus()))
+                        .map(OperationModuleStatusDto::getActiveCaseCount)
+                        .filter(Objects::nonNull)
+                        .mapToLong(Long::longValue)
+                        .sum())
+                .breachedCasesOnUnhealthyModules(modules.stream()
+                        .filter(module -> !"HEALTHY".equalsIgnoreCase(module.getHealthStatus()))
+                        .map(OperationModuleStatusDto::getBreachedCaseCount)
+                        .filter(Objects::nonNull)
+                        .mapToLong(Long::longValue)
+                        .sum())
+                .build();
     }
 
     private ModuleDef module(String moduleId) {
@@ -255,22 +412,63 @@ public class OperationsService {
                 .build();
     }
 
+    private OperationActionResponseDto failureResponse(String moduleId,
+                                                       String actionKey,
+                                                       RuntimeException ex) {
+        return OperationActionResponseDto.builder()
+                .moduleId(moduleId)
+                .actionKey(actionKey)
+                .status("FAILED")
+                .message(trimToNull(ex.getMessage()) != null ? ex.getMessage() : "Action failed")
+                .rawResponse(Map.of("error", trimToNull(ex.getMessage()) != null ? ex.getMessage() : "Action failed"))
+                .build();
+    }
+
     private void saveAudit(String tenantId,
                            String moduleId,
                            String actionKey,
                            String scope,
                            String username,
                            Map<String, Object> payload,
-                           OperationActionResponseDto dto) {
+                           OperationActionResponseDto dto,
+                           AuditContext auditContext) {
         auditRepository.save(OperationsActionAudit.builder()
                 .tenantId(tenantId)
                 .moduleId(moduleId)
                 .actionKey(actionKey)
                 .actionScope(scope)
                 .requestedBy(username)
+                .transactionKey(auditContext != null ? auditContext.transactionKey() : null)
+                .reconView(auditContext != null ? auditContext.reconView() : null)
+                .playbookId(auditContext != null ? auditContext.playbookId() : null)
+                .playbookStepId(auditContext != null ? auditContext.playbookStepId() : null)
+                .playbookStepTitle(auditContext != null ? auditContext.playbookStepTitle() : null)
                 .requestPayload(writeJson(payload))
                 .resultStatus(dto.getStatus())
                 .resultMessage(dto.getMessage())
+                .build());
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(tenantId)
+                .sourceType("OPERATIONS")
+                .moduleKey(defaultIfBlank(auditContext != null ? auditContext.reconView() : null, mapOperationsModule(moduleId)))
+                .entityType("OPERATIONS_ACTION")
+                .entityKey(defaultIfBlank(auditContext != null ? auditContext.transactionKey() : null, moduleId))
+                .actionType(defaultIfBlank(actionKey, "ACTION"))
+                .title(trimToNull(auditContext != null ? auditContext.playbookStepTitle() : null) != null
+                        ? "Playbook action executed"
+                        : "Operations action executed")
+                .summary(dto.getMessage())
+                .actor(username)
+                .status(dto.getStatus())
+                .referenceKey(defaultIfBlank(auditContext != null ? auditContext.transactionKey() : null, moduleId))
+                .controlFamily("OPERATIONS")
+                .evidenceTags(List.of("OPERATIONS", scope))
+                .beforeState(payload)
+                .afterState(dto.getRawResponse())
+                .metadata(java.util.Map.of(
+                        "moduleId", moduleId,
+                        "scope", scope,
+                        "playbookStepId", auditContext != null ? auditContext.playbookStepId() : null))
                 .build());
     }
 
@@ -318,6 +516,234 @@ public class OperationsService {
 
     private String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private Instant resolveLastSuccess(Map<String, Object> status) {
+        List<Predicate<String>> keyMatchers = List.of(
+                key -> key.equalsIgnoreCase("lastSuccessAt"),
+                key -> key.equalsIgnoreCase("lastSuccessfulSyncAt"),
+                key -> key.equalsIgnoreCase("lastProcessedAt"),
+                key -> key.equalsIgnoreCase("lastPublishedAt"),
+                key -> key.equalsIgnoreCase("lastDownloadAt"),
+                key -> key.equalsIgnoreCase("lastPollAt"),
+                key -> key.equalsIgnoreCase("updatedAt"),
+                key -> key.contains("success") && key.contains("time"),
+                key -> key.contains("heartbeat"),
+                key -> key.contains("last") && key.contains("at")
+        );
+        for (Predicate<String> matcher : keyMatchers) {
+            for (Map.Entry<String, Object> entry : status.entrySet()) {
+                String key = entry.getKey() != null ? entry.getKey().toLowerCase() : "";
+                if (matcher.test(key)) {
+                    Instant parsed = parseInstant(entry.getValue());
+                    if (parsed != null) {
+                        return parsed;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private Instant parseInstant(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            long epoch = number.longValue();
+            if (String.valueOf(Math.abs(epoch)).length() >= 13) {
+                return Instant.ofEpochMilli(epoch);
+            }
+            return Instant.ofEpochSecond(epoch);
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Instant.parse(text);
+        } catch (Exception ignored) {
+            try {
+                return OffsetDateTime.parse(text).toInstant();
+            } catch (Exception ignoredAgain) {
+                try {
+                    return LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
+                } catch (Exception ignoredThird) {
+                    return null;
+                }
+            }
+        }
+    }
+
+    private long resolveFreshnessLagMinutes(Map<String, Object> status, Instant lastSuccess) {
+        for (String key : status.keySet()) {
+            String normalized = key == null ? "" : key.toLowerCase();
+            if (normalized.contains("lag") && normalized.contains("minute")) {
+                Object value = status.get(key);
+                if (value instanceof Number number) {
+                    return Math.max(0L, number.longValue());
+                }
+            }
+        }
+        return lastSuccess == null
+                ? Long.MAX_VALUE
+                : Math.max(0L, Duration.between(lastSuccess, Instant.now()).toMinutes());
+    }
+
+    private long resolveBacklogCount(Map<String, Object> status) {
+        long total = 0L;
+        for (Map.Entry<String, Object> entry : status.entrySet()) {
+            String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase();
+            if (!(key.contains("backlog")
+                    || key.contains("queue")
+                    || key.contains("pending")
+                    || key.contains("failed")
+                    || key.contains("dlq")
+                    || key.contains("retry")
+                    || key.contains("stuck"))) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value instanceof Number number) {
+                total += Math.max(0L, number.longValue());
+            }
+        }
+        return total;
+    }
+
+    private String resolveFreshnessStatus(String moduleId, boolean reachable, long freshnessLagMinutes) {
+        if (!reachable) {
+            return "STALE";
+        }
+        long staleThreshold = switch (Objects.toString(moduleId, "")) {
+            case "xstore-publisher" -> 30L;
+            case "sim-poller" -> 45L;
+            default -> 60L;
+        };
+        long warningThreshold = Math.max(15L, staleThreshold / 2L);
+        if (freshnessLagMinutes == Long.MAX_VALUE || freshnessLagMinutes > staleThreshold) {
+            return "STALE";
+        }
+        if (freshnessLagMinutes > warningThreshold) {
+            return "AGING";
+        }
+        return "FRESH";
+    }
+
+    private String resolveHealthStatus(boolean reachable,
+                                       String freshnessStatus,
+                                       long backlogCount,
+                                       long breachedCaseCount) {
+        if (!reachable || "STALE".equalsIgnoreCase(freshnessStatus) || backlogCount >= 50 || breachedCaseCount >= 5) {
+            return "CRITICAL";
+        }
+        if ("AGING".equalsIgnoreCase(freshnessStatus) || backlogCount >= 10 || breachedCaseCount > 0) {
+            return "WARNING";
+        }
+        return "HEALTHY";
+    }
+
+    private int resolveHealthScore(boolean reachable,
+                                   long freshnessLagMinutes,
+                                   long backlogCount,
+                                   long breachedCaseCount) {
+        int score = 100;
+        if (!reachable) {
+            score -= 60;
+        }
+        if (freshnessLagMinutes == Long.MAX_VALUE) {
+            score -= 25;
+        } else {
+            score -= Math.min(25, (int) (freshnessLagMinutes / 6));
+        }
+        score -= Math.min(20, (int) backlogCount);
+        score -= Math.min(20, (int) breachedCaseCount * 4);
+        return Math.max(0, score);
+    }
+
+    private List<String> buildStatusHighlights(Map<String, Object> status,
+                                               long freshnessLagMinutes,
+                                               long backlogCount,
+                                               long activeCaseCount,
+                                               long breachedCaseCount) {
+        List<String> highlights = new ArrayList<>();
+        if (freshnessLagMinutes != Long.MAX_VALUE) {
+            highlights.add("freshness lag " + freshnessLagMinutes + " min");
+        } else {
+            highlights.add("no recent heartbeat");
+        }
+        if (backlogCount > 0) {
+            highlights.add(backlogCount + " queued or failed records");
+        }
+        if (activeCaseCount > 0) {
+            highlights.add(activeCaseCount + " open retailer cases");
+        }
+        if (breachedCaseCount > 0) {
+            highlights.add(breachedCaseCount + " SLA breaches");
+        }
+        status.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .filter(entry -> entry.getKey().toLowerCase().contains("error"))
+                .limit(1)
+                .forEach(entry -> highlights.add(entry.getKey() + ": " + stringValue(entry.getValue())));
+        return highlights.stream().distinct().limit(4).toList();
+    }
+
+    private String recommendedAction(String healthStatus,
+                                     String freshnessStatus,
+                                     long backlogCount,
+                                     long breachedCaseCount) {
+        if ("CRITICAL".equalsIgnoreCase(healthStatus)) {
+            if ("STALE".equalsIgnoreCase(freshnessStatus)) {
+                return "Restore connector heartbeat and confirm data is moving again";
+            }
+            if (backlogCount >= 50) {
+                return "Reduce connector backlog and review failed records";
+            }
+            return "Escalate immediately and coordinate with store operations";
+        }
+        if ("WARNING".equalsIgnoreCase(healthStatus)) {
+            if (breachedCaseCount > 0) {
+                return "Triage the affected cases before they spread across more stores";
+            }
+            return "Monitor this integration closely and clear pending backlog";
+        }
+        return "Healthy. No immediate action required";
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? fallback : trimmed;
+    }
+
+    private String mapOperationsModule(String moduleId) {
+        return switch (moduleId) {
+            case "xstore-publisher", "sim-poller" -> "XSTORE_SIM";
+            case "siocs-cloud-connector" -> "XSTORE_SIOCS";
+            case "xocs-cloud-connector" -> "XSTORE_XOCS";
+            default -> "OPERATIONS";
+        };
+    }
+
+    public record ActionSupportDescriptor(boolean actionConfigured,
+                                          boolean actionExecutable,
+                                          String actionExecutionMode,
+                                          String actionSupportMessage) {
+    }
+
+    private record AuditContext(String transactionKey,
+                                String reconView,
+                                UUID playbookId,
+                                UUID playbookStepId,
+                                String playbookStepTitle) {
     }
 
     private record ModuleDef(String baseUrl, List<String> safeActions, List<String> advancedActions, boolean basicAuth) {

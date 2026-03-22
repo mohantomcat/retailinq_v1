@@ -12,6 +12,17 @@ spring:
     default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:true}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -44,6 +55,18 @@ app:
   alerting:
     enabled: ${APP_ALERTING_ENABLED:true}
     generation-interval-ms: ${APP_ALERTING_GENERATION_INTERVAL_MS:300000}
+    escalation-enabled: ${APP_ALERTING_ESCALATION_ENABLED:true}
+    escalation-interval-ms: ${APP_ALERTING_ESCALATION_INTERVAL_MS:300000}
+    email:
+      enabled: ${APP_ALERTING_EMAIL_ENABLED:false}
+      from: ${APP_ALERTING_EMAIL_FROM:no-reply@retailinq.local}
+      from-name: ${APP_ALERTING_EMAIL_FROM_NAME:RetailINQ Alerts}
+      app-base-url: ${APP_ALERTING_EMAIL_APP_BASE_URL:http://localhost:5173}
+    webhook:
+      enabled: ${APP_ALERTING_WEBHOOK_ENABLED:false}
+      connect-timeout-ms: ${APP_ALERTING_WEBHOOK_CONNECT_TIMEOUT_MS:5000}
+      read-timeout-ms: ${APP_ALERTING_WEBHOOK_READ_TIMEOUT_MS:10000}
+      app-base-url: ${APP_ALERTING_WEBHOOK_APP_BASE_URL:http://localhost:5173}
   operations:
     connector-admin-user: ${CONNECTOR_ADMIN_USER:connector-admin}
     connector-admin-password: ${CONNECTOR_ADMIN_PASSWORD:}
@@ -51,6 +74,8 @@ app:
     sim-base-url: ${OPS_SIM_BASE_URL:http://localhost:8182}
     siocs-cloud-base-url: ${OPS_SIOCS_CLOUD_BASE_URL:http://localhost:8184}
     xocs-cloud-base-url: ${OPS_XOCS_CLOUD_BASE_URL:http://localhost:8183}
+  collaboration:
+    callback-base-url: ${APP_COLLABORATION_CALLBACK_BASE_URL:http://localhost:8090}
 
 logging:
   level:

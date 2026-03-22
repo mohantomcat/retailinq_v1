@@ -40,6 +40,21 @@ public class OperationsActionAudit {
     @Column(name = "requested_by", nullable = false)
     private String requestedBy;
 
+    @Column(name = "transaction_key")
+    private String transactionKey;
+
+    @Column(name = "recon_view")
+    private String reconView;
+
+    @Column(name = "playbook_id")
+    private UUID playbookId;
+
+    @Column(name = "playbook_step_id")
+    private UUID playbookStepId;
+
+    @Column(name = "playbook_step_title")
+    private String playbookStepTitle;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "request_payload", columnDefinition = "jsonb")
     private String requestPayload;

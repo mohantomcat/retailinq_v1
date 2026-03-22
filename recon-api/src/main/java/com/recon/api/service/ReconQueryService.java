@@ -8,8 +8,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -72,6 +74,24 @@ public class ReconQueryService {
                 esRepository.findByTransactionKey(transactionKey);
         if (summary == null) return null;
         return convertTimestamps(summary, tenant);
+    }
+
+    public Map<String, ReconSummary> getByTransactionKeys(
+            List<String> transactionKeys, TenantConfig tenant) {
+        if (transactionKeys == null || transactionKeys.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, ReconSummary> result = new LinkedHashMap<>();
+        int batchSize = 250;
+        for (int start = 0; start < transactionKeys.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, transactionKeys.size());
+            List<String> batch = transactionKeys.subList(start, end);
+            esRepository.findByTransactionKeys(batch).stream()
+                    .map(summary -> convertTimestamps(summary, tenant))
+                    .forEach(summary -> result.put(summaryKey(summary), summary));
+        }
+        return result;
     }
 
     public DashboardStats getDashboardStats(
@@ -214,6 +234,12 @@ public class ReconQueryService {
                         summary.getBusinessDate(), tenant));
 
         return summary;
+    }
+
+    private String summaryKey(ReconSummary summary) {
+        return Objects.toString(summary.getReconView(), "").toUpperCase()
+                + "::"
+                + Objects.toString(summary.getTransactionKey(), "");
     }
 
     public List<String> getStores() {

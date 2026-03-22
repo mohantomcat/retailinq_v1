@@ -24,6 +24,7 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
+    private final AuditLedgerService auditLedgerService;
 
     public List<RoleDto> getAllRoles(String tenantId) {
         return roleRepository.findByTenantId(tenantId)
@@ -37,7 +38,7 @@ public class RoleService {
     }
 
     @Transactional
-    public RoleDto createRole(CreateRoleRequest req) {
+    public RoleDto createRole(CreateRoleRequest req, String actorUsername) {
         if (roleRepository.existsByNameAndTenantId(
                 req.getName(), req.getTenantId())) {
             throw new RuntimeException("Role already exists");
@@ -56,14 +57,17 @@ public class RoleService {
                 .permissions(permissions)
                 .build();
 
-        return toDto(roleRepository.save(role));
+        Role saved = roleRepository.save(role);
+        recordRoleAudit(saved.getTenantId(), "ROLE_CREATED", "Role created", saved.getId().toString(), actorUsername, null, saved);
+        return toDto(saved);
     }
 
     @Transactional
-    public RoleDto updateRole(UUID roleId, CreateRoleRequest req) {
+    public RoleDto updateRole(UUID roleId, CreateRoleRequest req, String actorUsername) {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
+        Role before = cloneForAudit(role);
 
         if (req.getName() == null || req.getName().isBlank()) {
             throw new RuntimeException("Role name is required");
@@ -83,25 +87,31 @@ public class RoleService {
         role.setName(req.getName().trim());
         role.setDescription(req.getDescription());
 
-        return toDto(roleRepository.save(role));
+        Role saved = roleRepository.save(role);
+        recordRoleAudit(saved.getTenantId(), "ROLE_UPDATED", "Role updated", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
     }
 
     @Transactional
     public RoleDto assignPermissions(UUID roleId,
-                                     Set<UUID> permissionIds) {
+                                     Set<UUID> permissionIds,
+                                     String actorUsername) {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
+        Role before = cloneForAudit(role);
 
         Set<Permission> permissions = new HashSet<>(
                 permissionRepository.findAllById(permissionIds));
 
         role.setPermissions(permissions);
-        return toDto(roleRepository.save(role));
+        Role saved = roleRepository.save(role);
+        recordRoleAudit(saved.getTenantId(), "ROLE_PERMISSIONS_ASSIGNED", "Role permissions updated", saved.getId().toString(), actorUsername, before, saved);
+        return toDto(saved);
     }
 
     @Transactional
-    public void deleteRole(UUID roleId) {
+    public void deleteRole(UUID roleId, String actorUsername) {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
@@ -116,7 +126,44 @@ public class RoleService {
                     "Role is assigned to one or more users and cannot be deleted");
         }
 
+        Role before = cloneForAudit(role);
         roleRepository.delete(role);
+        recordRoleAudit(role.getTenantId(), "ROLE_DELETED", "Role deleted", role.getId().toString(), actorUsername, before, null);
+    }
+
+    private void recordRoleAudit(String tenantId,
+                                 String actionType,
+                                 String title,
+                                 String entityKey,
+                                 String actorUsername,
+                                 Object before,
+                                 Object after) {
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(tenantId)
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("ROLE")
+                .entityKey(entityKey)
+                .actionType(actionType)
+                .title(title)
+                .actor(actorUsername)
+                .status(actionType)
+                .referenceKey(entityKey)
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "ROLE_ADMIN"))
+                .beforeState(before)
+                .afterState(after)
+                .build());
+    }
+
+    private Role cloneForAudit(Role role) {
+        return Role.builder()
+                .id(role.getId())
+                .name(role.getName())
+                .description(role.getDescription())
+                .tenantId(role.getTenantId())
+                .permissions(role.getPermissions() != null ? new HashSet<>(role.getPermissions()) : new HashSet<>())
+                .build();
     }
 
     private RoleDto toDto(Role role) {

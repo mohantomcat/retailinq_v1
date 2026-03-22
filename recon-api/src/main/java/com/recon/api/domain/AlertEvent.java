@@ -26,8 +26,11 @@ public class AlertEvent {
     @Id
     private UUID id;
 
-    @Column(name = "rule_id", nullable = false)
+    @Column(name = "rule_id")
     private UUID ruleId;
+
+    @Column(name = "anomaly_rule_id")
+    private UUID anomalyRuleId;
 
     @Column(name = "tenant_id", nullable = false)
     private String tenantId;
@@ -61,6 +64,18 @@ public class AlertEvent {
 
     @Column(name = "threshold_value", nullable = false)
     private BigDecimal thresholdValue;
+
+    @Column(name = "detection_type", nullable = false)
+    private String detectionType;
+
+    @Column(name = "anomaly_direction")
+    private String anomalyDirection;
+
+    @Column(name = "baseline_value")
+    private BigDecimal baselineValue;
+
+    @Column(name = "delta_percentage")
+    private BigDecimal deltaPercentage;
 
     @Column(name = "event_message", nullable = false)
     private String eventMessage;
@@ -99,6 +114,9 @@ public class AlertEvent {
         }
         if (alertStatus == null || alertStatus.isBlank()) {
             alertStatus = "OPEN";
+        }
+        if (detectionType == null || detectionType.isBlank()) {
+            detectionType = "THRESHOLD";
         }
         if (triggerCount == null || triggerCount <= 0) {
             triggerCount = 1;

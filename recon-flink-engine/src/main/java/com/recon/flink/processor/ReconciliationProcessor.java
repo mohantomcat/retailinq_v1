@@ -4,8 +4,12 @@ import com.recon.flink.domain.DiscrepancyType;
 import com.recon.flink.domain.FlatPosTransaction;
 import com.recon.flink.domain.FlatSimTransaction;
 import com.recon.flink.domain.ItemDiscrepancy;
+import com.recon.flink.domain.MatchEvaluation;
+import com.recon.flink.domain.MatchToleranceProfile;
 import com.recon.flink.domain.ReconEvent;
 import com.recon.flink.util.ItemDiffEngine;
+import com.recon.flink.util.MatchScoringEngine;
+import com.recon.flink.util.MatchToleranceResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
@@ -33,6 +37,7 @@ public class ReconciliationProcessor
 
     private final String reconView;
     private final String expectedSimSource;
+    private final MatchToleranceProfile toleranceProfile;
 
     private ValueState<FlatPosTransaction> xstoreState;
     private ValueState<FlatSimTransaction> siocsState;
@@ -45,6 +50,7 @@ public class ReconciliationProcessor
     public ReconciliationProcessor(String reconView, String expectedSimSource) {
         this.reconView = reconView;
         this.expectedSimSource = expectedSimSource;
+        this.toleranceProfile = MatchToleranceResolver.resolve(reconView);
     }
 
     @Override
@@ -184,36 +190,61 @@ public class ReconciliationProcessor
                            FlatSimTransaction siocs,
                            Collector<ReconEvent> out) throws Exception {
 
+        int totalLines = lineItemCount(xstore);
+
         if (hasDuplicateItemsInTargetComparedToXstore(xstore, siocs)) {
-            out.collect(ReconEvent.duplicate(siocs, reconView));
+            out.collect(ReconEvent.duplicate(
+                    siocs,
+                    reconView,
+                    MatchScoringEngine.outcome(
+                            toleranceProfile,
+                            18,
+                            "MISMATCH",
+                            "DUPLICATE",
+                            "Duplicate target posting detected during reconciliation",
+                            totalLines
+                    )
+            ));
             clearAllState(duplicateStatus(), xstore.getChecksum());
             return;
         }
 
         if (xstore.getChecksum() != null
                 && xstore.getChecksum().equals(siocs.getChecksum())) {
-            out.collect(ReconEvent.matched(xstore, siocs, reconView));
+            out.collect(ReconEvent.matched(
+                    xstore,
+                    siocs,
+                    reconView,
+                    List.of(),
+                    MatchScoringEngine.exactChecksumMatch(toleranceProfile, totalLines)
+            ));
             clearAllState("MATCHED", xstore.getChecksum());
             return;
         }
 
         List<ItemDiscrepancy> discrepancies = ItemDiffEngine.diff(
-                xstore.getLineItems(), siocs.getLineItems());
+                xstore.getLineItems(), siocs.getLineItems(), "Xstore", expectedSimSource, toleranceProfile);
+        MatchEvaluation evaluation = MatchScoringEngine.evaluate(
+                toleranceProfile,
+                totalLines,
+                discrepancies,
+                null,
+                null
+        );
 
-        if (discrepancies.isEmpty()) {
-            out.collect(ReconEvent.matched(xstore, siocs, reconView));
+        if (evaluation.materialDiscrepancyCount() == 0) {
+            out.collect(ReconEvent.matched(xstore, siocs, reconView, discrepancies, evaluation));
             clearAllState("MATCHED", xstore.getChecksum());
             return;
         }
 
-        boolean hasItemMissing = discrepancies.stream()
-                .anyMatch(d -> d.getType() == DiscrepancyType.ITEM_MISSING);
+        boolean hasItemMissing = hasMaterialType(discrepancies, DiscrepancyType.ITEM_MISSING, DiscrepancyType.ITEM_EXTRA);
 
         if (hasItemMissing) {
-            out.collect(ReconEvent.itemMissing(xstore, siocs, discrepancies, reconView));
+            out.collect(ReconEvent.itemMissing(xstore, siocs, discrepancies, reconView, evaluation));
             clearAllState("ITEM_MISSING", xstore.getChecksum());
         } else {
-            out.collect(ReconEvent.quantityMismatch(xstore, siocs, discrepancies, reconView));
+            out.collect(ReconEvent.quantityMismatch(xstore, siocs, discrepancies, reconView, evaluation));
             clearAllState("QUANTITY_MISMATCH", xstore.getChecksum());
         }
     }
@@ -250,6 +281,20 @@ public class ReconciliationProcessor
     private String normalize(String value, String fallback) {
         String normalized = Objects.toString(value, "").trim();
         return normalized.isEmpty() ? fallback : normalized;
+    }
+
+    private boolean hasMaterialType(List<ItemDiscrepancy> discrepancies, DiscrepancyType... types) {
+        if (discrepancies == null || discrepancies.isEmpty()) {
+            return false;
+        }
+        List<DiscrepancyType> allowed = List.of(types);
+        return discrepancies.stream()
+                .filter(discrepancy -> !discrepancy.isWithinTolerance())
+                .anyMatch(discrepancy -> allowed.contains(discrepancy.getType()));
+    }
+
+    private int lineItemCount(FlatPosTransaction xstore) {
+        return xstore != null && xstore.getLineItems() != null ? xstore.getLineItems().length : 0;
     }
 
     private void handleCorrection(FlatSimTransaction siocs,

@@ -19,11 +19,40 @@ public interface ExceptionCaseRepository extends JpaRepository<ExceptionCase, UU
     @Query("""
             select e from ExceptionCase e
             where e.tenantId = :tenantId
-              and e.reconView = :reconView
+              and (:reconView is null or e.reconView = :reconView)
               and e.caseStatus not in ('RESOLVED', 'IGNORED')
               and e.updatedAt >= :since
             """)
     List<ExceptionCase> findActiveCasesForAging(String tenantId,
                                                 String reconView,
                                                 LocalDateTime since);
+
+    @Query("""
+            select e from ExceptionCase e
+            where e.caseStatus not in ('RESOLVED', 'IGNORED')
+              and e.updatedAt >= :since
+            """)
+    List<ExceptionCase> findRecentActiveCases(LocalDateTime since);
+
+    @Query("""
+            select e from ExceptionCase e
+            where e.tenantId = :tenantId
+              and (:reconView is null or e.reconView = :reconView)
+              and (:storeId is null or e.storeId = :storeId)
+              and e.createdAt >= :since
+            """)
+    List<ExceptionCase> findForRootCauseAnalytics(String tenantId,
+                                                  String reconView,
+                                                  String storeId,
+                                                  LocalDateTime since);
+
+    @Query("""
+            select e from ExceptionCase e
+            where e.tenantId = :tenantId
+              and (:reconView is null or e.reconView = :reconView)
+              and e.createdAt >= :since
+            """)
+    List<ExceptionCase> findForRecurrenceAnalytics(String tenantId,
+                                                   String reconView,
+                                                   LocalDateTime since);
 }

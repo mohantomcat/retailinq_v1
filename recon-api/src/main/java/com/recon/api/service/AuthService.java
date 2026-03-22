@@ -27,6 +27,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLedgerService auditLedgerService;
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -52,6 +53,21 @@ public class AuthService {
 
         user.setLastLogin(LocalDateTime.now());
         userRepository.save(user);
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(user.getTenantId())
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER_SESSION")
+                .entityKey(user.getId().toString())
+                .actionType("LOGIN_SUCCESS")
+                .title("User login successful")
+                .summary(user.getUsername())
+                .actor(user.getUsername())
+                .status("SUCCESS")
+                .referenceKey(user.getId().toString())
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "LOGIN"))
+                .build());
 
         Set<String> permissions = user.getAllPermissions();
         Set<String> storeIds = user.getStoreIds();
@@ -148,6 +164,14 @@ public class AuthService {
                 .findById(UUID.fromString(userId))
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
+        User before = User.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .tenantId(user.getTenantId())
+                .active(user.isActive())
+                .build();
 
         String fullName = request != null
                 ? trimToNull(request.getFullName())
@@ -177,6 +201,23 @@ public class AuthService {
         user.setEmail(email);
 
         User saved = userRepository.save(user);
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(saved.getTenantId())
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER_PROFILE")
+                .entityKey(saved.getId().toString())
+                .actionType("PROFILE_UPDATED")
+                .title("User profile updated")
+                .summary(saved.getUsername())
+                .actor(saved.getUsername())
+                .status("UPDATED")
+                .referenceKey(saved.getId().toString())
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "PROFILE"))
+                .beforeState(before)
+                .afterState(saved)
+                .build());
 
         log.info("Profile updated for user {}", saved.getUsername());
 
@@ -225,6 +266,22 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(user.getTenantId())
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER_PASSWORD")
+                .entityKey(user.getId().toString())
+                .actionType("PASSWORD_CHANGED")
+                .title("User password changed")
+                .summary(user.getUsername())
+                .actor(user.getUsername())
+                .status("UPDATED")
+                .referenceKey(user.getId().toString())
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "PASSWORD"))
+                .afterState(java.util.Map.of("passwordChanged", true))
+                .build());
 
         log.info("Password changed for user {}", user.getUsername());
     }

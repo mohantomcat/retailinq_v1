@@ -19,7 +19,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +34,11 @@ public class AlertGenerationService {
     private final ReconQueryService reconQueryService;
     private final ExceptionCaseRepository exceptionCaseRepository;
     private final TenantService tenantService;
+    private final AlertEmailNotificationService alertEmailNotificationService;
+    private final AlertWebhookNotificationService alertWebhookNotificationService;
+    private final AlertPersonalSubscriptionNotificationService personalSubscriptionNotificationService;
+    private final AlertSmsNotificationService alertSmsNotificationService;
+    private final AuditLedgerService auditLedgerService;
 
     @Value("${app.alerting.enabled:true}")
     private boolean alertingEnabled;
@@ -64,9 +72,18 @@ public class AlertGenerationService {
 
             if (event == null) {
                 alertEventRepository.findLatestActiveByRuleIdAndScopeKey(rule.getId(), scopeKey)
-                        .ifPresent(existing -> refreshEvent(existing, metricValue, rule));
+                        .ifPresent(existing -> {
+                            Map<String, Object> beforeState = snapshotEvent(existing);
+                            refreshEvent(existing, metricValue, rule);
+                            recordEventAudit(existing,
+                                    "EVENT_RETRIGGERED",
+                                    "Alert event retriggered",
+                                    existing.getEventMessage(),
+                                    "system",
+                                    beforeState);
+                        });
                 if (alertEventRepository.findLatestActiveByRuleIdAndScopeKey(rule.getId(), scopeKey).isEmpty()) {
-                    alertEventRepository.save(AlertEvent.builder()
+                    AlertEvent savedEvent = alertEventRepository.save(AlertEvent.builder()
                             .ruleId(rule.getId())
                             .tenantId(rule.getTenantId())
                             .ruleName(rule.getRuleName())
@@ -84,22 +101,50 @@ public class AlertGenerationService {
                             .firstTriggeredAt(LocalDateTime.now())
                             .lastTriggeredAt(LocalDateTime.now())
                             .build());
+                    recordEventAudit(savedEvent,
+                            "EVENT_OPENED",
+                            "Alert event opened",
+                            savedEvent.getEventMessage(),
+                            "system",
+                            null);
+                    alertEmailNotificationService.notifyTriggeredEvent(rule, savedEvent, false);
+                    alertWebhookNotificationService.notifyTriggeredEvent(rule, savedEvent, false);
+                    personalSubscriptionNotificationService.notifyTriggeredEvent(rule, savedEvent, false);
+                    alertSmsNotificationService.notifyTriggeredEvent(rule, savedEvent, false);
                 }
                 return;
             }
 
+            Map<String, Object> beforeState = snapshotEvent(event);
             refreshEvent(event, metricValue, rule);
+            recordEventAudit(event,
+                    "EVENT_RETRIGGERED",
+                    "Alert event retriggered",
+                    event.getEventMessage(),
+                    "system",
+                    beforeState);
+            alertEmailNotificationService.notifyTriggeredEvent(rule, event, true);
+            alertWebhookNotificationService.notifyTriggeredEvent(rule, event, true);
+            personalSubscriptionNotificationService.notifyTriggeredEvent(rule, event, true);
+            alertSmsNotificationService.notifyTriggeredEvent(rule, event, true);
             return;
         }
 
         alertEventRepository.findLatestActiveByRuleIdAndScopeKey(rule.getId(), scopeKey)
                 .ifPresent(existing -> {
+                    Map<String, Object> beforeState = snapshotEvent(existing);
                     existing.setAlertStatus("RESOLVED");
                     existing.setResolvedBy("system");
                     existing.setResolvedAt(LocalDateTime.now());
                     existing.setMetricValue(metricValue);
                     existing.setEventMessage(buildResolvedMessage(rule, metricValue));
                     alertEventRepository.save(existing);
+                    recordEventAudit(existing,
+                            "EVENT_AUTO_RESOLVED",
+                            "Alert event auto-resolved",
+                            existing.getEventMessage(),
+                            "system",
+                            beforeState);
                 });
     }
 
@@ -215,5 +260,71 @@ public class AlertGenerationService {
             case "OPEN_EXCEPTIONS_7_PLUS" -> "Open exceptions 7+ days";
             default -> metricKey;
         };
+    }
+
+    private void recordEventAudit(AlertEvent event,
+                                  String actionType,
+                                  String title,
+                                  String summary,
+                                  String actor,
+                                  Object beforeState) {
+        if (event == null || event.getTenantId() == null || event.getTenantId().isBlank()) {
+            return;
+        }
+        auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
+                .tenantId(event.getTenantId())
+                .sourceType("ALERT")
+                .moduleKey(event.getReconView())
+                .entityType("ALERT_EVENT")
+                .entityKey(event.getId() != null ? event.getId().toString() : event.getScopeKey())
+                .actionType(actionType)
+                .title(title)
+                .summary(summary)
+                .actor(actor)
+                .status(event.getAlertStatus())
+                .referenceKey(event.getId() != null ? event.getId().toString() : event.getScopeKey())
+                .controlFamily("MONITORING")
+                .evidenceTags(List.of("ALERT", "EVENT"))
+                .beforeState(beforeState)
+                .afterState(snapshotEvent(event))
+                .eventAt(LocalDateTime.now())
+                .build());
+    }
+
+    private Map<String, Object> snapshotEvent(AlertEvent event) {
+        if (event == null) {
+            return null;
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("id", event.getId());
+        snapshot.put("ruleId", event.getRuleId());
+        snapshot.put("ruleName", event.getRuleName());
+        snapshot.put("reconView", event.getReconView());
+        snapshot.put("metricKey", event.getMetricKey());
+        snapshot.put("severity", event.getSeverity());
+        snapshot.put("scopeKey", event.getScopeKey());
+        snapshot.put("storeId", trimToNull(event.getStoreId()));
+        snapshot.put("wkstnId", trimToNull(event.getWkstnId()));
+        snapshot.put("alertStatus", event.getAlertStatus());
+        snapshot.put("metricValue", event.getMetricValue());
+        snapshot.put("thresholdValue", event.getThresholdValue());
+        snapshot.put("eventMessage", event.getEventMessage());
+        snapshot.put("triggerCount", event.getTriggerCount());
+        snapshot.put("firstTriggeredAt", valueOrNull(event.getFirstTriggeredAt()));
+        snapshot.put("lastTriggeredAt", valueOrNull(event.getLastTriggeredAt()));
+        snapshot.put("acknowledgedBy", trimToNull(event.getAcknowledgedBy()));
+        snapshot.put("acknowledgedAt", valueOrNull(event.getAcknowledgedAt()));
+        snapshot.put("resolvedBy", trimToNull(event.getResolvedBy()));
+        snapshot.put("resolvedAt", valueOrNull(event.getResolvedAt()));
+        return snapshot;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = Objects.toString(value, "").trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String valueOrNull(Object value) {
+        return value == null ? null : value.toString();
     }
 }

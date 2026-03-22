@@ -161,6 +161,38 @@ public class ReconElasticsearchRepository {
         }
     }
 
+    public List<ReconSummary> findByTransactionKeys(List<String> transactionKeys) {
+        if (transactionKeys == null || transactionKeys.isEmpty()) {
+            return List.of();
+        }
+        try {
+            SearchRequest esReq = SearchRequest.of(s -> s
+                    .index(INDEX)
+                    .query(q -> q
+                            .terms(t -> t
+                                    .field("transactionKey.keyword")
+                                    .terms(tv -> tv.value(
+                                            transactionKeys.stream()
+                                                    .filter(value -> value != null && !value.isBlank())
+                                                    .distinct()
+                                                    .map(FieldValue::of)
+                                                    .collect(Collectors.toList())))))
+                    .size(Math.max(transactionKeys.size(), 100)));
+
+            SearchResponse<Map> response = esClient.search(esReq, Map.class);
+            List<ReconSummary> results = new ArrayList<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                ReconSummary summary = objectMapper.convertValue(hit.source(), ReconSummary.class);
+                enrichWkstnId(summary);
+                results.add(summary);
+            }
+            return results;
+        } catch (Exception e) {
+            log.error("ES findByKeys failed count={}: {}", transactionKeys.size(), e.getMessage(), e);
+            return List.of();
+        }
+    }
+
     public Map<String, Long> aggregateByStatus(
             List<String> storeIds,
             List<String> wkstnIds,

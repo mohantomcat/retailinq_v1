@@ -3,8 +3,12 @@ package com.recon.flink.processor;
 import com.recon.flink.domain.DiscrepancyType;
 import com.recon.flink.domain.FlatPosTransaction;
 import com.recon.flink.domain.ItemDiscrepancy;
+import com.recon.flink.domain.MatchEvaluation;
+import com.recon.flink.domain.MatchToleranceProfile;
 import com.recon.flink.domain.ReconEvent;
 import com.recon.flink.util.ItemDiffEngine;
+import com.recon.flink.util.MatchScoringEngine;
+import com.recon.flink.util.MatchToleranceResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
@@ -16,6 +20,7 @@ import org.apache.flink.util.Collector;
 
 import java.util.List;
 import java.util.Objects;
+import java.math.BigDecimal;
 
 @Slf4j
 public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<String, FlatPosTransaction, FlatPosTransaction, ReconEvent> {
@@ -25,6 +30,7 @@ public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<Stri
 
     private final String reconView;
     private final String counterSource;
+    private final MatchToleranceProfile toleranceProfile;
 
     private ValueState<FlatPosTransaction> xstoreState;
     private ValueState<FlatPosTransaction> counterState;
@@ -32,6 +38,7 @@ public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<Stri
     public PosToPosReconciliationProcessor(String reconView, String counterSource) {
         this.reconView = reconView;
         this.counterSource = counterSource;
+        this.toleranceProfile = MatchToleranceResolver.resolve(reconView);
     }
 
     @Override
@@ -94,50 +101,99 @@ public class PosToPosReconciliationProcessor extends KeyedCoProcessFunction<Stri
     private void reconcile(FlatPosTransaction xstore,
                            FlatPosTransaction counter,
                            Collector<ReconEvent> out) {
-        if (xstore.getChecksum() != null && xstore.getChecksum().equals(counter.getChecksum())) {
-            out.collect(ReconEvent.matchedPos(xstore, counter, reconView, counterSource));
+        int totalLines = lineItemCount(xstore);
+        BigDecimal amountVariance = amountVariance(xstore.getTotalAmount(), counter.getTotalAmount());
+        MatchScoringEngine.ToleranceAssessment amountAssessment = MatchScoringEngine.assessVariance(
+                xstore.getTotalAmount(),
+                counter.getTotalAmount(),
+                toleranceProfile.amountAbsoluteTolerance(),
+                toleranceProfile.amountPercentTolerance()
+        );
+
+        if (xstore.getChecksum() != null && xstore.getChecksum().equals(counter.getChecksum()) && !isPositive(amountVariance)) {
+            out.collect(ReconEvent.matchedPos(
+                    xstore,
+                    counter,
+                    reconView,
+                    counterSource,
+                    List.of(),
+                    MatchScoringEngine.exactChecksumMatch(toleranceProfile, totalLines),
+                    null,
+                    null
+            ));
             return;
         }
 
         List<ItemDiscrepancy> discrepancies = ItemDiffEngine.diff(
-                xstore.getLineItems(), counter.getLineItems(), "Xstore", counterSource);
+                xstore.getLineItems(), counter.getLineItems(), "Xstore", counterSource, toleranceProfile);
+        MatchEvaluation evaluation = MatchScoringEngine.evaluate(
+                toleranceProfile,
+                totalLines,
+                discrepancies,
+                amountVariance,
+                amountAssessment.variancePercent()
+        );
 
-        if (discrepancies.isEmpty()) {
-            if (!amountEquals(xstore.getTotalAmount(), counter.getTotalAmount())) {
-                out.collect(ReconEvent.totalMismatchPos(
-                        xstore, counter, reconView, counterSource));
-                return;
-            }
-            out.collect(ReconEvent.matchedPos(xstore, counter, reconView, counterSource));
+        if (evaluation.materialDiscrepancyCount() == 0
+                && (!isPositive(amountVariance) || amountAssessment.withinTolerance())) {
+            out.collect(ReconEvent.matchedPos(
+                    xstore,
+                    counter,
+                    reconView,
+                    counterSource,
+                    discrepancies,
+                    evaluation,
+                    amountVariance,
+                    amountAssessment.variancePercent()
+            ));
             return;
         }
 
-        boolean hasItemGap = discrepancies.stream().anyMatch(d ->
-                d.getType() == DiscrepancyType.ITEM_MISSING
-                        || d.getType() == DiscrepancyType.ITEM_EXTRA);
+        boolean hasItemGap = hasMaterialType(discrepancies, DiscrepancyType.ITEM_MISSING, DiscrepancyType.ITEM_EXTRA);
+        boolean hasQuantityGap = hasMaterialType(discrepancies, DiscrepancyType.QUANTITY_MISMATCH, DiscrepancyType.UOM_MISMATCH);
+        boolean hasAmountGap = hasMaterialType(discrepancies, DiscrepancyType.AMOUNT_MISMATCH)
+                || (isPositive(amountVariance) && !amountAssessment.withinTolerance());
 
         if (hasItemGap) {
             out.collect(ReconEvent.itemMissingPos(
-                    xstore, counter, discrepancies, reconView, counterSource));
-        } else {
+                    xstore, counter, discrepancies, reconView, counterSource, evaluation));
+        } else if (hasQuantityGap) {
             out.collect(ReconEvent.quantityMismatchPos(
-                    xstore, counter, discrepancies, reconView, counterSource));
+                    xstore, counter, discrepancies, reconView, counterSource, evaluation, amountVariance, amountAssessment.variancePercent()));
+        } else if (hasAmountGap) {
+            out.collect(ReconEvent.totalMismatchPos(
+                    xstore, counter, discrepancies, reconView, counterSource, evaluation, amountVariance, amountAssessment.variancePercent()));
         }
-    }
-
-    private boolean amountEquals(java.math.BigDecimal left, java.math.BigDecimal right) {
-        if (left == null && right == null) {
-            return true;
-        }
-        if (left == null || right == null) {
-            return false;
-        }
-        return left.compareTo(right) == 0;
     }
 
     private <T> ValueState<T> registerState(String name, Class<T> clazz, StateTtlConfig ttl) {
         ValueStateDescriptor<T> desc = new ValueStateDescriptor<>(name, clazz);
         desc.enableTimeToLive(ttl);
         return getRuntimeContext().getState(desc);
+    }
+
+    private boolean hasMaterialType(List<ItemDiscrepancy> discrepancies, DiscrepancyType... types) {
+        if (discrepancies == null || discrepancies.isEmpty()) {
+            return false;
+        }
+        List<DiscrepancyType> allowed = List.of(types);
+        return discrepancies.stream()
+                .filter(discrepancy -> !discrepancy.isWithinTolerance())
+                .anyMatch(discrepancy -> allowed.contains(discrepancy.getType()));
+    }
+
+    private int lineItemCount(FlatPosTransaction xstore) {
+        return xstore != null && xstore.getLineItems() != null ? xstore.getLineItems().length : 0;
+    }
+
+    private BigDecimal amountVariance(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null) {
+            return null;
+        }
+        return left.subtract(right).abs();
+    }
+
+    private boolean isPositive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
     }
 }

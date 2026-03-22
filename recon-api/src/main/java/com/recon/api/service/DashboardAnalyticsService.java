@@ -4,6 +4,7 @@ import com.recon.api.domain.DashboardAnalyticsResponse;
 import com.recon.api.domain.ExceptionAgingBucket;
 import com.recon.api.domain.ExceptionCase;
 import com.recon.api.domain.RankedLocationStat;
+import com.recon.api.domain.SlaSummaryDto;
 import com.recon.api.domain.TrendPoint;
 import com.recon.api.repository.ExceptionCaseRepository;
 import com.recon.api.repository.ReconElasticsearchRepository;
@@ -27,13 +28,17 @@ public class DashboardAnalyticsService {
 
     private final ReconElasticsearchRepository esRepository;
     private final ExceptionCaseRepository exceptionCaseRepository;
+    private final ExceptionSlaService exceptionSlaService;
 
-    public DashboardAnalyticsResponse getAnalytics(List<String> storeIds,
+    public DashboardAnalyticsResponse getAnalytics(String tenantId,
+                                                   List<String> storeIds,
                                                    List<String> wkstnIds,
                                                    String reconView) {
         String today = LocalDate.now().toString();
         String last7 = LocalDate.now().minusDays(6).toString();
         String last30 = LocalDate.now().minusDays(29).toString();
+        SlaSummaryDto slaSummary = exceptionSlaService.getSlaSummary(
+                tenantId, reconView, storeIds, wkstnIds);
 
         return DashboardAnalyticsResponse.builder()
                 .last7Days(buildTrend(last7, today, storeIds, wkstnIds, reconView))
@@ -44,7 +49,8 @@ public class DashboardAnalyticsService {
                 .topFailingRegisters(buildRankedStats(
                         esRepository.aggregateByFieldAndStatus(
                                 "wkstnId", 20, storeIds, wkstnIds, last30, today, reconView)))
-                .exceptionAging(buildExceptionAging(reconView))
+                .exceptionAging(buildExceptionAging(tenantId, reconView))
+                .slaSummary(slaSummary)
                 .build();
     }
 
@@ -127,10 +133,10 @@ public class DashboardAnalyticsService {
                 .collect(Collectors.toList());
     }
 
-    private List<ExceptionAgingBucket> buildExceptionAging(String reconView) {
+    private List<ExceptionAgingBucket> buildExceptionAging(String tenantId, String reconView) {
         String normalizedReconView = Objects.requireNonNullElse(reconView, "XSTORE_SIM").toUpperCase();
         List<ExceptionCase> cases = exceptionCaseRepository.findActiveCasesForAging(
-                "tenant-india",
+                tenantId,
                 normalizedReconView,
                 LocalDateTime.now().minusDays(30)
         );

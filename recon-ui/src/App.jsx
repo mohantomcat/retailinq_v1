@@ -9,7 +9,7 @@ import KpiMockup from './pages/KpiMockup'
 import Login from './pages/Login'
 import Unauthorized from './pages/Unauthorized'
 import ProtectedRoute from './components/ProtectedRoute'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, getTabLabel} from './constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS, getTabLabel} from './constants/navigation'
 
 function buildTheme() {
     return createTheme({
@@ -168,11 +168,23 @@ function AppRoutes() {
         id,
         label: getTabLabel(t, id),
     }))
+    const exceptionPairs = EXCEPTION_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const operationsPairs = OPERATIONS_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
     }))
+    const slaPairs = SLA_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const activityPairs = ACTIVITY_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const reportPairs = REPORT_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
     }))
@@ -214,9 +226,12 @@ function AppRoutes() {
                 drawerWidth={drawerWidth}
                 modules={reconciliationPairs}
                 alerts={alertPairs}
+                exceptionItems={exceptionPairs}
+                slaItems={slaPairs}
                 operations={operationsPairs}
                 activity={activityPairs}
                 configurations={configurationPairs}
+                reports={reportPairs}
                 activeTab={activeTab}
             onSelectTab={handleSidebarClick}
             sidebarCollapsed={sidebarCollapsed}

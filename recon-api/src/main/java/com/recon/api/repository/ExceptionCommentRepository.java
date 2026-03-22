@@ -9,4 +9,6 @@ import java.util.UUID;
 
 public interface ExceptionCommentRepository extends JpaRepository<ExceptionComment, UUID> {
     List<ExceptionComment> findByExceptionCaseOrderByCreatedAtAsc(ExceptionCase exceptionCase);
+
+    boolean existsByExceptionCase(ExceptionCase exceptionCase);
 }
