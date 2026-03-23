@@ -7,6 +7,7 @@ import com.recon.flink.domain.FlatPosTransaction;
 import com.recon.flink.domain.FlatSimTransaction;
 import com.recon.flink.domain.ItemDiscrepancy;
 import com.recon.flink.domain.ReconEvent;
+import com.recon.flink.processor.InventoryToInventoryReconciliationProcessor;
 import com.recon.flink.processor.ReconciliationProcessor;
 import com.recon.flink.processor.PosToPosReconciliationProcessor;
 import com.recon.flink.sink.ElasticsearchReconSink;
@@ -65,10 +66,32 @@ public class ReconFlinkJob {
                         .setValueOnlyDeserializer(new PosTransactionDeserializer())
                         .build();
 
+        KafkaSource<FlatSimTransaction> simDbSource =
+                KafkaSource.<FlatSimTransaction>builder()
+                        .setBootstrapServers("kafka:29092")
+                        .setTopics("sim.transactions.raw")
+                        .setGroupId("recon-engine")
+                        .setStartingOffsets(
+                                OffsetsInitializer.committedOffsets(
+                                        OffsetResetStrategy.EARLIEST))
+                        .setValueOnlyDeserializer(new SimTransactionDeserializer())
+                        .build();
+
         KafkaSource<FlatSimTransaction> siocsSource =
                 KafkaSource.<FlatSimTransaction>builder()
                         .setBootstrapServers("kafka:29092")
-                        .setTopics("sim.transactions.raw", "siocs.transactions.raw")
+                        .setTopics("siocs.transactions.raw")
+                        .setGroupId("recon-engine")
+                        .setStartingOffsets(
+                                OffsetsInitializer.committedOffsets(
+                                        OffsetResetStrategy.EARLIEST))
+                        .setValueOnlyDeserializer(new SimTransactionDeserializer())
+                        .build();
+
+        KafkaSource<FlatSimTransaction> mfcsSource =
+                KafkaSource.<FlatSimTransaction>builder()
+                        .setBootstrapServers("kafka:29092")
+                        .setTopics("mfcs.transactions.raw")
                         .setGroupId("recon-engine")
                         .setStartingOffsets(
                                 OffsetsInitializer.committedOffsets(
@@ -99,6 +122,15 @@ public class ReconFlinkJob {
                                 .withIdleness(Duration.ofMinutes(10)),
                         "Xstore Source");
 
+        DataStream<FlatSimTransaction> simDbStream =
+                env.fromSource(simDbSource,
+                        WatermarkStrategy
+                                .<FlatSimTransaction>forBoundedOutOfOrderness(Duration.ofHours(8))
+                                .withTimestampAssigner((event, ts) ->
+                                        parseTs(event.getTransactionDateTime()))
+                                .withIdleness(Duration.ofMinutes(10)),
+                        "SIM Source");
+
         DataStream<FlatSimTransaction> siocsStream =
                 env.fromSource(siocsSource,
                         WatermarkStrategy
@@ -107,6 +139,15 @@ public class ReconFlinkJob {
                                         parseTs(event.getTransactionDateTime()))
                                 .withIdleness(Duration.ofMinutes(10)),
                         "SIOCS Source");
+
+        DataStream<FlatSimTransaction> mfcsStream =
+                env.fromSource(mfcsSource,
+                        WatermarkStrategy
+                                .<FlatSimTransaction>forBoundedOutOfOrderness(Duration.ofHours(8))
+                                .withTimestampAssigner((event, ts) ->
+                                        parseTs(event.getTransactionDateTime()))
+                                .withIdleness(Duration.ofMinutes(10)),
+                        "MFCS Source");
 
         DataStream<FlatPosTransaction> xocsStream =
                 env.fromSource(xocsSource,
@@ -120,15 +161,6 @@ public class ReconFlinkJob {
                                 .withIdleness(Duration.ofMinutes(10)),
                         "XOCS Source");
 
-        DataStream<FlatSimTransaction> simDbStream = siocsStream
-                .filter(event -> "SIOCS".equalsIgnoreCase(event.getSource()))
-                .name("SIM DB Source");
-
-        DataStream<FlatSimTransaction> siocsCloudStream = siocsStream
-                .filter(event -> event.getSource() != null
-                        && !"SIOCS".equalsIgnoreCase(event.getSource()))
-                .name("SIOCS Cloud Source");
-
         DataStream<ReconEvent> simReconStream = xstoreStream
                 .keyBy(FlatPosTransaction::getTransactionKey)
                 .connect(simDbStream.keyBy(FlatSimTransaction::getTransactionKey))
@@ -137,8 +169,8 @@ public class ReconFlinkJob {
 
         DataStream<ReconEvent> siocsReconStream = xstoreStream
                 .keyBy(FlatPosTransaction::getTransactionKey)
-                .connect(siocsCloudStream.keyBy(FlatSimTransaction::getTransactionKey))
-                .process(new ReconciliationProcessor("XSTORE_SIOCS", "CLOUD_SIM"))
+                .connect(siocsStream.keyBy(FlatSimTransaction::getTransactionKey))
+                .process(new ReconciliationProcessor("XSTORE_SIOCS", "SIOCS"))
                 .name("Reconciliation Processor - Xstore vs SIOCS");
 
         DataStream<ReconEvent> xocsReconStream = xstoreStream
@@ -147,9 +179,16 @@ public class ReconFlinkJob {
                 .process(new PosToPosReconciliationProcessor("XSTORE_XOCS", "XOCS"))
                 .name("Reconciliation Processor - Xstore vs XOCS");
 
+        DataStream<ReconEvent> siocsMfcsReconStream = siocsStream
+                .keyBy(FlatSimTransaction::getTransactionKey)
+                .connect(mfcsStream.keyBy(FlatSimTransaction::getTransactionKey))
+                .process(new InventoryToInventoryReconciliationProcessor("SIOCS_MFCS", "SIOCS", "MFCS"))
+                .name("Reconciliation Processor - SIOCS vs MFCS");
+
         DataStream<ReconEvent> reconStream = simReconStream
                 .union(siocsReconStream)
-                .union(xocsReconStream);
+                .union(xocsReconStream)
+                .union(siocsMfcsReconStream);
 
         env.getConfig().registerPojoType(FlatPosTransaction.class);
         env.getConfig().registerPojoType(FlatSimTransaction.class);

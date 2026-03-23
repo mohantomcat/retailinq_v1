@@ -18,14 +18,23 @@ public class CloudTransactionEventMapper {
 
     private final CloudConnectorProperties properties;
 
-    private static final Map<Integer, String> TYPE_DESC = Map.of(
-            1, "Sale",
-            2, "Return",
-            3, "VoidSale",
-            4, "VoidReturn",
-            5, "CancelReservation",
-            6, "New",
-            8, "Fulfill"
+    private static final Map<Integer, String> TYPE_DESC = Map.ofEntries(
+            Map.entry(1, "Sale"),
+            Map.entry(2, "Return"),
+            Map.entry(3, "VoidSale"),
+            Map.entry(4, "VoidReturn"),
+            Map.entry(10, "Transfer"),
+            Map.entry(11, "StoreToStoreTransfer"),
+            Map.entry(12, "StoreToWarehouseTransfer"),
+            Map.entry(20, "Receiving"),
+            Map.entry(21, "StoreToStoreReceiving"),
+            Map.entry(22, "WarehouseDelivery"),
+            Map.entry(30, "DirectStoreDelivery"),
+            Map.entry(40, "InventoryAdjustment"),
+            Map.entry(50, "PurchaseOrder"),
+            Map.entry(60, "ReturnToVendor"),
+            Map.entry(70, "WarehouseDelivery"),
+            Map.entry(80, "StoreTransfer")
     );
 
     private static final Map<Integer, String> STATUS_DESC = Map.of(
@@ -44,6 +53,12 @@ public class CloudTransactionEventMapper {
             businessDate = rawDate.substring(0, 4) + "-" +
                     rawDate.substring(4, 6) + "-" +
                     rawDate.substring(6, 8);
+        } else if (transaction.getTransactionDateTime() != null) {
+            businessDate = transaction.getTransactionDateTime()
+                    .toInstant()
+                    .atZone(java.time.ZoneOffset.UTC)
+                    .toLocalDate()
+                    .toString();
         }
 
         return CloudTransactionEvent.builder()
@@ -61,7 +76,7 @@ public class CloudTransactionEventMapper {
                 .transactionDateTime(toUtcString(transaction.getTransactionDateTime()))
                 .updateDateTime(toUtcString(transaction.getUpdateDateTime()))
                 .transactionType(transaction.getType())
-                .transactionTypeDesc(TYPE_DESC.getOrDefault(transaction.getType(), "UNKNOWN"))
+                .transactionTypeDesc(resolveTransactionTypeDesc(transaction.getType()))
                 .processingStatus(transaction.getProcessingStatus())
                 .processingStatusDesc(STATUS_DESC.getOrDefault(transaction.getProcessingStatus(), "UNKNOWN"))
                 .lineItems(transaction.getLineItems())
@@ -100,5 +115,12 @@ public class CloudTransactionEventMapper {
                 timestamp.toInstant().toString(),
                 properties.getTenantTimezone());
         return utc.toString();
+    }
+
+    private String resolveTransactionTypeDesc(Integer type) {
+        if (type == null) {
+            return "UNKNOWN";
+        }
+        return TYPE_DESC.getOrDefault(type, "TRANSACTION_" + type);
     }
 }

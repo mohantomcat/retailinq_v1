@@ -4,6 +4,21 @@ const getAccessToken = () =>
     sessionStorage.getItem('recon_access_token')
 
 export const authApi = {
+    getLoginOptions: async (tenantId) => {
+        const params = new URLSearchParams()
+        if (tenantId) {
+            params.set('tenantId', tenantId)
+        }
+        const res = await fetch(
+            `${BASE}/auth/login-options${params.toString() ? `?${params}` : ''}`
+        )
+        const json = await res.json()
+        if (!res.ok) {
+            throw new Error(json.message || 'Failed to load login options')
+        }
+        return json.data
+    },
+
     login: async ({username, password, tenantId}) => {
         const res = await fetch(`${BASE}/auth/login`, {
             method: 'POST',

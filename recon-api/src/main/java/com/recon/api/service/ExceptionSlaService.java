@@ -40,6 +40,10 @@ public class ExceptionSlaService {
             Map.entry("XSTORE_SIOCS|MEDIUM", 240),
             Map.entry("XSTORE_SIOCS|HIGH", 120),
             Map.entry("XSTORE_SIOCS|CRITICAL", 60),
+            Map.entry("SIOCS_MFCS|LOW", 720),
+            Map.entry("SIOCS_MFCS|MEDIUM", 240),
+            Map.entry("SIOCS_MFCS|HIGH", 120),
+            Map.entry("SIOCS_MFCS|CRITICAL", 60),
             Map.entry("XSTORE_XOCS|LOW", 720),
             Map.entry("XSTORE_XOCS|MEDIUM", 240),
             Map.entry("XSTORE_XOCS|HIGH", 120),
@@ -341,6 +345,7 @@ public class ExceptionSlaService {
     private String moduleLabel(String reconView) {
         return switch (Objects.toString(reconView, "").toUpperCase()) {
             case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
+            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
             case "XSTORE_XOCS" -> "Xstore vs XOCS";
             case "XSTORE_SIM" -> "Xstore vs SIM";
             default -> defaultLabel(reconView, "Unknown Module");

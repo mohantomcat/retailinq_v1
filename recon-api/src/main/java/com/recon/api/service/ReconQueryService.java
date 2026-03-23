@@ -53,6 +53,7 @@ public class ReconQueryService {
                 req.getFromBusinessDate(),
                 req.getToBusinessDate(),
                 req.getWkstnIds(),
+                req.getTransactionTypes(),
                 req.getReconView());
 
         int totalPages = (int) Math.ceil(
@@ -104,11 +105,12 @@ public class ReconQueryService {
 
         Map<String, Long> byStatus =
                 esRepository.aggregateByStatus(
-                        storeIds, wkstnIds, fromBusinessDate, toBusinessDate, reconView);
+                        storeIds, wkstnIds, null, fromBusinessDate, toBusinessDate, reconView);
         Map<String, Long> byStore =
                 esRepository.aggregateByStore(
                         storeIds,
                         wkstnIds,
+                        null,
                         fromBusinessDate, toBusinessDate, reconView);
 
         long matched =
@@ -179,6 +181,9 @@ public class ReconQueryService {
     private String targetSystem(String reconView) {
         if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
             return "SIOCS";
+        }
+        if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
+            return "MFCS";
         }
         if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
             return "XOCS";
@@ -259,6 +264,18 @@ public class ReconQueryService {
                         storeIds,
                         reconView)
                 .stream().sorted()
+                .collect(Collectors.toList());
+    }
+
+    public List<String> getTransactionTypes(List<String> storeIds, String reconView) {
+        return esRepository.aggregateDistinctWithFilter(
+                        "transactionType.keyword",
+                        "storeId.keyword",
+                        storeIds,
+                        reconView)
+                .stream()
+                .filter(value -> value != null && !value.isBlank())
+                .sorted()
                 .collect(Collectors.toList());
     }
 }

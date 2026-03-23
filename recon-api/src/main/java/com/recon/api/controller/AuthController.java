@@ -32,6 +32,18 @@ public class AuthController {
         }
     }
 
+    @GetMapping("/login-options")
+    public ResponseEntity<ApiResponse<LoginOptionsResponse>> getLoginOptions(
+            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId) {
+        try {
+            return ResponseEntity.ok(ApiResponse.ok(
+                    authService.getLoginOptions(tenantId)));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<LoginResponse>> refresh(
             @RequestHeader("X-Refresh-Token")

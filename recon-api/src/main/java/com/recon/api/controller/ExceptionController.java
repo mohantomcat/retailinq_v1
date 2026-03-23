@@ -6,6 +6,7 @@ import com.recon.api.domain.BulkUpdateExceptionCasesRequest;
 import com.recon.api.domain.BulkUpdateExceptionCasesResponse;
 import com.recon.api.domain.DecideExceptionApprovalRequest;
 import com.recon.api.domain.CreateExceptionExternalTicketRequest;
+import com.recon.api.domain.ExceptionCase;
 import com.recon.api.domain.ExceptionApprovalCenterResponse;
 import com.recon.api.domain.ExceptionApprovalRequestDto;
 import com.recon.api.domain.ExceptionAutomationCenterResponse;
@@ -43,12 +44,14 @@ import com.recon.api.domain.SubmitKnownIssueFeedbackRequest;
 import com.recon.api.domain.SyncExceptionExternalTicketRequest;
 import com.recon.api.domain.UpdateExceptionCaseRequest;
 import com.recon.api.security.ReconUserPrincipal;
+import com.recon.api.service.AccessScopeService;
 import com.recon.api.service.ExceptionAutomationService;
 import com.recon.api.service.ExceptionQueueService;
 import com.recon.api.service.ExceptionEscalationService;
 import com.recon.api.service.ExceptionWorkflowService;
 import com.recon.api.service.ExceptionWorkbenchService;
 import com.recon.api.service.ExceptionCollaborationService;
+import com.recon.api.service.ExceptionScopeResolver;
 import com.recon.api.service.KnownIssueService;
 import com.recon.api.service.ExceptionNoiseSuppressionService;
 import com.recon.api.service.OperationsCommandCenterService;
@@ -71,6 +74,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/exceptions")
 @RequiredArgsConstructor
@@ -90,6 +95,8 @@ public class ExceptionController {
     private final ExceptionCollaborationService exceptionCollaborationService;
     private final ExceptionNoiseSuppressionService exceptionNoiseSuppressionService;
     private final OperationsCommandCenterService operationsCommandCenterService;
+    private final AccessScopeService accessScopeService;
+    private final ExceptionScopeResolver exceptionScopeResolver;
 
     @GetMapping("/cases/{transactionKey}")
     public ResponseEntity<ApiResponse<ExceptionCaseDto>> getCase(
@@ -98,8 +105,8 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireCaseAccess(principal, reconView, false);
-            return ResponseEntity.ok(ApiResponse.ok(
-                    service.getCase(principal.getTenantId(), transactionKey, reconView)));
+            ExceptionCaseDto exceptionCase = requireAccessibleCase(principal, transactionKey, reconView);
+            return ResponseEntity.ok(ApiResponse.ok(exceptionCase));
         } catch (Exception e) {
             log.error("Get exception case error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
@@ -113,6 +120,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireCaseAccess(principal, request != null ? request.getReconView() : null, true);
+            requireTransactionStoreAccess(principal, transactionKey, request != null ? request.getStoreId() : null);
             return ResponseEntity.ok(ApiResponse.ok(
                     service.upsertCase(
                             principal.getTenantId(),
@@ -133,6 +141,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireCaseAccess(principal, request != null ? request.getReconView() : null, true);
+            requireAccessibleCase(principal, transactionKey, request != null ? request.getReconView() : null);
             return ResponseEntity.ok(ApiResponse.ok(
                     service.addComment(
                             principal.getTenantId(),
@@ -155,6 +164,7 @@ public class ExceptionController {
         try {
             requireCaseAccess(principal, reconView, false);
             requirePermission(principal, "OPS_EXECUTE_SAFE");
+            requireAccessibleCase(principal, transactionKey, reconView);
             return ResponseEntity.ok(ApiResponse.ok(
                     service.executePlaybookStep(
                             principal.getTenantId(),
@@ -183,6 +193,11 @@ public class ExceptionController {
                     .filter(reconView -> reconView != null && !reconView.isBlank())
                     .distinct()
                     .forEach(reconView -> requireCaseAccess(principal, reconView, true));
+            request.getItems().forEach(item -> {
+                if (item != null) {
+                    requireAccessibleCase(principal, item.getTransactionKey(), item.getReconView());
+                }
+            });
 
             return ResponseEntity.ok(ApiResponse.ok(
                     service.bulkUpdateCases(
@@ -227,10 +242,19 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireQueueAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, List.of());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(ExceptionQueueResponse.builder()
+                        .summary(com.recon.api.domain.ExceptionQueueSummaryDto.builder().build())
+                        .storeIncidents(List.of())
+                        .items(List.of())
+                        .build()));
+            }
             return ResponseEntity.ok(ApiResponse.ok(
                     queueService.getQueue(
                             principal.getTenantId(),
                             principal.getUsername(),
+                            storeScope.storeIds(),
                             reconView,
                             queueType,
                             caseStatus,
@@ -253,11 +277,19 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReportAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(
+                    principal,
+                    storeId != null && !storeId.isBlank() ? List.of(storeId) : List.of()
+            );
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(RootCauseAnalyticsResponse.builder().build()));
+            }
             return ResponseEntity.ok(ApiResponse.ok(
                     rootCauseAnalyticsService.getAnalytics(
                             principal.getTenantId(),
                             reconView,
                             allowedReconViews(principal),
+                            storeScope.storeIds(),
                             storeId,
                             fromBusinessDate,
                             toBusinessDate
@@ -277,11 +309,19 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReportAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(
+                    principal,
+                    storeId != null && !storeId.isBlank() ? List.of(storeId) : List.of()
+            );
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(RecurrenceAnalyticsResponse.builder().build()));
+            }
             return ResponseEntity.ok(ApiResponse.ok(
                     recurrenceAnalyticsService.getAnalytics(
                             principal.getTenantId(),
                             reconView,
                             allowedReconViews(principal),
+                            storeScope.storeIds(),
                             storeId,
                             fromBusinessDate,
                             toBusinessDate
@@ -298,10 +338,15 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReportAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, List.of());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(OperationsCommandCenterResponse.builder().build()));
+            }
             return ResponseEntity.ok(ApiResponse.ok(
                     operationsCommandCenterService.getCenter(
                             principal.getTenantId(),
                             principal.getUsername(),
+                            storeScope.storeIds(),
                             allowedReconViews(principal),
                             reconView
                     )));
@@ -319,10 +364,15 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireQueueAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, List.of());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(RegionalIncidentBoardResponse.builder().build()));
+            }
             return ResponseEntity.ok(ApiResponse.ok(
                     regionalIncidentBoardService.getBoard(
                             principal.getTenantId(),
                             principal.getUsername(),
+                            storeScope.storeIds(),
                             allowedReconViews(principal),
                             reconView,
                             outbreakStatus,
@@ -342,14 +392,18 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireQueueAccess(principal, reconView);
-            if (storeId != null && !storeId.isBlank() && !principal.canAccessStore(storeId)) {
-                throw new AccessDeniedException("Missing access to store: " + storeId);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(
+                    principal,
+                    storeId != null && !storeId.isBlank() ? List.of(storeId) : List.of()
+            );
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(StoreManagerLiteResponse.builder().build()));
             }
             return ResponseEntity.ok(ApiResponse.ok(
                     storeManagerLiteService.getView(
                             principal.getTenantId(),
                             principal.getUsername(),
-                            principal.getStoreIds(),
+                            new java.util.LinkedHashSet<>(storeScope.storeIds()),
                             reconView,
                             storeId,
                             search
@@ -971,6 +1025,7 @@ public class ExceptionController {
             case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
             case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
             case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
+            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
             default -> null;
         };
         if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
@@ -1016,6 +1071,7 @@ public class ExceptionController {
             case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
             case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
             case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
+            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
             default -> null;
         };
         if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
@@ -1034,12 +1090,41 @@ public class ExceptionController {
         if (principal.hasPermission("RECON_XSTORE_XOCS")) {
             allowed.add("XSTORE_XOCS");
         }
+        if (principal.hasPermission("RECON_SIOCS_MFCS")) {
+            allowed.add("SIOCS_MFCS");
+        }
         return allowed;
     }
 
     private void requirePermission(ReconUserPrincipal principal, String permission) {
         if (!principal.hasPermission(permission)) {
             throw new AccessDeniedException("Missing permission: " + permission);
+        }
+    }
+
+    private ExceptionCaseDto requireAccessibleCase(ReconUserPrincipal principal,
+                                                   String transactionKey,
+                                                   String reconView) {
+        ExceptionCaseDto exceptionCase = service.getCase(principal.getTenantId(), transactionKey, reconView);
+        if (exceptionCase == null) {
+            throw new IllegalArgumentException("Exception case not found");
+        }
+        if (!accessScopeService.canAccessStore(principal, exceptionCase.getStoreId())) {
+            throw new AccessDeniedException("Missing access to store: " + exceptionCase.getStoreId());
+        }
+        return exceptionCase;
+    }
+
+    private void requireTransactionStoreAccess(ReconUserPrincipal principal,
+                                               String transactionKey,
+                                               String explicitStoreId) {
+        ExceptionCase scopeCase = ExceptionCase.builder()
+                .transactionKey(transactionKey)
+                .storeId(explicitStoreId)
+                .build();
+        String resolvedStoreId = exceptionScopeResolver.resolveStoreId(scopeCase);
+        if (!accessScopeService.canAccessStore(principal, resolvedStoreId)) {
+            throw new AccessDeniedException("Missing access to store: " + resolvedStoreId);
         }
     }
 }

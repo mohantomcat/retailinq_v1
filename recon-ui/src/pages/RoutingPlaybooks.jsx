@@ -27,26 +27,25 @@ import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
+import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: '', label: 'All Modules'},
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
 
 const RECON_STATUS_OPTIONS = [
     '',
     'MISSING_IN_SIM',
     'MISSING_IN_SIOCS',
+    'MISSING_IN_MFCS',
     'MISSING_IN_XOCS',
     'PROCESSING_PENDING_IN_SIM',
     'PROCESSING_PENDING_IN_SIOCS',
+    'PROCESSING_PENDING_IN_MFCS',
     'ITEM_MISSING',
     'QUANTITY_MISMATCH',
     'TOTAL_MISMATCH',
     'DUPLICATE_IN_SIM',
     'DUPLICATE_IN_SIOCS',
+    'DUPLICATE_IN_MFCS',
     'DUPLICATE_IN_XOCS',
 ]
 
@@ -77,6 +76,7 @@ const OPERATION_MODULE_OPTIONS = [
     'xstore-publisher',
     'sim-poller',
     'siocs-cloud-connector',
+    'mfcs-rds-connector',
     'xocs-cloud-connector',
 ]
 

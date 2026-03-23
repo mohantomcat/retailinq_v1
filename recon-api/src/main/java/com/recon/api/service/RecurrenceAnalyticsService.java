@@ -47,6 +47,7 @@ public class RecurrenceAnalyticsService {
     public RecurrenceAnalyticsResponse getAnalytics(String tenantId,
                                                     String reconView,
                                                     List<String> allowedReconViews,
+                                                    java.util.Collection<String> accessibleStoreIds,
                                                     String storeId,
                                                     String fromBusinessDate,
                                                     String toBusinessDate) {
@@ -66,6 +67,7 @@ public class RecurrenceAnalyticsService {
         List<ExceptionCase> scopedCases = rawCases.stream()
                 .filter(exceptionCase -> scopedViews.isEmpty()
                         || scopedViews.contains(normalize(exceptionCase.getReconView())))
+                .filter(exceptionCase -> matchesStoreScope(exceptionCase, accessibleStoreIds))
                 .filter(exceptionCase -> {
                     String resolvedStore = normalizeStore(exceptionScopeResolver.resolveStoreId(exceptionCase));
                     return normalizedStore == null || Objects.equals(normalizedStore, resolvedStore);
@@ -626,6 +628,7 @@ public class RecurrenceAnalyticsService {
     private String moduleLabel(String reconView) {
         return switch (Objects.toString(reconView, "").toUpperCase(Locale.ROOT)) {
             case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
+            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
             case "XSTORE_XOCS" -> "Xstore vs XOCS";
             case "XSTORE_SIM" -> "Xstore vs SIM";
             default -> taxonomyService.labelForGenericKey(reconView);
@@ -651,6 +654,18 @@ public class RecurrenceAnalyticsService {
 
     private String stringValue(Object value) {
         return value != null ? value.toString() : null;
+    }
+
+    private boolean matchesStoreScope(ExceptionCase exceptionCase,
+                                      java.util.Collection<String> accessibleStoreIds) {
+        if (accessibleStoreIds == null || accessibleStoreIds.isEmpty()) {
+            return true;
+        }
+        String storeId = normalizeStore(exceptionScopeResolver.resolveStoreId(exceptionCase));
+        return storeId != null && accessibleStoreIds.stream()
+                .map(this::normalizeStore)
+                .filter(Objects::nonNull)
+                .anyMatch(storeId::equals);
     }
 
     private record CandidateOccurrence(ExceptionCase exceptionCase,

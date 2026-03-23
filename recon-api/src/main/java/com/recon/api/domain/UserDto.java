@@ -20,6 +20,9 @@ public class UserDto {
     private LocalDateTime createdAt;
     private LocalDateTime lastLogin;
     private Set<String> storeIds;
+    private Set<String> effectiveStoreIds;
+    private boolean allStoreAccess;
+    private AccessScopeSummaryDto accessScope;
     private List<RoleDto> roles;
     private Set<String> permissions;
 }

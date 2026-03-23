@@ -29,6 +29,7 @@ public class RegionalIncidentBoardService {
     @Transactional(readOnly = true)
     public RegionalIncidentBoardResponse getBoard(String tenantId,
                                                   String username,
+                                                  java.util.Collection<String> accessibleStoreIds,
                                                   List<String> allowedReconViews,
                                                   String reconView,
                                                   String outbreakStatus,
@@ -36,6 +37,7 @@ public class RegionalIncidentBoardService {
         ExceptionQueueResponse queue = exceptionQueueService.getQueue(
                 tenantId,
                 username,
+                accessibleStoreIds,
                 null,
                 "ALL",
                 null,

@@ -74,7 +74,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AlertService {
 
-    private static final Set<String> VALID_RECON_VIEWS = Set.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS");
+    private static final Set<String> VALID_RECON_VIEWS = Set.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS", "SIOCS_MFCS");
     private static final Set<String> VALID_METRICS = Set.of(
             "TOTAL_TRANSACTIONS",
             "MATCH_RATE",

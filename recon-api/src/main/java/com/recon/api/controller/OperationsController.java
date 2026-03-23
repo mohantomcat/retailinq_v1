@@ -2,11 +2,16 @@ package com.recon.api.controller;
 
 import com.recon.api.domain.ApiResponse;
 import com.recon.api.domain.OperationActionResponseDto;
+import com.recon.api.domain.OperationsJobCenterResponse;
 import com.recon.api.domain.OperationsResponse;
+import com.recon.api.domain.ReconJobDefinitionDto;
+import com.recon.api.domain.ReconJobRunDto;
 import com.recon.api.domain.ReplayWindowOperationRequest;
 import com.recon.api.domain.ResetCheckpointOperationRequest;
+import com.recon.api.domain.SaveReconJobDefinitionRequest;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.OperationsService;
+import com.recon.api.service.ReconJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,6 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,12 +30,53 @@ import org.springframework.web.bind.annotation.RestController;
 public class OperationsController {
 
     private final OperationsService operationsService;
+    private final ReconJobService reconJobService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<OperationsResponse>> getOperations(
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
         return ResponseEntity.ok(ApiResponse.ok(operationsService.getOperations(principal.getTenantId())));
+    }
+
+    @GetMapping("/jobs-center")
+    public ResponseEntity<ApiResponse<OperationsJobCenterResponse>> getJobsCenter(
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requireView(principal);
+        return ResponseEntity.ok(ApiResponse.ok(reconJobService.getJobCenter(principal.getTenantId())));
+    }
+
+    @PostMapping("/jobs")
+    public ResponseEntity<ApiResponse<ReconJobDefinitionDto>> createJob(
+            @RequestBody SaveReconJobDefinitionRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requireAdvancedExecute(principal);
+        request.setId(null);
+        return ResponseEntity.ok(ApiResponse.ok(
+                reconJobService.saveJobDefinition(principal.getTenantId(), principal.getUsername(), request)
+        ));
+    }
+
+    @PutMapping("/jobs/{jobId}")
+    public ResponseEntity<ApiResponse<ReconJobDefinitionDto>> updateJob(
+            @PathVariable java.util.UUID jobId,
+            @RequestBody SaveReconJobDefinitionRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requireAdvancedExecute(principal);
+        request.setId(jobId);
+        return ResponseEntity.ok(ApiResponse.ok(
+                reconJobService.saveJobDefinition(principal.getTenantId(), principal.getUsername(), request)
+        ));
+    }
+
+    @PostMapping("/jobs/{jobId}/run")
+    public ResponseEntity<ApiResponse<ReconJobRunDto>> runJobNow(
+            @PathVariable java.util.UUID jobId,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requireAdvancedExecute(principal);
+        return ResponseEntity.ok(ApiResponse.ok(
+                reconJobService.triggerManualRun(principal.getTenantId(), jobId, principal.getUsername())
+        ));
     }
 
     @PostMapping("/{moduleId}/actions/{actionKey}")

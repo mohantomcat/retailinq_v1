@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 348 72" role="img" aria-labelledby="title desc">
+  <title id="title">RetailINQ</title>
+  <desc id="desc">RetailINQ logo with a magnifier analytics icon and subtitle for dark backgrounds.</desc>
+  <defs>
+    <linearGradient id="inqFillDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7CB0FF"/>
+      <stop offset="100%" stop-color="#A5C6FF"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(2 6)">
+    <circle cx="23" cy="23" r="20.5" fill="none" stroke="#F8FAFC" stroke-width="3.8"/>
+    <line x1="38.5" y1="38.5" x2="49.5" y2="49.5" stroke="#F8FAFC" stroke-width="5" stroke-linecap="round"/>
+    <rect x="13.8" y="25.8" width="4.8" height="11.4" rx="1.6" fill="#7CB0FF"/>
+    <rect x="21.4" y="20.5" width="4.8" height="16.7" rx="1.6" fill="#7CB0FF"/>
+    <rect x="29" y="15.4" width="4.8" height="21.8" rx="1.6" fill="#7CB0FF"/>
+    <polyline points="12.8,24.8 21.8,18.9 31.4,12.9" fill="none" stroke="#C6DBFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="60" y="31.5" font-family="'Segoe UI', 'Trebuchet MS', sans-serif" font-size="31" font-weight="700" letter-spacing="-0.9">
+    <tspan fill="#F8FAFC">Retail</tspan><tspan fill="url(#inqFillDark)" font-weight="800">INQ</tspan>
+  </text>
+  <text x="61" y="53.5" font-family="'Segoe UI', 'Trebuchet MS', sans-serif" font-size="12.4" font-weight="600" fill="#CBD5E1" letter-spacing="0">
+    Retail Reconciliation &#8226; Analytics &#8226; Integrations
+  </text>
+</svg>

@@ -73,6 +73,7 @@ app:
     xstore-base-url: ${OPS_XSTORE_BASE_URL:http://localhost:8181}
     sim-base-url: ${OPS_SIM_BASE_URL:http://localhost:8182}
     siocs-cloud-base-url: ${OPS_SIOCS_CLOUD_BASE_URL:http://localhost:8184}
+    mfcs-rds-base-url: ${OPS_MFCS_RDS_BASE_URL:http://localhost:8185}
     xocs-cloud-base-url: ${OPS_XOCS_CLOUD_BASE_URL:http://localhost:8183}
   collaboration:
     callback-base-url: ${APP_COLLABORATION_CALLBACK_BASE_URL:http://localhost:8090}

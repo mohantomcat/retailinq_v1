@@ -1,14 +1,11 @@
 import {apiFetch, parseResponse} from './apiFetch'
 
 const BASE = '/api/v1/admin'
-const TENANT = 'tenant-india'
 
 export const adminApi = {
     // Users
     getUsers: async () => {
-        const res = await apiFetch(
-            `${BASE}/users?tenantId=${TENANT}`
-        )
+        const res = await apiFetch(`${BASE}/users`)
         const data = await parseResponse(res)
 
         return (data || []).map((user) => ({
@@ -91,9 +88,7 @@ export const adminApi = {
 
     // Roles
     getRoles: async () => {
-        const res = await apiFetch(
-            `${BASE}/roles?tenantId=${TENANT}`
-        )
+        const res = await apiFetch(`${BASE}/roles`)
         const data = await parseResponse(res)
         return data || []
     },
@@ -101,10 +96,7 @@ export const adminApi = {
     createRole: async (data) => {
         const res = await apiFetch(`${BASE}/roles`, {
             method: 'POST',
-            body: JSON.stringify({
-                ...data,
-                tenantId: TENANT,
-            }),
+            body: JSON.stringify(data),
         })
         return await parseResponse(res)
     },
@@ -112,10 +104,7 @@ export const adminApi = {
     updateRole: async (roleId, data) => {
         const res = await apiFetch(`${BASE}/roles/${roleId}`, {
             method: 'PUT',
-            body: JSON.stringify({
-                ...data,
-                tenantId: TENANT,
-            }),
+            body: JSON.stringify(data),
         })
         return await parseResponse(res)
     },
@@ -143,5 +132,73 @@ export const adminApi = {
         const res = await apiFetch(`${BASE}/permissions`)
         const data = await parseResponse(res)
         return data || []
+    },
+
+    getOrganizationUnits: async () => {
+        const res = await apiFetch(`${BASE}/org-units`)
+        return await parseResponse(res)
+    },
+
+    saveOrganizationUnit: async (id, data) => {
+        const res = await apiFetch(
+            id ? `${BASE}/org-units/${id}` : `${BASE}/org-units`,
+            {
+                method: id ? 'PUT' : 'POST',
+                body: JSON.stringify(data),
+            }
+        )
+        return await parseResponse(res)
+    },
+
+    assignOrganizationScopes: async (userId, organizationUnitIds, includeDescendants = true) => {
+        const res = await apiFetch(`${BASE}/users/${userId}/org-scopes`, {
+            method: 'POST',
+            body: JSON.stringify({
+                organizationUnitIds,
+                includeDescendants,
+            }),
+        })
+        return await parseResponse(res)
+    },
+
+    getTenantAccessCenter: async () => {
+        const res = await apiFetch(`${BASE}/tenant-access-center`)
+        return await parseResponse(res)
+    },
+
+    getTenantBranding: async () => {
+        const res = await apiFetch(`${BASE}/tenant-branding`)
+        return await parseResponse(res)
+    },
+
+    saveTenantBranding: async (data) => {
+        const res = await apiFetch(`${BASE}/tenant-branding`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
+    saveTenantAuthConfig: async (data) => {
+        const res = await apiFetch(`${BASE}/tenant-auth-config`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
+    createTenantApiKey: async (data) => {
+        const res = await apiFetch(`${BASE}/api-keys`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
+    deactivateTenantApiKey: async (id) => {
+        const res = await apiFetch(`${BASE}/api-keys/${id}/deactivate`, {
+            method: 'POST',
+        })
+        return await parseResponse(res)
     },
 }

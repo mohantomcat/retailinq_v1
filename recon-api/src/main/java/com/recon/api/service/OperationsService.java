@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recon.api.domain.ExceptionCase;
 import com.recon.api.domain.OperationActionResponseDto;
+import com.recon.api.domain.ReconJobActionCatalogDto;
 import com.recon.api.domain.OperationModuleStatusDto;
 import com.recon.api.domain.OperationsHealthSummaryDto;
 import com.recon.api.domain.OperationsActionAudit;
@@ -35,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -69,6 +71,9 @@ public class OperationsService {
     @Value("${app.operations.siocs-cloud-base-url}")
     private String siocsCloudBaseUrl;
 
+    @Value("${app.operations.mfcs-rds-base-url}")
+    private String mfcsRdsBaseUrl;
+
     @Value("${app.operations.xocs-cloud-base-url}")
     private String xocsCloudBaseUrl;
 
@@ -89,6 +94,7 @@ public class OperationsService {
                         fetchStatus("xstore-publisher", "Xstore Publisher", "XSTORE_SIM", "source", xstoreBaseUrl, "/api/xstore-publisher/status", List.of("publish", "release-stale-claims"), List.of(), true),
                         fetchStatus("sim-poller", "SIM Poller", "XSTORE_SIM", "target", simBaseUrl, "/api/siocs-poller/status", List.of("poll", "release-lease"), List.of("reset-checkpoint"), true),
                         fetchStatus("siocs-cloud-connector", "SIOCS Cloud Connector", "XSTORE_SIOCS", "target", siocsCloudBaseUrl, "/api/cloud-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false),
+                        fetchStatus("mfcs-rds-connector", "MFCS RDS Connector", "SIOCS_MFCS", "target", mfcsRdsBaseUrl, "/api/mfcs-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false),
                         fetchStatus("xocs-cloud-connector", "XOCS Cloud Connector", "XSTORE_XOCS", "target", xocsCloudBaseUrl, "/api/xocs-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed"), List.of("reset-checkpoint", "replay-window"), false)
                 ).stream()
                 .map(module -> enrichStatus(module, casesByReconView.getOrDefault(module.getReconView(), List.of()), tenant))
@@ -121,6 +127,17 @@ public class OperationsService {
         } catch (IllegalArgumentException ex) {
             return new ActionSupportDescriptor(true, false, "UNSUPPORTED", ex.getMessage());
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReconJobActionCatalogDto> getReconJobActionCatalog() {
+        return List.of(
+                catalogEntry("xstore-publisher", "Xstore Publisher", "XSTORE_SIM"),
+                catalogEntry("sim-poller", "SIM Poller", "XSTORE_SIM"),
+                catalogEntry("siocs-cloud-connector", "SIOCS Cloud Connector", "XSTORE_SIOCS"),
+                catalogEntry("mfcs-rds-connector", "MFCS RDS Connector", "SIOCS_MFCS"),
+                catalogEntry("xocs-cloud-connector", "XOCS Cloud Connector", "XSTORE_XOCS")
+        );
     }
 
     @Transactional
@@ -164,6 +181,7 @@ public class OperationsService {
             case "xstore-publisher" -> "/api/xstore-publisher/actions/" + actionKey;
             case "sim-poller" -> "/api/siocs-poller/actions/" + actionKey;
             case "siocs-cloud-connector" -> "/api/cloud-connector/actions/" + actionKey;
+            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/" + actionKey;
             case "xocs-cloud-connector" -> "/api/xocs-connector/actions/" + actionKey;
             default -> throw new IllegalArgumentException("Unsupported module: " + moduleId);
         };
@@ -199,13 +217,14 @@ public class OperationsService {
         String path = switch (moduleId) {
             case "sim-poller" -> "/api/siocs-poller/actions/reset-checkpoint";
             case "siocs-cloud-connector" -> "/api/cloud-connector/actions/reset-checkpoint";
+            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/reset-checkpoint";
             case "xocs-cloud-connector" -> "/api/xocs-connector/actions/reset-checkpoint";
             default -> throw new IllegalArgumentException("Reset checkpoint is not supported for module: " + moduleId);
         };
 
         Map<String, Object> payload = switch (moduleId) {
             case "sim-poller" -> buildSimResetPayload(request);
-            case "siocs-cloud-connector", "xocs-cloud-connector" -> buildCloudResetPayload(request);
+            case "siocs-cloud-connector", "mfcs-rds-connector", "xocs-cloud-connector" -> buildCloudResetPayload(request);
             default -> Map.of();
         };
 
@@ -233,6 +252,7 @@ public class OperationsService {
 
         String path = switch (moduleId) {
             case "siocs-cloud-connector" -> "/api/cloud-connector/actions/replay-window";
+            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/replay-window";
             case "xocs-cloud-connector" -> "/api/xocs-connector/actions/replay-window";
             default -> throw new IllegalArgumentException("Replay window is not supported for module: " + moduleId);
         };
@@ -357,6 +377,7 @@ public class OperationsService {
             case "xstore-publisher" -> new ModuleDef(xstoreBaseUrl, List.of("publish", "release-stale-claims"), List.of(), true);
             case "sim-poller" -> new ModuleDef(simBaseUrl, List.of("poll", "release-lease"), List.of("reset-checkpoint"), true);
             case "siocs-cloud-connector" -> new ModuleDef(siocsCloudBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false);
+            case "mfcs-rds-connector" -> new ModuleDef(mfcsRdsBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false);
             case "xocs-cloud-connector" -> new ModuleDef(xocsCloudBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed"), List.of("reset-checkpoint", "replay-window"), false);
             default -> throw new IllegalArgumentException("Unsupported module: " + moduleId);
         };
@@ -447,6 +468,12 @@ public class OperationsService {
                 .resultStatus(dto.getStatus())
                 .resultMessage(dto.getMessage())
                 .build());
+        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("moduleId", moduleId);
+        metadata.put("scope", scope);
+        if (auditContext != null && auditContext.playbookStepId() != null) {
+            metadata.put("playbookStepId", auditContext.playbookStepId());
+        }
         auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
                 .tenantId(tenantId)
                 .sourceType("OPERATIONS")
@@ -465,11 +492,20 @@ public class OperationsService {
                 .evidenceTags(List.of("OPERATIONS", scope))
                 .beforeState(payload)
                 .afterState(dto.getRawResponse())
-                .metadata(java.util.Map.of(
-                        "moduleId", moduleId,
-                        "scope", scope,
-                        "playbookStepId", auditContext != null ? auditContext.playbookStepId() : null))
+                .metadata(metadata)
                 .build());
+    }
+
+    private ReconJobActionCatalogDto catalogEntry(String moduleId,
+                                                  String moduleLabel,
+                                                  String reconView) {
+        ModuleDef module = module(moduleId);
+        return ReconJobActionCatalogDto.builder()
+                .moduleId(moduleId)
+                .moduleLabel(moduleLabel)
+                .reconView(reconView)
+                .availableActions(module.safeActions())
+                .build();
     }
 
     private String writeJson(Map<String, Object> payload) {
@@ -728,6 +764,7 @@ public class OperationsService {
         return switch (moduleId) {
             case "xstore-publisher", "sim-poller" -> "XSTORE_SIM";
             case "siocs-cloud-connector" -> "XSTORE_SIOCS";
+            case "mfcs-rds-connector" -> "SIOCS_MFCS";
             case "xocs-cloud-connector" -> "XSTORE_XOCS";
             default -> "OPERATIONS";
         };

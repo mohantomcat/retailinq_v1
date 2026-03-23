@@ -30,7 +30,10 @@ public class JwtTokenProvider {
 
     public String generateAccessToken(String userId,
                                       String username, String tenantId,
-                                      Set<String> permissions, Set<String> storeIds) {
+                                      Set<String> permissions,
+                                      Set<String> storeIds,
+                                      boolean allStoreAccess,
+                                      String authMode) {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("username", username)
@@ -39,6 +42,8 @@ public class JwtTokenProvider {
                         new ArrayList<>(permissions))
                 .claim("storeIds",
                         new ArrayList<>(storeIds))
+                .claim("allStoreAccess", allStoreAccess)
+                .claim("authMode", authMode)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(
                         System.currentTimeMillis()
@@ -105,6 +110,15 @@ public class JwtTokenProvider {
 
     public String getUsernameFromToken(String token) {
         return (String) parseToken(token).get("username");
+    }
+
+    public boolean isAllStoreAccess(String token) {
+        Boolean value = parseToken(token).get("allStoreAccess", Boolean.class);
+        return Boolean.TRUE.equals(value);
+    }
+
+    public String getAuthModeFromToken(String token) {
+        return (String) parseToken(token).get("authMode");
     }
 
     public long getExpirationMs() {

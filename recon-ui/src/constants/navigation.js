@@ -1,14 +1,16 @@
+import {RECON_TAB_IDS, RECON_TAB_LABEL_BY_ID} from './reconViews'
+
 export const RECONCILIATION_TAB_IDS = [
-    'xstore-sim',
-    'xstore-siocs',
-    'xstore-xocs',
-    'sim-rms',
+    ...RECON_TAB_IDS,
 ]
 
 export const SECURITY_TAB_IDS = [
     'manage-users',
     'manage-roles',
     'manage-perms',
+    'org-hierarchy',
+    'tenant-access',
+    'branding-center',
 ]
 
 export const REPORT_TAB_IDS = [
@@ -40,6 +42,7 @@ export const SLA_TAB_IDS = [
 
 export const OPERATIONS_TAB_IDS = [
     'operations',
+    'recon-jobs',
 ]
 
 export const ACTIVITY_TAB_IDS = [
@@ -52,21 +55,23 @@ export const CONFIGURATION_TAB_IDS = [
 ]
 
 export function getTabLabel(t, id) {
+    if (RECON_TAB_LABEL_BY_ID[id]) {
+        return t(RECON_TAB_LABEL_BY_ID[id])
+    }
+
     switch (id) {
-        case 'xstore-sim':
-            return t('Xstore vs SIM')
-        case 'xstore-siocs':
-            return t('Xstore vs SIOCS')
-        case 'xstore-xocs':
-            return t('Xstore vs XOCS')
-        case 'sim-rms':
-            return t('SIM vs RMS')
         case 'manage-users':
             return t('Manage Users')
         case 'manage-roles':
             return t('Manage Roles')
         case 'manage-perms':
             return t('Manage Permissions')
+        case 'org-hierarchy':
+            return t('Organization Hierarchy')
+        case 'tenant-access':
+            return t('Tenant Access Center')
+        case 'branding-center':
+            return t('Branding Center')
         case 'executive-scorecards':
             return t('Executive Scorecards')
         case 'operations-command-center':
@@ -99,6 +104,8 @@ export function getTabLabel(t, id) {
             return t('SLA & Aging')
         case 'operations':
             return t('Operations')
+        case 'recon-jobs':
+            return t('Reconciliation Jobs')
         case 'audit-activity':
             return t('Audit & Activity')
         case 'module-configs':

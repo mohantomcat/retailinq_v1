@@ -364,9 +364,11 @@ function AdvancedActionDialog({
                                 onChange={(event) => onChange('wkstnId', event.target.value)}
                             />
                         )}
-                        {module.moduleId === 'siocs-cloud-connector' && (
+                        {(module.moduleId === 'siocs-cloud-connector' || module.moduleId === 'mfcs-rds-connector') && (
                             <Alert severity="info">
-                                {t('SIOCS replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')}
+                                {module.moduleId === 'mfcs-rds-connector'
+                                    ? t('MFCS replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')
+                                    : t('SIOCS replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')}
                             </Alert>
                         )}
                     </Stack>

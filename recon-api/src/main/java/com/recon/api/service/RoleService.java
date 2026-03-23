@@ -38,9 +38,9 @@ public class RoleService {
     }
 
     @Transactional
-    public RoleDto createRole(CreateRoleRequest req, String actorUsername) {
+    public RoleDto createRole(String tenantId, CreateRoleRequest req, String actorUsername) {
         if (roleRepository.existsByNameAndTenantId(
-                req.getName(), req.getTenantId())) {
+                req.getName(), tenantId)) {
             throw new RuntimeException("Role already exists");
         }
 
@@ -53,7 +53,7 @@ public class RoleService {
         Role role = Role.builder()
                 .name(req.getName())
                 .description(req.getDescription())
-                .tenantId(req.getTenantId())
+                .tenantId(tenantId)
                 .permissions(permissions)
                 .build();
 
@@ -63,8 +63,9 @@ public class RoleService {
     }
 
     @Transactional
-    public RoleDto updateRole(UUID roleId, CreateRoleRequest req, String actorUsername) {
+    public RoleDto updateRole(String tenantId, UUID roleId, CreateRoleRequest req, String actorUsername) {
         Role role = roleRepository.findById(roleId)
+                .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
         Role before = cloneForAudit(role);
@@ -93,10 +94,12 @@ public class RoleService {
     }
 
     @Transactional
-    public RoleDto assignPermissions(UUID roleId,
+    public RoleDto assignPermissions(String tenantId,
+                                     UUID roleId,
                                      Set<UUID> permissionIds,
                                      String actorUsername) {
         Role role = roleRepository.findById(roleId)
+                .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
         Role before = cloneForAudit(role);
@@ -111,8 +114,9 @@ public class RoleService {
     }
 
     @Transactional
-    public void deleteRole(UUID roleId, String actorUsername) {
+    public void deleteRole(String tenantId, UUID roleId, String actorUsername) {
         Role role = roleRepository.findById(roleId)
+                .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() ->
                         new RuntimeException("Role not found"));
 

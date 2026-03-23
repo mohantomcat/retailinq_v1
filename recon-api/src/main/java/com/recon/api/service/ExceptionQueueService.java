@@ -45,6 +45,7 @@ public class ExceptionQueueService {
     @Transactional(readOnly = true)
     public ExceptionQueueResponse getQueue(String tenantId,
                                            String username,
+                                           java.util.Collection<String> accessibleStoreIds,
                                            String reconView,
                                            String queueType,
                                            String caseStatus,
@@ -56,7 +57,9 @@ public class ExceptionQueueService {
                 tenantId,
                 reconView == null || reconView.isBlank() ? null : reconView.toUpperCase(Locale.ROOT),
                 LocalDateTime.now().minusDays(35)
-        );
+        ).stream()
+                .filter(exceptionCase -> matchesStoreScope(exceptionCase, accessibleStoreIds))
+                .toList();
         Set<String> userRoles = resolveUserRoles(tenantId, username);
         Map<String, Long> storeOpenCaseCounts = buildStoreOpenCaseCounts(cases);
         Map<String, Long> repeatIssueCounts = buildRepeatIssueCounts(cases);
@@ -516,6 +519,17 @@ public class ExceptionQueueService {
 
     private boolean equalsIgnoreCase(String left, String right) {
         return Objects.toString(left, "").equalsIgnoreCase(Objects.toString(right, ""));
+    }
+
+    private boolean matchesStoreScope(ExceptionCase exceptionCase, java.util.Collection<String> accessibleStoreIds) {
+        if (accessibleStoreIds == null || accessibleStoreIds.isEmpty()) {
+            return true;
+        }
+        String storeId = normalizeStoreKey(exceptionScopeResolver.resolveStoreId(exceptionCase));
+        return storeId != null && accessibleStoreIds.stream()
+                .map(this::normalizeStoreKey)
+                .filter(Objects::nonNull)
+                .anyMatch(storeId::equals);
     }
 
     private int severityRank(String severity) {

@@ -29,13 +29,9 @@ import {
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
+import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: '', label: 'All Modules'},
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
 
 const REQUEST_STATUS_OPTIONS = [
     {value: 'ALL', label: 'All'},

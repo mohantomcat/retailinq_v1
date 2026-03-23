@@ -661,18 +661,9 @@ export default function MyProfileDialog({
                             disabled={saving}
                             startIcon={<SaveRoundedIcon/>}
                             sx={{
-                                textTransform: 'none',
                                 borderRadius: '12px',
                                 px: 2.2,
                                 fontWeight: 700,
-                                background:
-                                    'linear-gradient(90deg, #0F7C86, #157F8B)',
-                                boxShadow: 'none',
-                                '&:hover': {
-                                    boxShadow: 'none',
-                                    background:
-                                        'linear-gradient(90deg, #0B6A72, #126E79)',
-                                },
                             }}
                         >
                             {saving ? t('Saving...') : t('Save Changes')}

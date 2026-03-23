@@ -25,6 +25,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final ApiKeyAuthenticationFilter apiKeyFilter;
     private final JwtAuthenticationFilter jwtFilter;
 
     @Bean
@@ -39,12 +40,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/login-options",
                                 "/api/v1/auth/refresh",
+                                "/api/v1/tenant-branding/current",
                                 "/api/v1/recon/health",
                                 "/api/v1/exceptions/integration-callbacks/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(apiKeyFilter,
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter,
                         UsernamePasswordAuthenticationFilter.class);
 

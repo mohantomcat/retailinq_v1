@@ -87,13 +87,14 @@ export default function UserMenu({
                         py: 0.55,
                         borderRadius: '16px',
                         cursor: 'pointer',
-                        border: '1px solid rgba(255,255,255,0.18)',
-                        backgroundColor: 'rgba(255,255,255,0.10)',
-                        backdropFilter: 'blur(10px)',
+                        border: isDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid #D9E1EE',
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.92)',
+                        backdropFilter: isDark ? 'blur(10px)' : 'blur(16px)',
+                        boxShadow: isDark ? 'none' : '0 10px 24px rgba(34,49,77,0.10)',
                         transition: 'all 0.18s ease',
                         '&:hover': {
-                            backgroundColor: 'rgba(255,255,255,0.16)',
-                            borderColor: 'rgba(255,255,255,0.28)',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#FFFFFF',
+                            borderColor: isDark ? 'rgba(255,255,255,0.28)' : '#C7D3E6',
                         },
                     }}
                 >
@@ -101,12 +102,16 @@ export default function UserMenu({
                         sx={{
                             width: 36,
                             height: 36,
-                            backgroundColor: 'rgba(255,255,255,0.18)',
-                            border: '2px solid rgba(255,255,255,0.45)',
+                            background: isDark
+                                ? 'rgba(255,255,255,0.18)'
+                                : 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%)',
+                            border: isDark ? '2px solid rgba(255,255,255,0.45)' : '2px solid #FFFFFF',
                             fontSize: '0.82rem',
                             fontWeight: 800,
                             color: '#ffffff',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                            boxShadow: isDark
+                                ? '0 2px 8px rgba(0,0,0,0.12)'
+                                : '0 8px 18px var(--brand-primary-glow)',
                         }}
                     >
                         {initials || 'U'}
@@ -122,7 +127,7 @@ export default function UserMenu({
                             sx={{
                                 fontSize: '0.82rem',
                                 fontWeight: 700,
-                                color: '#ffffff',
+                                color: isDark ? '#ffffff' : '#24334D',
                                 lineHeight: 1.15,
                                 maxWidth: 180,
                                 overflow: 'hidden',
@@ -136,7 +141,7 @@ export default function UserMenu({
                         <Typography
                             sx={{
                                 fontSize: '0.71rem',
-                                color: 'rgba(255,255,255,0.82)',
+                                color: isDark ? 'rgba(255,255,255,0.82)' : '#6F7C93',
                                 lineHeight: 1.15,
                                 maxWidth: 180,
                                 overflow: 'hidden',
@@ -152,7 +157,7 @@ export default function UserMenu({
                         size="small"
                         sx={{
                             ml: {xs: 0, sm: 0.1},
-                            color: '#ffffff',
+                            color: isDark ? '#ffffff' : '#6F7C93',
                             p: 0.2,
                         }}
                     >
@@ -192,8 +197,8 @@ export default function UserMenu({
                         pt: 2,
                         pb: 1.6,
                         background: isDark
-                            ? 'linear-gradient(180deg, rgba(37,99,235,0.14) 0%, rgba(255,255,255,0) 100%)'
-                            : 'linear-gradient(180deg, rgba(15,124,134,0.08) 0%, rgba(255,255,255,0) 100%)',
+                            ? 'linear-gradient(180deg, rgba(var(--brand-primary-rgb), 0.18) 0%, rgba(255,255,255,0) 100%)'
+                            : 'linear-gradient(180deg, rgba(var(--brand-primary-rgb), 0.08) 0%, rgba(255,255,255,0) 100%)',
                     }}
                 >
                     <Box
@@ -208,11 +213,11 @@ export default function UserMenu({
                                 width: 46,
                                 height: 46,
                                 background:
-                                    'linear-gradient(135deg, #0F7C86 0%, #2563EB 100%)',
+                                    'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%)',
                                 fontSize: '0.95rem',
                                 fontWeight: 800,
                                 color: '#ffffff',
-                                boxShadow: '0 8px 20px rgba(37,99,235,0.18)',
+                                boxShadow: '0 8px 20px var(--brand-primary-glow)',
                             }}
                         >
                             {initials || 'U'}
@@ -260,8 +265,8 @@ export default function UserMenu({
                                     label={user?.roles?.[0]?.name || t('User')}
                                     sx={{
                                         height: 22,
-                                        backgroundColor: '#EFF6FF',
-                                        color: '#2563EB',
+                                        backgroundColor: 'var(--brand-primary-surface)',
+                                        color: 'var(--brand-primary)',
                                         fontWeight: 700,
                                         fontSize: '0.68rem',
                                     }}
@@ -279,8 +284,9 @@ export default function UserMenu({
                                     label={t('Secure Access')}
                                     sx={{
                                         height: 22,
-                                        backgroundColor: '#ECFEFF',
-                                        color: '#0F7C86',
+                                        backgroundColor:
+                                            'var(--brand-secondary-surface)',
+                                        color: 'var(--brand-secondary)',
                                         fontWeight: 700,
                                         fontSize: '0.68rem',
                                     }}
@@ -401,10 +407,10 @@ export default function UserMenu({
                                     backgroundColor: isDark
                                         ? '#0F172A'
                                         : '#FFFFFF',
-                                    color: '#2563EB',
+                                    color: 'var(--brand-primary)',
                                     fontWeight: 700,
                                     fontSize: '0.68rem',
-                                    border: '1px solid #DBEAFE',
+                                    border: '1px solid var(--brand-primary-border)',
                                 }}
                             />
                         </Box>
@@ -435,9 +441,9 @@ export default function UserMenu({
                                     height: 26,
                                     fontWeight: 700,
                                     fontSize: '0.7rem',
-                                    backgroundColor: '#EFF6FF',
-                                    color: '#2563EB',
-                                    border: '1px solid #BFDBFE',
+                                    backgroundColor: 'var(--brand-primary-surface)',
+                                    color: 'var(--brand-primary)',
+                                    border: '1px solid var(--brand-primary-border)',
                                 }}
                             />
                         </Box>
@@ -512,10 +518,10 @@ export default function UserMenu({
                                     backgroundColor: isDark
                                         ? '#0F172A'
                                         : '#FFFFFF',
-                                    color: '#0F7C86',
+                                    color: 'var(--brand-secondary)',
                                     fontWeight: 700,
                                     fontSize: '0.68rem',
-                                    border: '1px solid #CCFBF1',
+                                    border: '1px solid var(--brand-secondary-border)',
                                 }}
                             />
                         </Box>
@@ -539,17 +545,17 @@ export default function UserMenu({
                                             fontWeight: 700,
                                             fontSize: '0.7rem',
                                             backgroundColor: selected
-                                                ? '#ECFEFF'
+                                                ? 'var(--brand-secondary-surface)'
                                                 : isDark
                                                     ? '#0F172A'
                                                     : '#FFFFFF',
                                             color: selected
-                                                ? '#0F7C86'
+                                                ? 'var(--brand-secondary)'
                                                 : isDark
                                                     ? '#CBD5E1'
                                                     : '#475569',
                                             border: selected
-                                                ? '1px solid #99F6E4'
+                                                ? '1px solid var(--brand-secondary-border)'
                                                 : isDark
                                                     ? '1px solid #334155'
                                                     : '1px solid #E2E8F0',

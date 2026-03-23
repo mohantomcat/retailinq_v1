@@ -31,6 +31,7 @@ public class RootCauseAnalyticsService {
     public RootCauseAnalyticsResponse getAnalytics(String tenantId,
                                                    String reconView,
                                                    List<String> allowedReconViews,
+                                                   java.util.Collection<String> accessibleStoreIds,
                                                    String storeId,
                                                    String fromBusinessDate,
                                                    String toBusinessDate) {
@@ -49,6 +50,7 @@ public class RootCauseAnalyticsService {
         List<ExceptionCase> cases = rawCases.stream()
                 .filter(exceptionCase -> scopedViews.stream()
                         .anyMatch(view -> view.equalsIgnoreCase(exceptionCase.getReconView())))
+                .filter(exceptionCase -> matchesStoreScope(exceptionCase, accessibleStoreIds))
                 .filter(exceptionCase -> {
                     LocalDate effectiveDate = effectiveDate(exceptionCase);
                     return effectiveDate != null
@@ -241,6 +243,7 @@ public class RootCauseAnalyticsService {
     private String moduleLabel(String reconView) {
         return switch (Objects.toString(reconView, "").toUpperCase()) {
             case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
+            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
             case "XSTORE_XOCS" -> "Xstore vs XOCS";
             case "XSTORE_SIM" -> "Xstore vs SIM";
             default -> taxonomyService.labelForGenericKey(reconView);
@@ -278,5 +281,22 @@ public class RootCauseAnalyticsService {
             return 0.0;
         }
         return Math.round(((double) numerator / denominator) * 10000.0) / 100.0;
+    }
+
+    private boolean matchesStoreScope(ExceptionCase exceptionCase,
+                                      java.util.Collection<String> accessibleStoreIds) {
+        if (accessibleStoreIds == null || accessibleStoreIds.isEmpty()) {
+            return true;
+        }
+        String storeId = normalizeStore(exceptionScopeResolver.resolveStoreId(exceptionCase));
+        return storeId != null && accessibleStoreIds.stream()
+                .map(this::normalizeStore)
+                .filter(Objects::nonNull)
+                .anyMatch(storeId::equals);
+    }
+
+    private String normalizeStore(String value) {
+        String normalized = normalizeKey(value);
+        return "UNCLASSIFIED".equals(normalized) ? null : normalized;
     }
 }

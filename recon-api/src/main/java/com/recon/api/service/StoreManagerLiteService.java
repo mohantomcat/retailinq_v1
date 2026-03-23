@@ -52,6 +52,7 @@ public class StoreManagerLiteService {
         ExceptionQueueResponse queue = exceptionQueueService.getQueue(
                 tenantId,
                 username,
+                accessibleStores,
                 reconView,
                 "ALL",
                 null,

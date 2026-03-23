@@ -114,7 +114,7 @@ export default function UserDetailsPanel({user, formatLastLogin}) {
     if (!user) return null
 
     const roles = user.roles || []
-    const storeIds = user.storeIds || []
+    const storeIds = user.effectiveStoreIds || user.storeIds || []
 
     return (
         <Paper
@@ -292,9 +292,10 @@ export default function UserDetailsPanel({user, formatLastLogin}) {
                     />
                     <Chip
                         label={
-                            storeIds.length === 0
+                            user.accessScope?.accessLabel ||
+                            (storeIds.length === 0
                                 ? t('All Stores Access')
-                                : `${storeIds.length} ${t('Assigned Stores')}`
+                                : `${storeIds.length} ${t('Assigned Stores')}`)
                         }
                         size="small"
                         sx={{

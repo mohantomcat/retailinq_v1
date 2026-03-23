@@ -34,6 +34,7 @@ import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest'
 import DnsRoundedIcon from '@mui/icons-material/DnsRounded'
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
+import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
 import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SECURITY_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
@@ -42,7 +43,7 @@ const ITEM_PERMISSIONS = {
     'xstore-sim': 'RECON_XSTORE_SIM',
     'xstore-siocs': 'RECON_XSTORE_SIOCS',
     'xstore-xocs': 'RECON_XSTORE_XOCS',
-    'sim-rms': 'RECON_SIM_RMS',
+    'siocs-mfcs': 'RECON_SIOCS_MFCS',
     reports: 'REPORTS_VIEW',
     'executive-scorecards': 'REPORTS_VIEW',
     'operations-command-center': 'REPORTS_VIEW',
@@ -61,10 +62,14 @@ const ITEM_PERMISSIONS = {
     'routing-playbooks': 'EXCEPTION_AUTOMATION_VIEW',
     'sla-management': 'SLA_VIEW',
     operations: 'OPS_VIEW',
+    'recon-jobs': 'OPS_VIEW',
     'audit-activity': 'AUDIT_VIEW',
     'manage-users': 'ADMIN_USERS',
     'manage-roles': 'ADMIN_ROLES',
     'manage-perms': 'ADMIN_PERMISSIONS',
+    'org-hierarchy': 'ADMIN_ORG',
+    'tenant-access': 'TENANT_ACCESS_MANAGE',
+    'branding-center': 'BRANDING_MANAGE',
     'module-configs': 'CONFIG_MODULE_VIEW',
     'system-configs': 'CONFIG_SYSTEM_VIEW',
 }
@@ -79,7 +84,7 @@ const SECTION_PERMISSIONS = {
     operations: 'OPS_VIEW',
     activity: 'AUDIT_VIEW',
     configurations: ['CONFIG_MODULE_VIEW', 'CONFIG_SYSTEM_VIEW'],
-    security: 'ADMIN_USERS',
+    security: ['ADMIN_USERS', 'ADMIN_ROLES', 'ADMIN_PERMISSIONS', 'ADMIN_ORG', 'TENANT_ACCESS_MANAGE', 'API_ACCESS_MANAGE', 'BRANDING_MANAGE'],
 }
 
 const SECTION_ICONS = {
@@ -97,12 +102,12 @@ const SECTION_ICONS = {
 
 const SECTION_COLORS = {
     reconciliation: {
-        icon: '#0F7C86',
-        bg: '#ECFEFF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     reports: {
-        icon: '#2563EB',
-        bg: '#EFF6FF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     settings: {
         icon: '#D97706',
@@ -113,28 +118,28 @@ const SECTION_COLORS = {
         bg: '#FEF2F2',
     },
     exceptions: {
-        icon: '#0F7C86',
-        bg: '#ECFEFF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     sla: {
-        icon: '#2563EB',
-        bg: '#EFF6FF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     operations: {
-        icon: '#7C3AED',
-        bg: '#F5F3FF',
+        icon: 'var(--brand-secondary)',
+        bg: 'var(--brand-secondary-surface)',
     },
     activity: {
-        icon: '#0F7C86',
-        bg: '#ECFEFF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     configurations: {
-        icon: '#2563EB',
-        bg: '#EFF6FF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
     security: {
-        icon: '#7C3AED',
-        bg: '#F5F3FF',
+        icon: 'var(--brand-primary)',
+        bg: 'var(--brand-primary-surface)',
     },
 }
 
@@ -142,7 +147,7 @@ const ITEM_ICONS = {
     'xstore-sim': <SyncAltIcon sx={{fontSize: 17}}/>,
     'xstore-siocs': <SyncAltIcon sx={{fontSize: 17}}/>,
     'xstore-xocs': <StorefrontIcon sx={{fontSize: 17}}/>,
-    'sim-rms': <InventoryIcon sx={{fontSize: 17}}/>,
+    'siocs-mfcs': <InventoryIcon sx={{fontSize: 17}}/>,
     reports: <BarChartIcon sx={{fontSize: 17}}/>,
     'executive-scorecards': <AssessmentIcon sx={{fontSize: 17}}/>,
     'operations-command-center': <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
@@ -161,12 +166,16 @@ const ITEM_ICONS = {
     'routing-playbooks': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
     'sla-management': <TimerOutlinedIcon sx={{fontSize: 17}}/>,
     operations: <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
+    'recon-jobs': <AutorenewRoundedIcon sx={{fontSize: 17}}/>,
     'audit-activity': <AssessmentIcon sx={{fontSize: 17}}/>,
     'module-configs': <TuneIcon sx={{fontSize: 17}}/>,
     'system-configs': <DnsRoundedIcon sx={{fontSize: 17}}/>,
     'manage-users': <PeopleIcon sx={{fontSize: 17}}/>,
     'manage-roles': <ManageAccountsIcon sx={{fontSize: 17}}/>,
     'manage-perms': <SecurityIcon sx={{fontSize: 17}}/>,
+    'org-hierarchy': <StorefrontIcon sx={{fontSize: 17}}/>,
+    'tenant-access': <AdminPanelSettingsIcon sx={{fontSize: 17}}/>,
+    'branding-center': <PaletteOutlinedIcon sx={{fontSize: 17}}/>,
 }
 
 export default function Sidebar({
@@ -372,27 +381,27 @@ export default function Sidebar({
                                             mb: 0.4,
                                             borderRadius: 2.5,
                                             minHeight: 40,
-                                            transition: 'all 0.18s ease',
-                                            '&.Mui-selected': {
-                                                backgroundColor: isDark ? '#0F172A' : '#EFF6FF',
+                            transition: 'all 0.18s ease',
+                            '&.Mui-selected': {
+                                                backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
                                                 border: isDark
-                                                    ? '1px solid #1D4ED8'
-                                                    : '1px solid #BFDBFE',
+                                                    ? '1px solid var(--brand-primary)'
+                                                    : '1px solid var(--brand-primary-border)',
                                                 boxShadow: isDark
                                                     ? '0 4px 12px rgba(0, 0, 0, 0.18)'
-                                                    : '0 4px 12px rgba(37, 99, 235, 0.08)',
+                                                    : '0 10px 22px rgba(34,49,77,0.08)',
                                                 '&:hover': {
-                                                    backgroundColor: isDark ? '#0B1220' : '#DBEAFE',
+                                                    backgroundColor: isDark ? '#0B1220' : '#FFFFFF',
                                                 },
                                             },
                                             '&:hover:not(.Mui-selected)': {
-                                                backgroundColor: isDark ? '#111827' : '#F8FAFC',
+                                                backgroundColor: isDark ? '#111827' : '#F7F9FD',
                                             },
                                         }}
                                     >
                                         <Box
                                             sx={{
-                                                color: isActive ? '#2563EB' : (isDark ? '#64748B' : '#94A3B8'),
+                                                color: isActive ? 'var(--brand-primary)' : (isDark ? '#64748B' : '#8A97AE'),
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -414,10 +423,10 @@ export default function Sidebar({
                                                 fontSize: '0.86rem',
                                                 fontWeight: isActive ? 700 : 500,
                                                 color: isActive
-                                                    ? '#2563EB'
+                                                    ? 'var(--brand-primary)'
                                                     : isDark
                                                         ? '#CBD5E1'
-                                                        : '#334155',
+                                                        : '#4A566E',
                                                 letterSpacing: '0.1px',
                                             }}
                                         />
@@ -428,7 +437,7 @@ export default function Sidebar({
                                                     width: 7,
                                                     height: 7,
                                                     borderRadius: '50%',
-                                                    backgroundColor: '#2563EB',
+                                                    backgroundColor: 'var(--brand-primary)',
                                                     flexShrink: 0,
                                                     ml: 0.75,
                                                 }}
@@ -465,19 +474,19 @@ export default function Sidebar({
                                             minHeight: 40,
                                             borderRadius: 2.5,
                                             '&.Mui-selected': {
-                                                backgroundColor: isDark ? '#0F172A' : '#EFF6FF',
+                                                backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
                                                 border: isDark
-                                                    ? '1px solid #1D4ED8'
-                                                    : '1px solid #BFDBFE',
+                                                    ? '1px solid var(--brand-primary)'
+                                                    : '1px solid var(--brand-primary-border)',
                                             },
                                             '&:hover:not(.Mui-selected)': {
-                                                backgroundColor: isDark ? '#111827' : '#F8FAFC',
+                                                backgroundColor: isDark ? '#111827' : '#F7F9FD',
                                             },
                                         }}
                                     >
                                         <Box
                                             sx={{
-                                                color: isActive ? '#2563EB' : (isDark ? '#64748B' : '#94A3B8'),
+                                                color: isActive ? 'var(--brand-primary)' : (isDark ? '#64748B' : '#8A97AE'),
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -516,13 +525,13 @@ export default function Sidebar({
                     width,
                     transition: 'width 0.2s ease',
                     overflowX: 'hidden',
-                    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                    backgroundColor: isDark ? '#0F172A' : '#FBFCFF',
                     backgroundImage: 'none',
                     borderRight: isDark
                         ? '1px solid #1E293B'
-                        : '1px solid #E2E8F0',
+                        : '1px solid #DCE3EF',
                     borderTop: 'none',
-                    boxShadow: 'none',
+                    boxShadow: isDark ? 'none' : '8px 0 28px rgba(34,49,77,0.06)',
                     display: 'flex',
                     flexDirection: 'column',
                     top: '72px',
@@ -539,8 +548,8 @@ export default function Sidebar({
                     py: 0.9,
                     borderBottom: isDark
                         ? '1px solid #1E293B'
-                        : '1px solid #F1F5F9',
-                    backgroundColor: isDark ? '#111827' : '#FCFDFE',
+                        : '1px solid #E8EDF5',
+                    backgroundColor: isDark ? '#111827' : '#F8FAFD',
                 }}
             >
                 <Tooltip
@@ -554,15 +563,17 @@ export default function Sidebar({
                         sx={{
                             width: 28,
                             height: 28,
-                            color: isDark ? '#94A3B8' : '#94A3B8',
-                            backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                            color: isDark ? '#94A3B8' : '#7B88A2',
+                            backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
                             border: isDark
                                 ? '1px solid #334155'
-                                : '1px solid #E2E8F0',
+                                : '1px solid #D9E2EF',
                             '&:hover': {
-                                backgroundColor: isDark ? '#1E293B' : '#EFF6FF',
-                                color: '#2563EB',
-                                borderColor: '#2563EB',
+                                backgroundColor: isDark
+                                    ? 'rgba(var(--brand-primary-rgb), 0.18)'
+                                    : 'var(--brand-primary-surface)',
+                                color: 'var(--brand-primary)',
+                                borderColor: 'var(--brand-primary)',
                             },
                         }}
                     >

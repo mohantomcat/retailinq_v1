@@ -34,7 +34,8 @@ public class JwtAuthenticationFilter
 
         String token = extractToken(request);
 
-        if (StringUtils.hasText(token)
+        if (SecurityContextHolder.getContext().getAuthentication() == null
+                && StringUtils.hasText(token)
                 && tokenProvider.validateToken(token)) {
             try {
                 String userId =
@@ -47,6 +48,10 @@ public class JwtAuthenticationFilter
                         tokenProvider.getTenantIdFromToken(token);
                 String username =
                         tokenProvider.getUsernameFromToken(token);
+                boolean allStoreAccess =
+                        tokenProvider.isAllStoreAccess(token);
+                String authMode =
+                        tokenProvider.getAuthModeFromToken(token);
 
                 var authorities = permissions.stream()
                         .map(p -> new SimpleGrantedAuthority(
@@ -56,7 +61,9 @@ public class JwtAuthenticationFilter
                 ReconUserPrincipal principal =
                         new ReconUserPrincipal(
                                 userId, username, tenantId,
-                                permissions, storeIds);
+                                permissions, storeIds,
+                                allStoreAccess,
+                                authMode);
 
                 var auth =
                         new UsernamePasswordAuthenticationToken(

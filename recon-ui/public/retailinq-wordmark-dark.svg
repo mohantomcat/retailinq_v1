@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 213 36" role="img" aria-labelledby="title">
+  <title id="title">RetailINQ</title>
+  <defs>
+    <linearGradient id="inqWordmarkDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7CB0FF"/>
+      <stop offset="100%" stop-color="#A5C6FF"/>
+    </linearGradient>
+  </defs>
+
+  <text x="1" y="27.5" font-family="'Segoe UI', 'Trebuchet MS', sans-serif" font-size="31" font-weight="700" letter-spacing="-0.9">
+    <tspan fill="#F8FAFC">Retail</tspan><tspan fill="url(#inqWordmarkDark)" font-weight="800">INQ</tspan>
+  </text>
+</svg>

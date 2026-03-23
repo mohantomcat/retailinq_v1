@@ -24,6 +24,7 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLedgerService auditLedgerService;
+    private final AccessScopeService accessScopeService;
 
     public List<UserDto> getAllUsers(String tenantId) {
         return userRepository.findByTenantId(tenantId)
@@ -32,27 +33,29 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-    public UserDto getUserById(UUID id) {
-        return userRepository.findById(id)
+    public UserDto getUserById(String tenantId, UUID id) {
+        return userRepository.findByIdAndTenantId(id, tenantId)
                 .map(this::toDto)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
     }
 
     @Transactional
-    public UserDto createUser(CreateUserRequest req, String actorUsername) {
-        if (userRepository.existsByUsername(req.getUsername())) {
+    public UserDto createUser(String tenantId, CreateUserRequest req, String actorUsername) {
+        if (userRepository.existsByTenantIdAndUsernameIgnoreCase(tenantId, req.getUsername())) {
             throw new RuntimeException(
                     "Username already exists");
         }
-        if (userRepository.existsByEmail(req.getEmail())) {
+        if (userRepository.existsByTenantIdAndEmailIgnoreCase(tenantId, req.getEmail())) {
             throw new RuntimeException(
                     "Email already exists");
         }
 
         Set<Role> roles = req.getRoleIds() != null
                 ? new HashSet<>(roleRepository
-                .findAllById(req.getRoleIds()))
+                .findAllById(req.getRoleIds()).stream()
+                .filter(role -> tenantId.equals(role.getTenantId()))
+                .toList())
                 : new HashSet<>();
 
         User user = User.builder()
@@ -61,10 +64,10 @@ public class UserService {
                 .passwordHash(passwordEncoder.encode(
                         req.getPassword()))
                 .fullName(req.getFullName())
-                .tenantId(req.getTenantId())
+                .tenantId(tenantId)
                 .roles(roles)
                 .storeIds(req.getStoreIds() != null
-                        ? req.getStoreIds() : new HashSet<>())
+                        ? normalizeStores(req.getStoreIds()) : new HashSet<>())
                 .active(true)
                 .build();
 
@@ -74,8 +77,8 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto updateUser(UUID id, CreateUserRequest req, String actorUsername) {
-        User user = userRepository.findById(id)
+    public UserDto updateUser(String tenantId, UUID id, CreateUserRequest req, String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
@@ -87,7 +90,11 @@ public class UserService {
                 && !req.getEmail().isBlank()
                 && !req.getEmail().equalsIgnoreCase(user.getEmail())) {
 
-            if (userRepository.existsByEmail(req.getEmail())) {
+            boolean duplicateEmail = userRepository.findByTenantId(tenantId).stream()
+                    .anyMatch(existing -> !existing.getId().equals(id)
+                            && existing.getEmail() != null
+                            && existing.getEmail().equalsIgnoreCase(req.getEmail()));
+            if (duplicateEmail) {
                 throw new RuntimeException("Email already exists");
             }
             user.setEmail(req.getEmail());
@@ -105,8 +112,8 @@ public class UserService {
     }
 
     @Transactional
-    public void deactivateUser(UUID id, String actorUsername) {
-        User user = userRepository.findById(id)
+    public void deactivateUser(String tenantId, UUID id, String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
@@ -116,8 +123,8 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto activateUser(UUID id, String actorUsername) {
-        User user = userRepository.findById(id)
+    public UserDto activateUser(String tenantId, UUID id, String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
@@ -128,8 +135,8 @@ public class UserService {
     }
 
     @Transactional
-    public void resetPassword(UUID id, ResetPasswordRequest req, String actorUsername) {
-        User user = userRepository.findById(id)
+    public void resetPassword(String tenantId, UUID id, ResetPasswordRequest req, String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
 
@@ -145,8 +152,8 @@ public class UserService {
     }
 
     @Transactional
-    public void deleteUser(UUID id, String actorUsername) {
-        User user = userRepository.findById(id)
+    public void deleteUser(String tenantId, UUID id, String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
@@ -155,15 +162,18 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto assignRoles(UUID userId,
+    public UserDto assignRoles(String tenantId,
+                               UUID userId,
                                AssignRolesRequest req,
                                String actorUsername) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdAndTenantId(userId, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
         Set<Role> roles = new HashSet<>(
-                roleRepository.findAllById(req.getRoleIds()));
+                roleRepository.findAllById(req.getRoleIds()).stream()
+                        .filter(role -> tenantId.equals(role.getTenantId()))
+                        .toList());
         user.setRoles(roles);
         User saved = userRepository.save(user);
         recordSecurityAudit(saved.getTenantId(), "USER_ROLES_ASSIGNED", "User roles assigned", saved.getId().toString(), actorUsername, before, saved);
@@ -171,15 +181,16 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto assignStores(UUID userId,
+    public UserDto assignStores(String tenantId,
+                                UUID userId,
                                 AssignStoresRequest req,
                                 String actorUsername) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdAndTenantId(userId, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
         user.setStoreIds(req.getStoreIds() != null
-                ? req.getStoreIds()
+                ? normalizeStores(req.getStoreIds())
                 : new HashSet<>());
         User saved = userRepository.save(user);
         recordSecurityAudit(saved.getTenantId(), "USER_STORES_ASSIGNED", "User store scope updated", saved.getId().toString(), actorUsername, before, saved);
@@ -227,6 +238,7 @@ public class UserService {
     }
 
     private UserDto toDto(User user) {
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
         return UserDto.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -237,6 +249,9 @@ public class UserService {
                 .createdAt(user.getCreatedAt())
                 .lastLogin(user.getLastLogin())
                 .storeIds(user.getStoreIds())
+                .effectiveStoreIds(new HashSet<>(scopeSummary.getEffectiveStoreIds()))
+                .allStoreAccess(scopeSummary.isAllStoreAccess())
+                .accessScope(scopeSummary)
                 .permissions(user.getAllPermissions())
                 .roles(user.getRoles().stream()
                         .map(r -> RoleDto.builder()
@@ -250,5 +265,14 @@ public class UserService {
                                 .build())
                         .collect(Collectors.toList()))
                 .build();
+    }
+
+    private Set<String> normalizeStores(Set<String> storeIds) {
+        return storeIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(value -> value.toUpperCase(java.util.Locale.ROOT))
+                .collect(Collectors.toCollection(HashSet::new));
     }
 }

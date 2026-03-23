@@ -22,12 +22,18 @@ export function getAdminPalette(themeMode) {
         menuBg: isDark ? '#111827' : '#FFFFFF',
         menuHover: isDark ? '#0F172A' : '#F8FAFC',
         iconButton: isDark ? '#CBD5E1' : '#475569',
-        selectedBg: isDark ? 'rgba(37, 99, 235, 0.18)' : '#EFF6FF',
-        selectedHoverBg: isDark ? 'rgba(37, 99, 235, 0.28)' : '#DBEAFE',
-        primary: '#2563EB',
-        primaryHover: '#1D4ED8',
-        chipBlueBg: isDark ? 'rgba(37, 99, 235, 0.18)' : '#EFF6FF',
-        chipBlueText: isDark ? '#93C5FD' : '#2563EB',
+        selectedBg: isDark
+            ? 'rgba(var(--brand-primary-rgb), 0.18)'
+            : 'var(--brand-primary-surface)',
+        selectedHoverBg: isDark
+            ? 'rgba(var(--brand-primary-rgb), 0.28)'
+            : 'var(--brand-primary-surface-strong)',
+        primary: 'var(--brand-primary)',
+        primaryHover: 'var(--brand-primary-hover)',
+        chipBlueBg: isDark
+            ? 'rgba(var(--brand-primary-rgb), 0.18)'
+            : 'var(--brand-primary-surface)',
+        chipBlueText: isDark ? '#BFDBFE' : 'var(--brand-primary)',
         chipGreenBg: isDark ? 'rgba(34, 197, 94, 0.16)' : '#F0FDF4',
         chipGreenText: isDark ? '#86EFAC' : '#16A34A',
         chipRedBg: isDark ? '#2A1215' : '#FFF5F5',

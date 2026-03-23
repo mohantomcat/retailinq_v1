@@ -3,6 +3,7 @@ package com.recon.api.controller;
 import com.recon.api.domain.*;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.RoleService;
+import com.recon.api.service.TenantAccessAdministrationService;
 import com.recon.api.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,18 +22,17 @@ public class AdminController {
 
     private final UserService userService;
     private final RoleService roleService;
+    private final TenantAccessAdministrationService tenantAccessAdministrationService;
 
     // ── Users ─────────────────────────────────────────────
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserDto>>> getUsers(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId,
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.getAllUsers(tenantId)));
+                userService.getAllUsers(principal.getTenantId())));
     }
 
     @PostMapping("/users")
@@ -42,7 +42,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.createUser(req, principal.getUsername())));
+                userService.createUser(principal.getTenantId(), req, principal.getUsername())));
     }
 
     @PutMapping("/users/{id}")
@@ -53,7 +53,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.updateUser(id, req, principal.getUsername())));
+                userService.updateUser(principal.getTenantId(), id, req, principal.getUsername())));
     }
 
     @DeleteMapping("/users/{id}")
@@ -62,7 +62,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.deactivateUser(id, principal.getUsername());
+        userService.deactivateUser(principal.getTenantId(), id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("User deactivated"));
     }
@@ -74,7 +74,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.activateUser(id, principal.getUsername())));
+                userService.activateUser(principal.getTenantId(), id, principal.getUsername())));
     }
 
     @PostMapping("/users/{id}/reset-password")
@@ -84,7 +84,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.resetPassword(id, req, principal.getUsername());
+        userService.resetPassword(principal.getTenantId(), id, req, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("Password reset successfully"));
     }
@@ -95,7 +95,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
-        userService.deleteUser(id, principal.getUsername());
+        userService.deleteUser(principal.getTenantId(), id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("User deleted permanently"));
     }
@@ -108,7 +108,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.assignRoles(id, req, principal.getUsername())));
+                userService.assignRoles(principal.getTenantId(), id, req, principal.getUsername())));
     }
 
     @PostMapping("/users/{id}/stores")
@@ -119,20 +119,32 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_USERS");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.assignStores(id, req, principal.getUsername())));
+                userService.assignStores(principal.getTenantId(), id, req, principal.getUsername())));
+    }
+
+    @PostMapping("/users/{id}/org-scopes")
+    public ResponseEntity<ApiResponse<List<UserOrganizationScopeDto>>> assignOrganizationScopes(
+            @PathVariable("id") UUID id,
+            @RequestBody AssignUserOrganizationScopesRequest req,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ADMIN_ORG");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.assignUserOrganizationScopes(
+                        principal.getTenantId(),
+                        id,
+                        req,
+                        principal.getUsername())));
     }
 
     // ── Roles ─────────────────────────────────────────────
 
     @GetMapping("/roles")
     public ResponseEntity<ApiResponse<List<RoleDto>>> getRoles(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india")
-            String tenantId,
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.getAllRoles(tenantId)));
+                roleService.getAllRoles(principal.getTenantId())));
     }
 
     @PostMapping("/roles")
@@ -142,7 +154,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.createRole(req, principal.getUsername())));
+                roleService.createRole(principal.getTenantId(), req, principal.getUsername())));
     }
 
     @PutMapping("/roles/{id}")
@@ -153,7 +165,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.updateRole(id, req, principal.getUsername())));
+                roleService.updateRole(principal.getTenantId(), id, req, principal.getUsername())));
     }
 
     @PostMapping("/roles/{id}/permissions")
@@ -164,7 +176,7 @@ public class AdminController {
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
         return ResponseEntity.ok(ApiResponse.ok(
-                roleService.assignPermissions(id, permissionIds, principal.getUsername())));
+                roleService.assignPermissions(principal.getTenantId(), id, permissionIds, principal.getUsername())));
     }
 
     @DeleteMapping("/roles/{id}")
@@ -173,7 +185,7 @@ public class AdminController {
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
         requirePermission(principal, "ADMIN_ROLES");
-        roleService.deleteRole(id, principal.getUsername());
+        roleService.deleteRole(principal.getTenantId(), id, principal.getUsername());
         return ResponseEntity.ok(
                 ApiResponse.ok("Role deleted successfully"));
     }
@@ -187,6 +199,85 @@ public class AdminController {
         requirePermission(principal, "ADMIN_PERMISSIONS");
         return ResponseEntity.ok(ApiResponse.ok(
                 roleService.getAllPermissions()));
+    }
+
+    @GetMapping("/org-units")
+    public ResponseEntity<ApiResponse<List<OrganizationUnitDto>>> getOrganizationUnits(
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ADMIN_ORG");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.getOrganizationUnits(principal.getTenantId())));
+    }
+
+    @PostMapping("/org-units")
+    public ResponseEntity<ApiResponse<OrganizationUnitDto>> createOrganizationUnit(
+            @RequestBody SaveOrganizationUnitRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ADMIN_ORG");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveOrganizationUnit(
+                        principal.getTenantId(),
+                        null,
+                        request,
+                        principal.getUsername())));
+    }
+
+    @PutMapping("/org-units/{id}")
+    public ResponseEntity<ApiResponse<OrganizationUnitDto>> updateOrganizationUnit(
+            @PathVariable("id") UUID id,
+            @RequestBody SaveOrganizationUnitRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ADMIN_ORG");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveOrganizationUnit(
+                        principal.getTenantId(),
+                        id,
+                        request,
+                        principal.getUsername())));
+    }
+
+    @GetMapping("/tenant-access-center")
+    public ResponseEntity<ApiResponse<TenantAccessCenterResponse>> getTenantAccessCenter(
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.getAccessCenter(principal.getTenantId())));
+    }
+
+    @PutMapping("/tenant-auth-config")
+    public ResponseEntity<ApiResponse<TenantAuthConfigDto>> saveTenantAuthConfig(
+            @RequestBody SaveTenantAuthConfigRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveTenantAuthConfig(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
+    @PostMapping("/api-keys")
+    public ResponseEntity<ApiResponse<CreatedTenantApiKeyResponse>> createTenantApiKey(
+            @RequestBody CreateTenantApiKeyRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "API_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.createTenantApiKey(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
+    @PostMapping("/api-keys/{id}/deactivate")
+    public ResponseEntity<ApiResponse<TenantApiKeyDto>> deactivateTenantApiKey(
+            @PathVariable("id") UUID id,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "API_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.deactivateTenantApiKey(
+                        principal.getTenantId(),
+                        id,
+                        principal.getUsername())));
     }
 
     // ── Helper ────────────────────────────────────────────

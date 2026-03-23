@@ -41,6 +41,7 @@ public class OperationsCommandCenterService {
     @Transactional(readOnly = true)
     public OperationsCommandCenterResponse getCenter(String tenantId,
                                                      String username,
+                                                     java.util.Collection<String> accessibleStoreIds,
                                                      List<String> allowedReconViews,
                                                      String reconView) {
         List<String> scopedViews = resolveViews(allowedReconViews, reconView);
@@ -48,6 +49,7 @@ public class OperationsCommandCenterService {
                 .map(view -> exceptionQueueService.getQueue(
                         tenantId,
                         username,
+                        accessibleStoreIds,
                         view,
                         "ALL",
                         null,
@@ -67,6 +69,7 @@ public class OperationsCommandCenterService {
         RegionalIncidentBoardResponse regionalBoard = regionalIncidentBoardService.getBoard(
                 tenantId,
                 username,
+                accessibleStoreIds,
                 scopedViews,
                 reconView,
                 null,
@@ -240,7 +243,7 @@ public class OperationsCommandCenterService {
             return List.of(normalize(requestedReconView));
         }
         if (allowedReconViews == null || allowedReconViews.isEmpty()) {
-            return List.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS");
+            return List.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS", "SIOCS_MFCS");
         }
         return allowedReconViews.stream()
                 .map(this::normalize)
@@ -252,6 +255,7 @@ public class OperationsCommandCenterService {
     private String moduleLabel(String reconView) {
         return switch (normalize(reconView)) {
             case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
+            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
             case "XSTORE_XOCS" -> "Xstore vs XOCS";
             default -> "Xstore vs SIM";
         };

@@ -24,6 +24,7 @@ import {
 } from '@mui/material'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import {activityApi} from '../services/activityApi'
+import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
 
 const SOURCE_OPTIONS = [
     {value: '', label: 'All Sources'},
@@ -38,9 +39,7 @@ const SOURCE_OPTIONS = [
 
 const MODULE_OPTIONS = [
     {value: '', label: 'All Modules'},
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
+    ...RECON_VIEW_OPTIONS,
     {value: 'CONFIGURATIONS', label: 'Configurations'},
     {value: 'SECURITY', label: 'Security'},
     {value: 'AUDIT', label: 'Audit'},
@@ -244,7 +243,7 @@ export default function Activity({palette, t}) {
         <Box sx={{px: 1, py: 3}}>
             <Paper elevation={0} sx={{p: 3, mb: 3, borderRadius: '24px', border: `1px solid ${palette.border}`, background: palette.heroBg}}>
                 <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}}>
-                    <Box sx={{mt: 0.3, width: 40, height: 40, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECFEFF', color: '#0F7C86', flexShrink: 0}}>
+                    <Box sx={{mt: 0.3, width: 40, height: 40, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF4FF', color: '#4A79D8', flexShrink: 0}}>
                         <AssessmentIcon sx={{fontSize: 20}}/>
                     </Box>
                     <Box>

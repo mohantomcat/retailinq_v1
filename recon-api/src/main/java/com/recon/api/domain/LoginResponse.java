@@ -20,5 +20,9 @@ public class LoginResponse {
     private String tenantId;
     private Set<String> permissions;
     private Set<String> storeIds;
+    private Set<String> effectiveStoreIds;
+    private boolean allStoreAccess;
+    private AccessScopeSummaryDto accessScope;
+    private String authMode;
     private List<RoleDto> roles;
 }

@@ -33,22 +33,31 @@ public class DashboardAnalyticsService {
     public DashboardAnalyticsResponse getAnalytics(String tenantId,
                                                    List<String> storeIds,
                                                    List<String> wkstnIds,
+                                                   List<String> transactionTypes,
                                                    String reconView) {
         String today = LocalDate.now().toString();
         String last7 = LocalDate.now().minusDays(6).toString();
         String last30 = LocalDate.now().minusDays(29).toString();
         SlaSummaryDto slaSummary = exceptionSlaService.getSlaSummary(
                 tenantId, reconView, storeIds, wkstnIds);
+        boolean transactionTypeScoped = "SIOCS_MFCS".equalsIgnoreCase(reconView);
 
         return DashboardAnalyticsResponse.builder()
-                .last7Days(buildTrend(last7, today, storeIds, wkstnIds, reconView))
-                .last30Days(buildTrend(last30, today, storeIds, wkstnIds, reconView))
+                .last7Days(buildTrend(last7, today, storeIds, wkstnIds, transactionTypes, reconView))
+                .last30Days(buildTrend(last30, today, storeIds, wkstnIds, transactionTypes, reconView))
                 .topFailingStores(buildRankedStats(
                         esRepository.aggregateByFieldAndStatus(
-                                "storeId", 20, storeIds, wkstnIds, last30, today, reconView)))
+                                "storeId", 20, storeIds, wkstnIds, transactionTypes, last30, today, reconView)))
                 .topFailingRegisters(buildRankedStats(
                         esRepository.aggregateByFieldAndStatus(
-                                "wkstnId", 20, storeIds, wkstnIds, last30, today, reconView)))
+                                transactionTypeScoped ? "transactionType" : "wkstnId",
+                                20,
+                                storeIds,
+                                wkstnIds,
+                                transactionTypes,
+                                last30,
+                                today,
+                                reconView)))
                 .exceptionAging(buildExceptionAging(tenantId, reconView))
                 .slaSummary(slaSummary)
                 .build();
@@ -58,9 +67,10 @@ public class DashboardAnalyticsService {
                                         String toBusinessDate,
                                         List<String> storeIds,
                                         List<String> wkstnIds,
+                                        List<String> transactionTypes,
                                         String reconView) {
         Map<String, Map<String, Long>> raw = esRepository.aggregateByBusinessDateAndStatus(
-                storeIds, wkstnIds, fromBusinessDate, toBusinessDate, reconView);
+                storeIds, wkstnIds, transactionTypes, fromBusinessDate, toBusinessDate, reconView);
 
         List<TrendPoint> points = new ArrayList<>();
         LocalDate start = LocalDate.parse(fromBusinessDate);
@@ -184,6 +194,9 @@ public class DashboardAnalyticsService {
     private String targetSystem(String reconView) {
         if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
             return "SIOCS";
+        }
+        if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
+            return "MFCS";
         }
         if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
             return "XOCS";

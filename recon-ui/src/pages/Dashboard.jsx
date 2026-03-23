@@ -32,6 +32,7 @@ import ExceptionQueues from './ExceptionQueues'
 import KnownIssues from './KnownIssues'
 import NoiseSuppression from './NoiseSuppression'
 import Operations from './Operations'
+import ReconciliationJobs from './ReconciliationJobs'
 import OperationsCommandCenter from './OperationsCommandCenter'
 import RegionalIncidentBoard from './RegionalIncidentBoard'
 import RecurrenceAnalytics from './RecurrenceAnalytics'
@@ -44,15 +45,19 @@ import TicketingCommunications from './TicketingCommunications'
 import ManageUsers from './admin/ManageUsers'
 import ManageRoles from './admin/ManageRoles'
 import ManagePermissions from './admin/ManagePermissions'
+import OrganizationHierarchy from './admin/OrganizationHierarchy'
+import TenantAccessCenter from './admin/TenantAccessCenter'
+import BrandingCenter from './admin/BrandingCenter'
 import {LocalizationProvider} from '@mui/x-date-pickers/LocalizationProvider'
 import {DatePicker} from '@mui/x-date-pickers/DatePicker'
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import {useI18n} from '../context/I18nContext'
 import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
+import {RECON_VIEW_BY_TAB, getReconTargetSystemByTab} from '../constants/reconViews'
 
 const PAGE_SIZE = 20
-const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms']
+const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms', 'org-hierarchy', 'tenant-access', 'branding-center']
 const ALERT_IDS = ALERT_TAB_IDS
 const EXCEPTION_IDS = EXCEPTION_TAB_IDS
 const OPERATION_IDS = OPERATIONS_TAB_IDS
@@ -60,14 +65,10 @@ const SLA_IDS = SLA_TAB_IDS
 const ACTIVITY_IDS = ACTIVITY_TAB_IDS
 const CONFIGURATION_IDS = CONFIGURATION_TAB_IDS
 const REPORT_IDS = REPORT_TAB_IDS
-const RECON_VIEW_BY_TAB = {
-    'xstore-sim': 'XSTORE_SIM',
-    'xstore-siocs': 'XSTORE_SIOCS',
-    'xstore-xocs': 'XSTORE_XOCS',
-}
-
 function getMissingKpiTitle(tabId, t) {
     switch (tabId) {
+        case 'siocs-mfcs':
+            return t('Missing in MFCS')
         case 'xstore-siocs':
             return t('Missing in SIOCS')
         case 'xstore-xocs':
@@ -79,15 +80,7 @@ function getMissingKpiTitle(tabId, t) {
 }
 
 function getTargetSystem(tabId) {
-    switch (tabId) {
-        case 'xstore-siocs':
-            return 'SIOCS'
-        case 'xstore-xocs':
-            return 'XOCS'
-        case 'xstore-sim':
-        default:
-            return 'SIM'
-    }
+    return getReconTargetSystemByTab(tabId)
 }
 
 function getProcessingPendingKpiTitle(tabId, t) {
@@ -115,7 +108,7 @@ function getKpiSections(tabId, t) {
         ...(tabId === 'xstore-xocs'
             ? [{title: t('Transaction Total Mismatch'), key: 'totalMismatch'}]
             : []),
-        ...((tabId === 'xstore-siocs' || tabId === 'xstore-sim')
+        ...((tabId === 'xstore-siocs' || tabId === 'xstore-sim' || tabId === 'siocs-mfcs')
             ? [{title: getDuplicateKpiTitle(tabId, t), key: 'duplicateTransactions'}]
             : []),
     ]
@@ -156,8 +149,8 @@ function getKpiStatus(tabId, selectedKpi) {
 }
 
 const TAB_COLORS = {
-    recon: {active: '#0F7C86', hover: '#157F8B'},
-    security: {active: '#0F7C86', hover: '#157F8B'},
+    recon: {active: 'var(--brand-primary)', hover: 'var(--brand-primary-hover)'},
+    security: {active: 'var(--brand-primary)', hover: 'var(--brand-primary-hover)'},
 }
 
 function getTransactionIdFromExternalId(externalId, fallback = '-') {
@@ -178,40 +171,40 @@ function getPalette(themeMode) {
 
     return {
         isDark,
-        pageBg: isDark ? '#0B1220' : '#F8FAFC',
+        pageBg: isDark ? '#0B1220' : '#F4F6FB',
         cardBg: isDark ? '#0F172A' : '#FFFFFF',
-        cardBgAlt: isDark ? '#111827' : '#F8FAFC',
-        border: isDark ? '#1E293B' : '#E2E8F0',
-        borderSoft: isDark ? '#243041' : '#F1F5F9',
-        text: isDark ? '#E2E8F0' : '#0F172A',
-        textMuted: isDark ? '#94A3B8' : '#64748B',
-        textSoft: isDark ? '#64748B' : '#94A3B8',
-        hoverBg: isDark ? '#111827' : '#F8FAFC',
-        selectedBg: isDark ? '#0B1220' : '#EFF6FF',
-        selectedBorder: isDark ? '#1D4ED8' : '#BFDBFE',
-        blueChipBg: isDark ? '#0F172A' : '#EFF6FF',
-        blueChipText: '#2563EB',
-        tealChipBg: isDark ? '#0F172A' : '#ECFEFF',
-        tealChipText: '#0F7C86',
-        neutralChipBg: isDark ? '#111827' : '#F1F5F9',
-        neutralChipText: isDark ? '#CBD5E1' : '#334155',
+        cardBgAlt: isDark ? '#111827' : '#F7F9FD',
+        border: isDark ? '#1E293B' : '#DCE3EF',
+        borderSoft: isDark ? '#243041' : '#E8EDF5',
+        text: isDark ? '#E2E8F0' : '#22314D',
+        textMuted: isDark ? '#94A3B8' : '#6C7A92',
+        textSoft: isDark ? '#64748B' : '#8C97AA',
+        hoverBg: isDark ? '#111827' : '#F7F9FD',
+        selectedBg: isDark ? '#0B1220' : '#FFFFFF',
+        selectedBorder: isDark ? 'var(--brand-primary)' : 'var(--brand-primary-border)',
+        blueChipBg: isDark ? 'rgba(var(--brand-primary-rgb), 0.18)' : 'var(--brand-primary-surface)',
+        blueChipText: 'var(--brand-primary)',
+        tealChipBg: isDark ? 'rgba(var(--brand-secondary-rgb), 0.14)' : 'var(--brand-secondary-surface)',
+        tealChipText: 'var(--brand-secondary)',
+        neutralChipBg: isDark ? '#111827' : '#EEF1F7',
+        neutralChipText: isDark ? '#CBD5E1' : '#4F5C72',
         dangerBg: isDark ? '#2A1215' : '#fff5f5',
         dangerBgHover: isDark ? '#3A151A' : '#fee2e2',
         dangerBorder: '#fca5a5',
         dangerText: '#ef4444',
-        scrollbarTrack: isDark ? '#0F172A' : '#f1f5f9',
-        scrollbarThumb: isDark ? '#334155' : '#cbd5e1',
-        tabBg: isDark ? '#0F172A' : '#FFFFFF',
-        tabActiveBg: isDark ? '#111827' : '#F8FAFC',
+        scrollbarTrack: isDark ? '#0F172A' : '#EEF2F8',
+        scrollbarThumb: isDark ? '#334155' : '#C9D3E3',
+        tabBg: isDark ? '#0F172A' : '#F8FAFD',
+        tabActiveBg: isDark ? '#111827' : '#FFFFFF',
         overlay1: isDark
-            ? 'radial-gradient(circle, rgba(37,99,235,0.16), rgba(37,99,235,0))'
-            : 'radial-gradient(circle, rgba(37,99,235,0.12), rgba(37,99,235,0))',
+            ? 'radial-gradient(circle, rgba(var(--brand-primary-rgb), 0.16), rgba(var(--brand-primary-rgb), 0))'
+            : 'radial-gradient(circle, rgba(var(--brand-primary-rgb), 0.12), rgba(var(--brand-primary-rgb), 0))',
         overlay2: isDark
-            ? 'radial-gradient(circle, rgba(15,124,134,0.14), rgba(15,124,134,0))'
-            : 'radial-gradient(circle, rgba(15,124,134,0.10), rgba(15,124,134,0))',
+            ? 'radial-gradient(circle, rgba(var(--brand-secondary-rgb), 0.16), rgba(var(--brand-secondary-rgb), 0))'
+            : 'radial-gradient(circle, rgba(var(--brand-secondary-rgb), 0.14), rgba(var(--brand-secondary-rgb), 0))',
         heroBg: isDark
             ? 'linear-gradient(135deg, #0F172A 0%, #111827 100%)'
-            : 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+            : 'linear-gradient(135deg, #FFFFFF 0%, rgba(var(--brand-primary-rgb), 0.04) 42%, rgba(var(--brand-secondary-rgb), 0.08) 100%)',
     }
 }
 
@@ -219,7 +212,7 @@ function tabColor(id) {
     return SECURITY_IDS.includes(id)
         ? TAB_COLORS.security
         : CONFIGURATION_IDS.includes(id)
-            ? {active: '#2563EB', hover: '#1D4ED8'}
+            ? {active: 'var(--brand-primary)', hover: 'var(--brand-primary-hover)'}
         : TAB_COLORS.recon
 }
 
@@ -261,14 +254,14 @@ function ClearableDatePicker({
                                     borderColor: palette.textSoft,
                                 },
                                 '&.Mui-focused fieldset': {
-                                    borderColor: '#2563EB',
+                                    borderColor: 'var(--brand-primary)',
                                 },
                             },
                             '& .MuiInputLabel-root': {
                                 color: palette.textMuted,
                             },
                             '& .MuiInputLabel-root.Mui-focused': {
-                                color: '#2563EB',
+                                color: 'var(--brand-primary)',
                             },
                             '& .MuiSvgIcon-root': {
                                 color: palette.textMuted,
@@ -331,8 +324,8 @@ function WelcomeLanding({palette, t}) {
             desc: t('Monitor transaction reconciliation, identify mismatches, and drill into operational exceptions.'),
             icon: <CompareArrowsRoundedIcon sx={{fontSize: 20}}/>,
             badge: t('Reconciliation'),
-            accent: '#0F7C86',
-            bg: palette.isDark ? '#0F172A' : '#ECFEFF',
+            accent: '#4A79D8',
+            bg: palette.isDark ? '#0F172A' : '#EEF4FF',
         },
         {
             id: 'xstore-siocs',
@@ -340,8 +333,17 @@ function WelcomeLanding({palette, t}) {
             desc: t('Review reconciliation results produced from the cloud SIOCS connector against the existing Xstore source.'),
             icon: <CompareArrowsRoundedIcon sx={{fontSize: 20}}/>,
             badge: t('Cloud Reconciliation'),
-            accent: '#2563EB',
-            bg: palette.isDark ? '#0F172A' : '#EFF6FF',
+            accent: '#4A79D8',
+            bg: palette.isDark ? '#0F172A' : '#EEF4FF',
+        },
+        {
+            id: 'siocs-mfcs',
+            title: t('SIOCS vs MFCS'),
+            desc: t('Track the new SIOCS to MFCS reconciliation lane and investigate ERP-facing mismatches from the same workbench.'),
+            icon: <CompareArrowsRoundedIcon sx={{fontSize: 20}}/>,
+            badge: t('ERP Reconciliation'),
+            accent: '#5C74D6',
+            bg: palette.isDark ? '#0F172A' : '#F1F4FF',
         },
         {
             id: 'manage-users',
@@ -349,17 +351,8 @@ function WelcomeLanding({palette, t}) {
             desc: t('Control user access, store scope, and role assignments across your RetailINQ workspace.'),
             icon: <AdminPanelSettingsRoundedIcon sx={{fontSize: 20}}/>,
             badge: t('Security'),
-            accent: '#2563EB',
-            bg: palette.isDark ? '#0F172A' : '#EFF6FF',
-        },
-        {
-            id: 'manage-roles',
-            title: t('Manage Roles'),
-            desc: t('Define reusable access models and align permissions to business responsibilities.'),
-            icon: <DashboardCustomizeRoundedIcon sx={{fontSize: 20}}/>,
-            badge: t('Administration'),
-            accent: '#7C3AED',
-            bg: palette.isDark ? '#0F172A' : '#F5F3FF',
+            accent: '#4A79D8',
+            bg: palette.isDark ? '#0F172A' : '#EEF4FF',
         },
     ]
 
@@ -373,6 +366,9 @@ function WelcomeLanding({palette, t}) {
                     borderRadius: '28px',
                     border: `1px solid ${palette.border}`,
                     background: palette.heroBg,
+                    boxShadow: palette.isDark
+                        ? '0 18px 44px rgba(0,0,0,0.20)'
+                        : '0 18px 42px rgba(34,49,77,0.08)',
                     px: {xs: 2.5, md: 3},
                     py: {xs: 2.5, md: 3},
                     mb: 2,
@@ -425,6 +421,7 @@ function WelcomeLanding({palette, t}) {
                                 color: palette.tealChipText,
                                 fontWeight: 700,
                                 fontSize: '0.76rem',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
                             }}
                         />
 
@@ -469,6 +466,7 @@ function WelcomeLanding({palette, t}) {
                                     backgroundColor: palette.blueChipBg,
                                     color: palette.blueChipText,
                                     fontWeight: 700,
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
                                 }}
                             />
                             <Chip
@@ -478,6 +476,7 @@ function WelcomeLanding({palette, t}) {
                                     backgroundColor: palette.tealChipBg,
                                     color: palette.tealChipText,
                                     fontWeight: 700,
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
                                 }}
                             />
                             <Chip
@@ -487,6 +486,7 @@ function WelcomeLanding({palette, t}) {
                                     backgroundColor: palette.neutralChipBg,
                                     color: palette.neutralChipText,
                                     fontWeight: 700,
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
                                 }}
                             />
                         </Box>
@@ -495,15 +495,17 @@ function WelcomeLanding({palette, t}) {
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                            gridTemplateColumns: '1fr',
                             gap: 1,
+                            maxWidth: 290,
+                            justifySelf: 'end',
+                            width: '100%',
                         }}
                     >
                         {[
                             [t('Workspace'), 'RetailINQ', t('Unified operations console')],
                             [t('Experience'), t('Premium SaaS'), t('Secure, modern, scalable')],
                             [t('Core Focus'), t('Reconciliation'), t('Exceptions and controls')],
-                            [t('Administration'), t('Users & Roles'), t('Access governance')],
                         ].map(([label, title, desc]) => (
                             <Paper
                                 key={label}
@@ -513,6 +515,9 @@ function WelcomeLanding({palette, t}) {
                                     borderRadius: '18px',
                                     border: `1px solid ${palette.border}`,
                                     backgroundColor: palette.cardBg,
+                                    boxShadow: palette.isDark
+                                        ? '0 10px 20px rgba(0,0,0,0.16)'
+                                        : '0 10px 24px rgba(34,49,77,0.08)',
                                 }}
                             >
                                 <Typography
@@ -570,12 +575,15 @@ function WelcomeLanding({palette, t}) {
                             borderRadius: '20px',
                             border: `1px solid ${palette.border}`,
                             backgroundColor: palette.cardBg,
+                            boxShadow: palette.isDark
+                                ? 'none'
+                                : '0 10px 24px rgba(34,49,77,0.06)',
                             transition: 'all 0.18s ease',
                             '&:hover': {
                                 transform: 'translateY(-2px)',
                                 boxShadow: palette.isDark
                                     ? '0 10px 24px rgba(0, 0, 0, 0.22)'
-                                    : '0 10px 24px rgba(15, 23, 42, 0.06)',
+                                    : '0 16px 30px rgba(34,49,77,0.10)',
                             },
                         }}
                     >
@@ -720,23 +728,49 @@ function ReconContent({tabId, palette, t}) {
     const [totalElements, setTotalElements] = useState(0)
     const [stores, setStores] = useState([])
     const [registers, setRegisters] = useState([])
+    const [transactionTypes, setTransactionTypes] = useState([])
     const [selectedStores, setSelectedStores] = useState([])
     const [selectedRegisters, setSelectedRegisters] = useState([])
+    const [selectedTransactionTypes, setSelectedTransactionTypes] = useState([])
     const [fromDate, setFromDate] = useState('')
     const [toDate, setToDate] = useState('')
+    const isTransactionTypeScoped = reconView === 'SIOCS_MFCS'
 
     useEffect(() => {
         reconApi.getStores(reconView).then(setStores).catch(console.error)
     }, [reconView])
 
     useEffect(() => {
+        setSelectedRegisters([])
+        setSelectedTransactionTypes([])
+    }, [reconView])
+
+    useEffect(() => {
+        if (!reconView) {
+            setRegisters([])
+            setTransactionTypes([])
+            return
+        }
+
+        if (isTransactionTypeScoped) {
+            reconApi.getTransactionTypes(
+                selectedStores.length ? selectedStores : null,
+                reconView
+            )
+                .then(setTransactionTypes)
+                .catch(console.error)
+            setRegisters([])
+            return
+        }
+
         reconApi.getRegisters(
             selectedStores.length ? selectedStores : null,
             reconView
         )
             .then(setRegisters)
             .catch(console.error)
-    }, [selectedStores, reconView])
+        setTransactionTypes([])
+    }, [selectedStores, reconView, isTransactionTypeScoped])
 
     useEffect(() => {
         if (!reconView) {
@@ -794,7 +828,8 @@ function ReconContent({tabId, palette, t}) {
             try {
                 const response = await reconApi.getDashboardAnalytics({
                     storeIds: selectedStores,
-                    wkstnIds: selectedRegisters,
+                    wkstnIds: isTransactionTypeScoped ? [] : selectedRegisters,
+                    transactionTypes: isTransactionTypeScoped ? selectedTransactionTypes : [],
                     reconView,
                 })
                 setAnalytics(response)
@@ -806,7 +841,7 @@ function ReconContent({tabId, palette, t}) {
         }
 
         loadAnalytics()
-    }, [reconView, selectedStores, selectedRegisters])
+    }, [reconView, selectedStores, selectedRegisters, selectedTransactionTypes, isTransactionTypeScoped])
 
     useEffect(() => {
         if (!selectedKpi || !reconView) return
@@ -820,8 +855,11 @@ function ReconContent({tabId, palette, t}) {
                     storeIds: selectedStores.length
                         ? selectedStores
                         : undefined,
-                    wkstnIds: selectedRegisters.length
+                    wkstnIds: !isTransactionTypeScoped && selectedRegisters.length
                         ? selectedRegisters
+                        : undefined,
+                    transactionTypes: isTransactionTypeScoped && selectedTransactionTypes.length
+                        ? selectedTransactionTypes
                         : undefined,
                     reconView,
                     fromBusinessDate: fromDate || undefined,
@@ -832,23 +870,28 @@ function ReconContent({tabId, palette, t}) {
                 })
 
                 setDetailData(
-                    (result.content || []).map((t) => ({
-                        __rowKey: t.transactionKey,
-                        __meta: t,
-                        'Transaction ID': getTransactionIdFromExternalId(
-                            t.externalId,
-                            '-'
-                        ),
-                        Store: t.storeId,
-                        Register: t.wkstnId ?? '-',
-                        'Business Date':
-                            t.businessDateDisplay || t.businessDate,
-                        Type: t.transactionType,
-                        Status: t.reconStatus,
-                        'Match Score': t.matchScore ?? '-',
-                        'Match Band': t.matchBand || '-',
-                        'Reconciled At': t.reconciledAt,
-                    }))
+                    (result.content || []).map((t) => {
+                        const row = {
+                            __rowKey: t.transactionKey,
+                            __meta: t,
+                            'Transaction ID': getTransactionIdFromExternalId(
+                                t.externalId,
+                                '-'
+                            ),
+                            Store: t.storeId,
+                            'Business Date':
+                                t.businessDateDisplay || t.businessDate,
+                            Type: t.transactionType,
+                            Status: t.reconStatus,
+                            'Match Score': t.matchScore ?? '-',
+                            'Match Band': t.matchBand || '-',
+                            'Reconciled At': t.reconciledAt,
+                        }
+                        if (!isTransactionTypeScoped) {
+                            row.Register = t.wkstnId ?? '-'
+                        }
+                        return row
+                    })
                 )
                 setSelectedDetailRow(
                     (result.content || []).length > 0
@@ -869,9 +912,11 @@ function ReconContent({tabId, palette, t}) {
         page,
         selectedStores,
         selectedRegisters,
+        selectedTransactionTypes,
         fromDate,
         toDate,
         reconView,
+        isTransactionTypeScoped,
     ])
 
     const handleKpiClick = (title, key) => {
@@ -969,6 +1014,7 @@ function ReconContent({tabId, palette, t}) {
                                 typeof v === 'string' ? v.split(',') : v
                             )
                             setSelectedRegisters([])
+                            setSelectedTransactionTypes([])
                         }}
                         input={<OutlinedInput label="Store"/>}
                         MenuProps={{
@@ -1043,6 +1089,7 @@ function ReconContent({tabId, palette, t}) {
                                     e.stopPropagation()
                                     setSelectedStores([])
                                     setSelectedRegisters([])
+                                    setSelectedTransactionTypes([])
                                 }}
                                 sx={{
                                     color: '#ef4444',
@@ -1075,18 +1122,21 @@ function ReconContent({tabId, palette, t}) {
 
                 <FormControl size="small" sx={{width: 220}}>
                     <InputLabel sx={{color: palette.textMuted}}>
-                        {t('Register')}
+                        {t(isTransactionTypeScoped ? 'Transaction Type' : 'Register')}
                     </InputLabel>
                     <Select
                         multiple
-                        value={selectedRegisters}
+                        value={isTransactionTypeScoped ? selectedTransactionTypes : selectedRegisters}
                         onChange={(e) => {
                             const v = e.target.value
-                            setSelectedRegisters(
-                                typeof v === 'string' ? v.split(',') : v
-                            )
+                            const next = typeof v === 'string' ? v.split(',') : v
+                            if (isTransactionTypeScoped) {
+                                setSelectedTransactionTypes(next)
+                            } else {
+                                setSelectedRegisters(next)
+                            }
                         }}
-                        input={<OutlinedInput label={t('Register')}/>}
+                        input={<OutlinedInput label={t(isTransactionTypeScoped ? 'Transaction Type' : 'Register')}/>}
                         MenuProps={{
                             PaperProps: {
                                 style: {
@@ -1126,7 +1176,7 @@ function ReconContent({tabId, palette, t}) {
                                     sel.map((v) => (
                                         <Chip
                                             key={v}
-                                            label={`R${v}`}
+                                            label={isTransactionTypeScoped ? v : `R${v}`}
                                             size="small"
                                             sx={{
                                                 height: 20,
@@ -1138,7 +1188,7 @@ function ReconContent({tabId, palette, t}) {
                                     ))
                                 ) : (
                                     <Chip
-                                        label={`${sel.length} ${t('registers')}`}
+                                        label={`${sel.length} ${t(isTransactionTypeScoped ? 'types' : 'registers')}`}
                                         size="small"
                                         sx={{
                                             height: 20,
@@ -1151,12 +1201,16 @@ function ReconContent({tabId, palette, t}) {
                             </Box>
                         )}
                     >
-                        {selectedRegisters.length > 0 && (
+                        {(isTransactionTypeScoped ? selectedTransactionTypes.length > 0 : selectedRegisters.length > 0) && (
                             <MenuItem
                                 onMouseDown={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    setSelectedRegisters([])
+                                    if (isTransactionTypeScoped) {
+                                        setSelectedTransactionTypes([])
+                                    } else {
+                                        setSelectedRegisters([])
+                                    }
                                 }}
                                 sx={{
                                     color: '#ef4444',
@@ -1166,12 +1220,12 @@ function ReconContent({tabId, palette, t}) {
                                     py: 0.75,
                                 }}
                             >
-                                ✕&nbsp; Clear all registers
+                                ✕&nbsp; {isTransactionTypeScoped ? t('Clear all transaction types') : t('Clear all registers')}
                             </MenuItem>
                         )}
 
-                        {registers.map((r) => (
-                            <MenuItem key={r} value={r}>
+                        {(isTransactionTypeScoped ? transactionTypes : registers).map((option) => (
+                            <MenuItem key={option} value={option}>
                                 <Box
                                     sx={{
                                         display: 'flex',
@@ -1180,9 +1234,13 @@ function ReconContent({tabId, palette, t}) {
                                     }}
                                 >
                                     {renderCheckbox(
-                                        selectedRegisters.includes(r)
+                                        isTransactionTypeScoped
+                                            ? selectedTransactionTypes.includes(option)
+                                            : selectedRegisters.includes(option)
                                     )}
-                                    {`${t('Register')} ${r}`}
+                                    {isTransactionTypeScoped
+                                        ? option
+                                        : `${t('Register')} ${option}`}
                                 </Box>
                             </MenuItem>
                         ))}
@@ -1207,12 +1265,14 @@ function ReconContent({tabId, palette, t}) {
 
                 {(selectedStores.length > 0 ||
                     selectedRegisters.length > 0 ||
+                    selectedTransactionTypes.length > 0 ||
                     fromDate ||
                     toDate) && (
                     <Box
                         onClick={() => {
                             setSelectedStores([])
                             setSelectedRegisters([])
+                            setSelectedTransactionTypes([])
                             setFromDate('')
                             setToDate('')
                         }}
@@ -1607,7 +1667,7 @@ function ReconContent({tabId, palette, t}) {
                                 }}
                             >
                                 <Typography sx={{fontSize: '0.92rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
-                                    {t('Top Failing Registers')}
+                                    {t(isTransactionTypeScoped ? 'Top Failing Transaction Types' : 'Top Failing Registers')}
                                 </Typography>
                                 {(analytics?.topFailingRegisters || []).length > 0 ? (
                                     <Box sx={{display: 'flex', flexDirection: 'column', gap: 1.1}}>
@@ -1626,7 +1686,7 @@ function ReconContent({tabId, palette, t}) {
                                             >
                                                 <Box>
                                                     <Typography sx={{fontSize: '0.88rem', fontWeight: 700, color: palette.text}}>
-                                                        {t('Register')} {item.key}
+                                                        {isTransactionTypeScoped ? item.key : `${t('Register')} ${item.key}`}
                                                     </Typography>
                                                     <Typography sx={{fontSize: '0.78rem', color: palette.textMuted}}>
                                                         {t('Duplicates')}: {item.duplicates} • {t('Match Rate')}: {item.matchRate}%
@@ -1642,7 +1702,7 @@ function ReconContent({tabId, palette, t}) {
                                     </Box>
                                 ) : (
                                     <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
-                                        {t('No register trend data available.')}
+                                        {t(isTransactionTypeScoped ? 'No transaction type trend data available.' : 'No register trend data available.')}
                                     </Typography>
                                 )}
                             </Paper>
@@ -1736,7 +1796,7 @@ function ReconContent({tabId, palette, t}) {
                                         borderColor: palette.border,
                                         color: palette.text,
                                         '&:hover': {
-                                            borderColor: '#2563EB',
+                                            borderColor: 'var(--brand-primary)',
                                             backgroundColor: palette.hoverBg,
                                         },
                                     }}
@@ -1772,7 +1832,7 @@ function ReconContent({tabId, palette, t}) {
                                         borderColor: palette.border,
                                         color: palette.text,
                                         '&:hover': {
-                                            borderColor: '#2563EB',
+                                            borderColor: 'var(--brand-primary)',
                                             backgroundColor: palette.hoverBg,
                                         },
                                     }}
@@ -1962,7 +2022,11 @@ export default function Dashboard({
                                 <ExceptionQueues palette={palette} t={t}/>
                             )
                         ) : OPERATION_IDS.includes(tabId) ? (
-                            <Operations palette={palette} t={t}/>
+                            tabId === 'recon-jobs' ? (
+                                <ReconciliationJobs palette={palette} t={t}/>
+                            ) : (
+                                <Operations palette={palette} t={t}/>
+                            )
                         ) : SLA_IDS.includes(tabId) ? (
                             <SlaManagement palette={palette} t={t}/>
                         ) : ACTIVITY_IDS.includes(tabId) ? (
@@ -1987,6 +2051,12 @@ function renderSecurityTab(tabId) {
             return <ManageRoles/>
         case 'manage-perms':
             return <ManagePermissions/>
+        case 'org-hierarchy':
+            return <OrganizationHierarchy/>
+        case 'tenant-access':
+            return <TenantAccessCenter/>
+        case 'branding-center':
+            return <BrandingCenter/>
         default:
             return null
     }

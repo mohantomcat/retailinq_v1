@@ -2,6 +2,7 @@ package com.recon.api.service;
 
 import com.recon.api.domain.*;
 import com.recon.api.repository.UserRepository;
+import com.recon.api.repository.TenantAuthConfigRepository;
 import com.recon.api.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,9 +29,17 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final AuditLedgerService auditLedgerService;
+    private final TenantAccessAdministrationService tenantAccessAdministrationService;
+    private final TenantAuthConfigRepository tenantAuthConfigRepository;
+    private final AccessScopeService accessScopeService;
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
+        TenantAuthConfigEntity authConfig = tenantAuthConfigRepository.findById(request.getTenantId()).orElse(null);
+        if (authConfig != null && !authConfig.isLocalLoginEnabled()) {
+            throw new RuntimeException("Local login is disabled for this tenant");
+        }
+
         User user = userRepository
                 .findByUsernameAndTenantId(
                         request.getUsername(),
@@ -70,14 +79,17 @@ public class AuthService {
                 .build());
 
         Set<String> permissions = user.getAllPermissions();
-        Set<String> storeIds = user.getStoreIds();
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
+        Set<String> storeIds = new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds());
 
         String accessToken = tokenProvider.generateAccessToken(
                 user.getId().toString(),
                 user.getUsername(),
                 user.getTenantId(),
                 permissions,
-                storeIds);
+                storeIds,
+                scopeSummary.isAllStoreAccess(),
+                "PASSWORD");
 
         String refreshToken = tokenProvider.generateRefreshToken(
                 user.getId().toString());
@@ -109,7 +121,11 @@ public class AuthService {
                 .email(user.getEmail())
                 .tenantId(user.getTenantId())
                 .permissions(permissions)
-                .storeIds(storeIds)
+                .storeIds(user.getStoreIds())
+                .effectiveStoreIds(storeIds)
+                .allStoreAccess(scopeSummary.isAllStoreAccess())
+                .accessScope(scopeSummary)
+                .authMode("PASSWORD")
                 .roles(roles)
                 .build();
     }
@@ -130,6 +146,7 @@ public class AuthService {
                                 "User not found"));
 
         Set<String> permissions = user.getAllPermissions();
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
 
         String newAccessToken =
                 tokenProvider.generateAccessToken(
@@ -137,7 +154,9 @@ public class AuthService {
                         user.getUsername(),
                         user.getTenantId(),
                         permissions,
-                        user.getStoreIds());
+                        new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()),
+                        scopeSummary.isAllStoreAccess(),
+                        "PASSWORD");
 
         return LoginResponse.builder()
                 .accessToken(newAccessToken)
@@ -145,6 +164,11 @@ public class AuthService {
                 .expiresIn(
                         tokenProvider.getExpirationMs() / 1000)
                 .permissions(permissions)
+                .storeIds(user.getStoreIds())
+                .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
+                .allStoreAccess(scopeSummary.isAllStoreAccess())
+                .accessScope(scopeSummary)
+                .authMode("PASSWORD")
                 .build();
     }
 
@@ -193,7 +217,7 @@ public class AuthService {
         }
 
         if (!email.equalsIgnoreCase(user.getEmail())
-                && userRepository.existsByEmail(email)) {
+                && userRepository.existsByTenantIdAndEmailIgnoreCase(user.getTenantId(), email)) {
             throw new RuntimeException("Email already exists");
         }
 
@@ -295,6 +319,7 @@ public class AuthService {
     }
 
     private UserDto toUserDto(User user) {
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
         return UserDto.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -305,6 +330,9 @@ public class AuthService {
                 .createdAt(user.getCreatedAt())
                 .lastLogin(user.getLastLogin())
                 .storeIds(user.getStoreIds())
+                .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
+                .allStoreAccess(scopeSummary.isAllStoreAccess())
+                .accessScope(scopeSummary)
                 .permissions(user.getAllPermissions())
                 .roles(user.getRoles().stream()
                         .map(r -> RoleDto.builder()
@@ -321,5 +349,9 @@ public class AuthService {
                                 .build())
                         .collect(Collectors.toList()))
                 .build();
+    }
+
+    public LoginOptionsResponse getLoginOptions(String tenantId) {
+        return tenantAccessAdministrationService.getLoginOptions(tenantId);
     }
 }

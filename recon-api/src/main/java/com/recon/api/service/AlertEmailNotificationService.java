@@ -93,14 +93,14 @@ public class AlertEmailNotificationService {
     }
 
     @Transactional
-    public void sendDirectEmail(String tenantId,
-                                String reconView,
-                                java.util.UUID eventId,
-                                String recipientEmail,
-                                String subject,
-                                String body) {
+    public boolean sendDirectEmail(String tenantId,
+                                   String reconView,
+                                   java.util.UUID eventId,
+                                   String recipientEmail,
+                                   String subject,
+                                   String body) {
         if (!emailEnabled || recipientEmail == null || recipientEmail.isBlank()) {
-            return;
+            return false;
         }
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
@@ -111,9 +111,11 @@ public class AlertEmailNotificationService {
             helper.setText(body, false);
             mailSender.send(mimeMessage);
             saveDirectDelivery(eventId, tenantId, reconView, recipientEmail, subject, "SENT", null);
+            return true;
         } catch (Exception ex) {
             log.error("Direct alert email delivery failed for event {} to {}: {}", eventId, recipientEmail, ex.getMessage(), ex);
             saveDirectDelivery(eventId, tenantId, reconView, recipientEmail, subject, "FAILED", ex.getMessage());
+            return false;
         }
     }
 

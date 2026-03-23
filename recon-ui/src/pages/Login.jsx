@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useEffect, useMemo, useState} from 'react'
 import {
     Alert,
     Box,
@@ -18,9 +18,13 @@ import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded'
 import CompareArrowsRoundedIcon from '@mui/icons-material/CompareArrowsRounded'
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded'
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded'
-import {useAuth} from '../context/AuthContext'
 import {useNavigate} from 'react-router-dom'
+import BrandLockup from '../components/BrandLockup'
+import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
+import {authApi} from '../services/authApi'
+import {brandingApi} from '../services/brandingApi'
+import {PRODUCT_NAME, getBrandTokens, resolveBranding} from '../branding/brandingUtils'
 
 const featureCards = [
     {
@@ -53,14 +57,53 @@ export default function Login() {
     const [showPass, setShowPass] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [loginOptions, setLoginOptions] = useState(null)
+    const [branding, setBranding] = useState(resolveBranding())
+
+    const brandTokens = useMemo(() => getBrandTokens(branding), [branding])
 
     const {login} = useAuth()
     const navigate = useNavigate()
+
+    useEffect(() => {
+        let active = true
+        const timer = window.setTimeout(async () => {
+            const [loginOptionsResult, brandingResult] = await Promise.allSettled([
+                authApi.getLoginOptions(tenantId),
+                brandingApi.getCurrent(tenantId),
+            ])
+
+            if (!active) {
+                return
+            }
+
+            if (loginOptionsResult.status === 'fulfilled') {
+                setLoginOptions(loginOptionsResult.value)
+            } else {
+                setLoginOptions(null)
+            }
+
+            if (brandingResult.status === 'fulfilled') {
+                setBranding(resolveBranding(brandingResult.value))
+            } else {
+                setBranding(resolveBranding())
+            }
+        }, 180)
+
+        return () => {
+            active = false
+            window.clearTimeout(timer)
+        }
+    }, [tenantId])
 
     const handleLogin = async (e) => {
         e.preventDefault()
         if (!username.trim() || !password.trim()) {
             setError(t('Username and password are required'))
+            return
+        }
+        if (loginOptions && loginOptions.localLoginEnabled === false) {
+            setError(t('Local login is disabled for this tenant'))
             return
         }
         setLoading(true)
@@ -80,10 +123,10 @@ export default function Login() {
             sx={{
                 minHeight: '100vh',
                 display: 'flex',
-                background:
-                    'linear-gradient(135deg, #EAF2FF 0%, #F8FAFC 48%, #E7F8F8 100%)',
+                background: `linear-gradient(145deg, ${brandTokens.primarySurface} 0%, #F8FAFC 44%, ${brandTokens.secondarySurface} 100%)`,
                 position: 'relative',
-                overflow: 'hidden',
+                overflowX: 'hidden',
+                overflowY: 'auto',
             }}
         >
             <Box
@@ -92,9 +135,9 @@ export default function Login() {
                     inset: 0,
                     pointerEvents: 'none',
                     backgroundImage: `
-                        radial-gradient(circle at 12% 18%, rgba(37,99,235,0.16), transparent 22%),
-                        radial-gradient(circle at 82% 24%, rgba(15,124,134,0.14), transparent 24%),
-                        radial-gradient(circle at 68% 82%, rgba(59,130,246,0.10), transparent 22%)
+                        radial-gradient(circle at 14% 16%, rgba(${brandTokens.primaryRgb}, 0.16), transparent 24%),
+                        radial-gradient(circle at 82% 18%, rgba(${brandTokens.secondaryRgb}, 0.12), transparent 26%),
+                        radial-gradient(circle at 72% 86%, rgba(148,163,184,0.12), transparent 22%)
                     `,
                 }}
             />
@@ -102,13 +145,16 @@ export default function Login() {
             <Box
                 sx={{
                     display: 'grid',
-                    gridTemplateColumns: {xs: '1fr', lg: 'minmax(540px, 1.1fr) minmax(420px, 480px)'},
-                    gap: {xs: 2, lg: 3},
+                    gridTemplateColumns: {
+                        xs: '1fr',
+                        lg: 'minmax(560px, 1.08fr) minmax(420px, 480px)',
+                    },
+                    gap: {xs: 2, lg: 2.5},
                     width: '100%',
                     maxWidth: 1440,
                     mx: 'auto',
-                    p: {xs: 1.5, sm: 2, lg: 2},
-                    alignItems: 'stretch',
+                    p: {xs: 1.5, sm: 2, lg: 2.25},
+                    alignItems: {xs: 'stretch', lg: 'center'},
                     position: 'relative',
                     zIndex: 1,
                     minHeight: '100vh',
@@ -123,12 +169,12 @@ export default function Login() {
                         minHeight: {xs: 'auto', lg: 'calc(100vh - 16px)'},
                         p: {xs: 2.5, sm: 3, lg: 3.25},
                         borderRadius: 6,
-                        border: '1px solid rgba(148,163,184,0.18)',
-                        background:
-                            'linear-gradient(160deg, rgba(15,23,42,0.96) 0%, rgba(15,124,134,0.92) 100%)',
-                        color: '#FFFFFF',
+                        border: '1px solid #DCE5F2',
+                        background: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(${brandTokens.primaryRgb}, 0.06) 100%)`,
+                        color: '#22314D',
                         overflow: 'hidden',
                         position: 'relative',
+                        boxShadow: '0 28px 72px rgba(34,49,77,0.10)',
                     }}
                 >
                     <Box
@@ -137,79 +183,98 @@ export default function Login() {
                             inset: 0,
                             pointerEvents: 'none',
                             backgroundImage: `
-                                linear-gradient(rgba(255,255,255,0.07), rgba(255,255,255,0.07)),
-                                radial-gradient(circle at top right, rgba(147,197,253,0.22), transparent 30%),
-                                radial-gradient(circle at bottom left, rgba(45,212,191,0.18), transparent 28%)
+                                linear-gradient(rgba(255,255,255,0.78), rgba(255,255,255,0.16)),
+                                radial-gradient(circle at top right, rgba(${brandTokens.secondaryRgb}, 0.16), transparent 28%),
+                                radial-gradient(circle at bottom left, rgba(${brandTokens.primaryRgb}, 0.10), transparent 24%)
                             `,
-                            opacity: 0.9,
+                            opacity: 1,
                         }}
                     />
 
                     <Stack spacing={2.75} sx={{position: 'relative'}}>
-                        <Box>
-                            <Stack direction="row" spacing={1.5} alignItems="center">
-                                <Box
-                                    sx={{
-                                        width: 54,
-                                        height: 54,
-                                        borderRadius: 3.5,
-                                        backgroundColor: 'rgba(255,255,255,0.14)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '1px solid rgba(255,255,255,0.14)',
-                                        backdropFilter: 'blur(10px)',
-                                    }}
-                                >
-                                    <img
-                                        src="/logo9.svg"
-                                        alt="RetailINQ"
-                                        style={{width: 34, height: 34, objectFit: 'contain'}}
-                                    />
-                                </Box>
-                                <Box>
-                                    <Typography sx={{fontSize: '1.4rem', fontWeight: 800, lineHeight: 1}}>
-                                        RetailINQ
-                                    </Typography>
-                                    <Typography sx={{mt: 0.35, color: 'rgba(255,255,255,0.72)', fontSize: '0.88rem'}}>
-                                        {t('Enterprise retail reconciliation workspace')}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </Box>
-
-                        <Stack spacing={1.6}>
-                            <Chip
-                                label={t('Reconciliation Control Tower')}
-                                sx={{
-                                    alignSelf: 'flex-start',
-                                    backgroundColor: 'rgba(255,255,255,0.14)',
-                                    color: '#FFFFFF',
-                                    fontWeight: 700,
-                                    borderRadius: 999,
-                                    height: 28,
-                                }}
+                        <Stack spacing={1.4}>
+                            <BrandLockup
+                                branding={branding}
+                                mode="light"
+                                productName={PRODUCT_NAME}
+                                appNameColor="#22314D"
+                                logoWidth={{xs: 120, sm: 148}}
+                                logoHeight={{xs: 52, sm: 62}}
+                                defaultLogoWidth={{xs: 236, sm: 322}}
+                                defaultLogoHeight="auto"
+                                nameFontSize={{xs: '1.5rem', sm: '1.9rem'}}
+                                nameFontWeight={800}
+                                gap={1.4}
+                                maxTextWidth={{xs: 180, sm: 260}}
+                                hideProductNameWhenDefaultLogo
                             />
-                            <Typography
+
+                            <Box
                                 sx={{
-                                    fontSize: {xs: '1.8rem', sm: '2.15rem'},
-                                    lineHeight: 1.02,
-                                    fontWeight: 800,
-                                    maxWidth: 580,
-                                    letterSpacing: '-0.03em',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    px: 1.35,
+                                    py: 0.75,
+                                    borderRadius: 999,
+                                    border: '1px solid #D9E3F1',
+                                    backgroundColor: 'rgba(255,255,255,0.82)',
+                                    boxShadow: `0 10px 24px ${brandTokens.primaryGlow}`,
+                                    alignSelf: 'flex-start',
+                                    flexWrap: 'wrap',
                                 }}
                             >
-                                {t('Track every mismatch, duplicate, and late sync before it turns into an operational problem.')}
+                                <Chip
+                                    label={t(
+                                        'Retail Reconciliation Control Tower'
+                                    )}
+                                    sx={{
+                                        height: 24,
+                                        backgroundColor:
+                                            brandTokens.primarySurface,
+                                        color: brandTokens.primary,
+                                        fontWeight: 800,
+                                        borderRadius: 999,
+                                    }}
+                                />
+                                <Typography
+                                    sx={{
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        color: '#6F7C93',
+                                    }}
+                                >
+                                    {t('Enterprise workspace')}
+                                </Typography>
+                            </Box>
+                        </Stack>
+
+                        <Stack spacing={1.6}>
+                            <Typography
+                                sx={{
+                                    fontSize: {xs: '1.78rem', sm: '2.08rem'},
+                                    lineHeight: 1.08,
+                                    fontWeight: 800,
+                                    maxWidth: 600,
+                                    letterSpacing: '-0.03em',
+                                    color: '#22314D',
+                                }}
+                            >
+                                {t(
+                                    'Catch reconciliation gaps early and keep stores moving.'
+                                )}
                             </Typography>
                             <Typography
                                 sx={{
-                                    maxWidth: 580,
-                                    color: 'rgba(255,255,255,0.78)',
-                                    fontSize: '0.93rem',
+                                    maxWidth: 600,
+                                    color: '#6F7C93',
+                                    fontSize: '0.9rem',
                                     lineHeight: 1.6,
                                 }}
                             >
-                                {t('RetailINQ brings together Xstore, SIM, SIOCS, and XOCS reconciliation into one operations-focused workflow for support, finance, and integration teams.')}
+                                {t(
+                                    'Bring Xstore, SIM, SIOCS, and XOCS signals into one workspace for operations, finance, and integration teams.'
+                                )}
                             </Typography>
                         </Stack>
 
@@ -226,53 +291,53 @@ export default function Login() {
                                     key={feature.title}
                                     elevation={0}
                                     sx={{
-                                        p: 1.8,
+                                        p: 1.55,
                                         borderRadius: 3.5,
-                                        backgroundColor: 'rgba(255,255,255,0.10)',
-                                        border: '1px solid rgba(255,255,255,0.12)',
-                                        backdropFilter: 'blur(10px)',
+                                        backgroundColor: 'rgba(255,255,255,0.88)',
+                                        border: '1px solid #E2EAF5',
+                                        boxShadow:
+                                            '0 12px 28px rgba(34,49,77,0.06)',
                                     }}
                                 >
                                     <Stack spacing={0.9}>
                                         <Box
                                             sx={{
-                                                width: 34,
-                                                height: 34,
-                                                borderRadius: 2.5,
-                                                backgroundColor: 'rgba(255,255,255,0.12)',
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: 2.75,
+                                                background: `linear-gradient(135deg, ${brandTokens.primarySurface} 0%, rgba(${brandTokens.secondaryRgb}, 0.10) 100%)`,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                color: '#BFDBFE',
+                                                color: brandTokens.primary,
+                                                border: `1px solid ${brandTokens.primaryBorder}`,
                                             }}
                                         >
                                             {feature.icon}
                                         </Box>
-                                        <Typography sx={{fontWeight: 800, fontSize: '0.9rem'}}>
+                                        <Typography
+                                            sx={{
+                                                fontWeight: 800,
+                                                fontSize: '0.92rem',
+                                                color: '#22314D',
+                                            }}
+                                        >
                                             {t(feature.title)}
                                         </Typography>
-                                        <Typography sx={{fontSize: '0.79rem', color: 'rgba(255,255,255,0.74)', lineHeight: 1.45}}>
+                                        <Typography
+                                            sx={{
+                                                fontSize: '0.8rem',
+                                                color: '#6F7C93',
+                                                lineHeight: 1.5,
+                                            }}
+                                        >
                                             {t(feature.text)}
                                         </Typography>
                                     </Stack>
                                 </Paper>
                             ))}
                         </Box>
-                    </Stack>
 
-                    <Stack
-                        direction={{xs: 'column', sm: 'row'}}
-                        spacing={1.25}
-                        sx={{
-                            mt: 2.5,
-                            position: 'relative',
-                            color: 'rgba(255,255,255,0.72)',
-                            fontSize: '0.78rem',
-                        }}
-                    >
-                        <Typography>{t('Built for multi-store reconciliation teams')}</Typography>
-                        <Typography sx={{display: {xs: 'none', sm: 'block'}}}>•</Typography>
-                        <Typography>{t('Operational dashboarding and exception triage')}</Typography>
                     </Stack>
                 </Paper>
 
@@ -290,20 +355,67 @@ export default function Login() {
                             maxWidth: 460,
                             p: {xs: 2.5, sm: 3},
                             borderRadius: 6,
-                            border: '1px solid #E2E8F0',
-                            backgroundColor: 'rgba(255,255,255,0.92)',
+                            border: '1px solid #DCE5F2',
+                            background: `linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(${brandTokens.secondaryRgb}, 0.05) 100%)`,
                             backdropFilter: 'blur(16px)',
-                            boxShadow: '0 24px 60px rgba(15,23,42,0.10)',
+                            boxShadow: '0 28px 72px rgba(34,49,77,0.12)',
                         }}
                     >
                         <Stack spacing={2.25}>
                             <Box>
-                                <Typography sx={{fontSize: '1.5rem', fontWeight: 800, color: '#0F172A'}}>
+                                <Typography
+                                    sx={{
+                                        fontSize: '1.5rem',
+                                        fontWeight: 800,
+                                        color: '#0F172A',
+                                    }}
+                                >
                                     {t('Sign in')}
                                 </Typography>
-                                <Typography sx={{mt: 0.55, fontSize: '0.88rem', color: '#64748B', lineHeight: 1.5}}>
-                                    {t('Enter your account credentials and organisation identifier to continue into RetailINQ.')}
+                                <Typography
+                                    sx={{
+                                        mt: 0.55,
+                                        fontSize: '0.88rem',
+                                        color: '#64748B',
+                                        lineHeight: 1.5,
+                                    }}
+                                >
+                                    {t('Enter your account credentials and organisation identifier to continue.')}
                                 </Typography>
+                                {loginOptions && (
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        sx={{mt: 1.25, flexWrap: 'wrap'}}
+                                        useFlexGap
+                                    >
+                                        <Chip
+                                            size="small"
+                                            label={
+                                                loginOptions.preferredLoginMode ||
+                                                'LOCAL'
+                                            }
+                                        />
+                                        {loginOptions.oidcEnabled && (
+                                            <Chip
+                                                size="small"
+                                                label={
+                                                    loginOptions.oidcDisplayName ||
+                                                    'OIDC'
+                                                }
+                                            />
+                                        )}
+                                        {loginOptions.samlEnabled && (
+                                            <Chip
+                                                size="small"
+                                                label={
+                                                    loginOptions.samlDisplayName ||
+                                                    'SAML'
+                                                }
+                                            />
+                                        )}
+                                    </Stack>
+                                )}
                             </Box>
 
                             {error && (
@@ -324,7 +436,9 @@ export default function Login() {
                                 <TextField
                                     label={t('Username')}
                                     value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
+                                    onChange={(e) =>
+                                        setUsername(e.target.value)
+                                    }
                                     fullWidth
                                     size="small"
                                     autoComplete="username"
@@ -336,7 +450,9 @@ export default function Login() {
                                     label={t('Password')}
                                     type={showPass ? 'text' : 'password'}
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    onChange={(e) =>
+                                        setPassword(e.target.value)
+                                    }
                                     fullWidth
                                     size="small"
                                     autoComplete="current-password"
@@ -346,12 +462,20 @@ export default function Login() {
                                             <InputAdornment position="end">
                                                 <IconButton
                                                     size="small"
-                                                    onClick={() => setShowPass((p) => !p)}
+                                                    onClick={() =>
+                                                        setShowPass((p) => !p)
+                                                    }
                                                     edge="end"
                                                 >
-                                                    {showPass
-                                                        ? <VisibilityOffIcon sx={{fontSize: 18}}/>
-                                                        : <VisibilityIcon sx={{fontSize: 18}}/>}
+                                                    {showPass ? (
+                                                        <VisibilityOffIcon
+                                                            sx={{fontSize: 18}}
+                                                        />
+                                                    ) : (
+                                                        <VisibilityIcon
+                                                            sx={{fontSize: 18}}
+                                                        />
+                                                    )}
                                                 </IconButton>
                                             </InputAdornment>
                                         ),
@@ -365,31 +489,57 @@ export default function Login() {
                                     fullWidth
                                     size="small"
                                     disabled={loading}
-                                    helperText={t('Organisation or tenant identifier')}
+                                    helperText={t(
+                                        'Organisation or tenant identifier'
+                                    )}
                                 />
+
+                                {loginOptions &&
+                                    loginOptions.localLoginEnabled === false && (
+                                        <Alert
+                                            severity="warning"
+                                            sx={{borderRadius: 3}}
+                                        >
+                                            {t(
+                                                'Local username/password login is disabled for this tenant.'
+                                            )}
+                                        </Alert>
+                                    )}
 
                                 <Button
                                     type="submit"
                                     variant="contained"
                                     fullWidth
-                                    disabled={loading}
+                                    disabled={
+                                        loading ||
+                                        (loginOptions &&
+                                            loginOptions.localLoginEnabled ===
+                                                false)
+                                    }
                                     sx={{
                                         py: 1.15,
                                         mt: 0.25,
-                                        borderRadius: 3,
-                                        background:
-                                            'linear-gradient(90deg, #2563EB 0%, #0F7C86 100%)',
                                         fontSize: '0.95rem',
-                                        fontWeight: 700,
+                                        fontWeight: 800,
+                                        background:
+                                            brandTokens.buttonGradient,
+                                        boxShadow: `0 12px 24px ${brandTokens.primaryGlow}`,
                                         '&:hover': {
                                             background:
-                                                'linear-gradient(90deg, #1D4ED8 0%, #0F6A73 100%)',
+                                                brandTokens.buttonGradientHover,
                                         },
                                     }}
                                 >
-                                    {loading
-                                        ? <CircularProgress size={20} sx={{color: '#fff'}}/>
-                                        : t('Sign in to RetailINQ')}
+                                    {loading ? (
+                                        <CircularProgress
+                                            size={20}
+                                            sx={{color: '#fff'}}
+                                        />
+                                    ) : (
+                                        t('Sign in to {appName}', {
+                                            appName: PRODUCT_NAME,
+                                        })
+                                    )}
                                 </Button>
                             </Box>
 
@@ -409,7 +559,7 @@ export default function Login() {
                                     {t('Secured workspace access')}
                                 </Typography>
                                 <Typography sx={{fontSize: 'inherit'}}>
-                                    © 2026 RetailINQ
+                                    {`\u00A9 2026 ${PRODUCT_NAME}`}
                                 </Typography>
                             </Stack>
                         </Stack>

@@ -165,7 +165,7 @@ export default function ManageUsers() {
             const allStoreIds = Array.from(
                 new Set(
                     u.flatMap((user) =>
-                        (user.storeIds || []).map(String)
+                        (user.effectiveStoreIds || user.storeIds || []).map(String)
                     )
                 )
             ).sort((a, b) => a.localeCompare(b))
@@ -446,7 +446,7 @@ export default function ManageUsers() {
                 (user.roles || []).some((r) => r.id === roleFilter)
 
             const storeText = storeFilter.trim()
-            const storeIds = (user.storeIds || []).map(String)
+            const storeIds = (user.effectiveStoreIds || user.storeIds || []).map(String)
 
             const matchesStore =
                 !storeText ||
@@ -540,9 +540,9 @@ export default function ManageUsers() {
             key: 'storeIds',
             label: t('Assigned Stores'),
             noWrap: true,
-            render: (v) => {
-                const arr = v || []
-                if (arr.length === 0) {
+            render: (v, row) => {
+                const arr = row.effectiveStoreIds || v || []
+                if (row.accessScope?.allStoreAccess || arr.length === 0) {
                     return (
                         <Chip
                             label="All"
@@ -557,6 +557,7 @@ export default function ManageUsers() {
                         />
                     )
                 }
+                if (row.accessScope?.accessLabel) return row.accessScope.accessLabel
                 if (arr.length === 1) return `Store ${arr[0]}`
                 return `${arr.length} stores`
             },

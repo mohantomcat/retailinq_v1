@@ -76,6 +76,7 @@ public class ReconElasticsearchRepository {
     public long count(String reconStatus, List<String> storeIds,
                       String fromBusinessDate, String toBusinessDate,
                       List<String> wkstnIds,
+                      List<String> transactionTypes,
                       String reconView) {
         try {
             List<Query> filters = new ArrayList<>();
@@ -130,7 +131,7 @@ public class ReconElasticsearchRepository {
     }
 
     public long countByStatus(String status) {
-        return count(status, null, null, null, null, null);
+        return count(status, null, null, null, null, null, null);
     }
 
     public ReconSummary findByTransactionKey(String transactionKey) {
@@ -196,6 +197,7 @@ public class ReconElasticsearchRepository {
     public Map<String, Long> aggregateByStatus(
             List<String> storeIds,
             List<String> wkstnIds,
+            List<String> transactionTypes,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -222,6 +224,15 @@ public class ReconElasticsearchRepository {
                                 .field("wkstnId.keyword")
                                 .terms(tv -> tv.value(
                                         wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (transactionTypes != null && !transactionTypes.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("transactionType.keyword")
+                                .terms(tv -> tv.value(
+                                        transactionTypes.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -260,6 +271,7 @@ public class ReconElasticsearchRepository {
     public Map<String, Long> aggregateByStore(
             List<String> storeIds,
             List<String> wkstnIds,
+            List<String> transactionTypes,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -286,6 +298,15 @@ public class ReconElasticsearchRepository {
                                 .field("wkstnId.keyword")
                                 .terms(tv -> tv.value(
                                         wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (transactionTypes != null && !transactionTypes.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("transactionType.keyword")
+                                .terms(tv -> tv.value(
+                                        transactionTypes.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -422,6 +443,7 @@ public class ReconElasticsearchRepository {
     public Map<String, Map<String, Long>> aggregateByBusinessDateAndStatus(
             List<String> storeIds,
             List<String> wkstnIds,
+            List<String> transactionTypes,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -448,6 +470,15 @@ public class ReconElasticsearchRepository {
                                 .field("wkstnId.keyword")
                                 .terms(tv -> tv.value(
                                         wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (transactionTypes != null && !transactionTypes.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("transactionType.keyword")
+                                .terms(tv -> tv.value(
+                                        transactionTypes.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -502,6 +533,7 @@ public class ReconElasticsearchRepository {
             int size,
             List<String> storeIds,
             List<String> wkstnIds,
+            List<String> transactionTypes,
             String fromBusinessDate,
             String toBusinessDate,
             String reconView) {
@@ -528,6 +560,15 @@ public class ReconElasticsearchRepository {
                                 .field("wkstnId.keyword")
                                 .terms(tv -> tv.value(
                                         wkstnIds.stream()
+                                                .map(FieldValue::of)
+                                                .collect(Collectors.toList()))))));
+            }
+            if (transactionTypes != null && !transactionTypes.isEmpty()) {
+                filters.add(Query.of(q -> q
+                        .terms(t -> t
+                                .field("transactionType.keyword")
+                                .terms(tv -> tv.value(
+                                        transactionTypes.stream()
                                                 .map(FieldValue::of)
                                                 .collect(Collectors.toList()))))));
             }
@@ -596,6 +637,16 @@ public class ReconElasticsearchRepository {
                             .field("wkstnId.keyword")
                             .terms(tv -> tv.value(
                                     req.getWkstnIds().stream()
+                                            .map(FieldValue::of)
+                                            .collect(Collectors.toList()))))));
+        }
+
+        if (req.getTransactionTypes() != null && !req.getTransactionTypes().isEmpty()) {
+            filters.add(Query.of(q -> q
+                    .terms(t -> t
+                            .field("transactionType.keyword")
+                            .terms(tv -> tv.value(
+                                    req.getTransactionTypes().stream()
                                             .map(FieldValue::of)
                                             .collect(Collectors.toList()))))));
         }

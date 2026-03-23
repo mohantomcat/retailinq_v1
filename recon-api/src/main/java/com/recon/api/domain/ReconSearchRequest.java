@@ -14,6 +14,7 @@ import java.util.List;
 public class ReconSearchRequest {
     private List<String> storeIds;          // multi-select stores
     private List<String> wkstnIds;          // multi-select registers
+    private List<String> transactionTypes;  // multi-select transaction types
     private String fromBusinessDate;        // date range from
     private String toBusinessDate;          // date range to
     private String reconStatus;

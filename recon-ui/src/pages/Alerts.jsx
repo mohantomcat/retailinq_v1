@@ -26,12 +26,9 @@ import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import SettingsEthernetRoundedIcon from '@mui/icons-material/SettingsEthernetRounded'
 import {alertApi} from '../services/alertApi'
 import {useAuth} from '../context/AuthContext'
+import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS
 
 const METRIC_OPTIONS = [
     {value: 'MISSING_IN_TARGET', label: 'Missing in Target'},
@@ -1442,7 +1439,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={ruleForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleRuleForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveRule} disabled={!canEdit || saving || !String(ruleForm.ruleName).trim() || ruleForm.thresholdValue === ''}>{editingRuleId ? t('Update Rule') : t('Create Rule')}</Button>
-                                        <Button variant="text" onClick={resetRuleForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetRuleForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1471,7 +1468,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={subscriptionForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleSubscriptionForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveSubscription} disabled={!canEdit || saving || !String(subscriptionForm.subscriptionName).trim() || !String(subscriptionForm.recipientKey).trim()}>{editingSubscriptionId ? t('Update Subscription') : t('Create Subscription')}</Button>
-                                        <Button variant="text" onClick={resetSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1501,7 +1498,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={webhookSubscriptionForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleWebhookSubscriptionForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveWebhookSubscription} disabled={!canEdit || saving || !String(webhookSubscriptionForm.subscriptionName).trim() || !String(webhookSubscriptionForm.endpointUrl).trim()}>{editingWebhookSubscriptionId ? t('Update Subscription') : t('Create Subscription')}</Button>
-                                        <Button variant="text" onClick={resetWebhookSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetWebhookSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1531,7 +1528,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={escalationPolicyForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleEscalationPolicyForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveEscalationPolicy} disabled={!canEdit || saving || !String(escalationPolicyForm.policyName).trim() || !String(escalationPolicyForm.destinationKey).trim()}>{editingEscalationPolicyId ? t('Update Policy') : t('Create Policy')}</Button>
-                                        <Button variant="text" onClick={resetEscalationPolicyForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetEscalationPolicyForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1564,7 +1561,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={personalSubscriptionForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handlePersonalSubscriptionForm('active', event.target.value === 'ACTIVE')} disabled={!canManagePersonalSubscriptions || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={savePersonalSubscription} disabled={!canManagePersonalSubscriptions || saving || (personalSubscriptionForm.channelType !== 'EMAIL' && !String(personalSubscriptionForm.endpointUrl).trim())}>{editingPersonalSubscriptionId ? t('Update Subscription') : t('Create Subscription')}</Button>
-                                        <Button variant="text" onClick={resetPersonalSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetPersonalSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1590,7 +1587,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={digestSubscriptionForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleDigestSubscriptionForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveDigestSubscription} disabled={!canEdit || saving || !String(digestSubscriptionForm.digestName).trim() || !String(digestSubscriptionForm.recipientKey).trim()}>{editingDigestSubscriptionId ? t('Update Digest') : t('Create Digest')}</Button>
-                                        <Button variant="text" onClick={resetDigestSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetDigestSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1619,7 +1616,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={anomalyRuleForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleAnomalyRuleForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveAnomalyRule} disabled={!canEdit || saving || !String(anomalyRuleForm.ruleName).trim()}>{editingAnomalyRuleId ? t('Update Rule') : t('Create Rule')}</Button>
-                                        <Button variant="text" onClick={resetAnomalyRuleForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetAnomalyRuleForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>
@@ -1648,7 +1645,7 @@ export default function Alerts({palette, t}) {
                                     <FormControl fullWidth size="small"><InputLabel>{t('Status')}</InputLabel><Select value={smsSubscriptionForm.active ? 'ACTIVE' : 'INACTIVE'} label={t('Status')} onChange={(event) => handleSmsSubscriptionForm('active', event.target.value === 'ACTIVE')} disabled={!canEdit || saving}><MenuItem value="ACTIVE">{t('Active')}</MenuItem><MenuItem value="INACTIVE">{t('Inactive')}</MenuItem></Select></FormControl>
                                     <Stack direction="row" spacing={1}>
                                         <Button variant="contained" onClick={saveSmsSubscription} disabled={!canEdit || saving || !String(smsSubscriptionForm.subscriptionName).trim() || !String(smsSubscriptionForm.phoneNumber).trim()}>{editingSmsSubscriptionId ? t('Update Subscription') : t('Create Subscription')}</Button>
-                                        <Button variant="text" onClick={resetSmsSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
+                                        <Button variant="outlined" onClick={resetSmsSubscriptionForm} disabled={saving}>{t('Clear')}</Button>
                                     </Stack>
                                 </Stack>
                             </Paper>

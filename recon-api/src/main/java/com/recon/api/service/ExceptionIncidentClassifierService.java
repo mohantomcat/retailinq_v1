@@ -53,6 +53,7 @@ public class ExceptionIncidentClassifierService {
             case "XSTORE_SIM" -> "SIM";
             case "XSTORE_SIOCS" -> "SIOCS";
             case "XSTORE_XOCS" -> "XOCS";
+            case "SIOCS_MFCS" -> "MFCS";
             default -> "Connector";
         };
     }

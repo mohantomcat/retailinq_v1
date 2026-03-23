@@ -25,13 +25,9 @@ import {
 import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
+import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: '', label: 'All Modules'},
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
 
 const ACTION_OPTIONS = [
     {value: 'AUTO_RESOLVE', label: 'Auto Resolve'},

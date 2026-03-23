@@ -105,6 +105,88 @@ public class ReconEvent implements Serializable {
                 .build();
     }
 
+    public static ReconEvent awaitingInventory(FlatSimTransaction source,
+                                               String reconView,
+                                               String counterSource) {
+        return base(source)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(awaitingStatus(reconView))
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent missingInventory(FlatSimTransaction source,
+                                              String reconView,
+                                              String counterSource) {
+        return base(source)
+                .reconView(reconView)
+                .simSource(counterSource)
+                .reconStatus(missingStatus(reconView))
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent matchedInventory(FlatSimTransaction source,
+                                              FlatSimTransaction counter,
+                                              String reconView,
+                                              List<ItemDiscrepancy> discrepancies,
+                                              MatchEvaluation evaluation) {
+        Builder builder = base(source)
+                .reconView(reconView)
+                .simSource(counter.getSource())
+                .reconStatus(ReconStatus.MATCHED.name())
+                .processingStatus(counter.getProcessingStatus())
+                .xstoreChecksum(source.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(Objects.equals(source.getChecksum(), counter.getChecksum()))
+                .affectedItemCount(discrepancyCount(discrepancies))
+                .quantityImpact(quantityImpact(discrepancies))
+                .discrepancies(toArray(discrepancies))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
+    }
+
+    public static ReconEvent itemMissingInventory(FlatSimTransaction source,
+                                                  FlatSimTransaction counter,
+                                                  List<ItemDiscrepancy> disc,
+                                                  String reconView,
+                                                  MatchEvaluation evaluation) {
+        Builder builder = base(source)
+                .reconView(reconView)
+                .simSource(counter.getSource())
+                .reconStatus(ReconStatus.ITEM_MISSING.name())
+                .processingStatus(counter.getProcessingStatus())
+                .xstoreChecksum(source.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
+    }
+
+    public static ReconEvent quantityMismatchInventory(FlatSimTransaction source,
+                                                       FlatSimTransaction counter,
+                                                       List<ItemDiscrepancy> disc,
+                                                       String reconView,
+                                                       MatchEvaluation evaluation) {
+        Builder builder = base(source)
+                .reconView(reconView)
+                .simSource(counter.getSource())
+                .reconStatus(ReconStatus.QUANTITY_MISMATCH.name())
+                .processingStatus(counter.getProcessingStatus())
+                .xstoreChecksum(source.getChecksum())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .affectedItemCount(discrepancyCount(disc))
+                .quantityImpact(quantityImpact(disc))
+                .discrepancies(toArray(disc))
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
+    }
+
     public static ReconEvent matchedPos(FlatPosTransaction xstore,
                                         FlatPosTransaction counter,
                                         String reconView,
@@ -491,6 +573,9 @@ public class ReconEvent implements Serializable {
         if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
             return "XOCS";
         }
+        if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
+            return "MFCS";
+        }
         return "SIM";
     }
 
@@ -525,6 +610,21 @@ public class ReconEvent implements Serializable {
                 .lineItemCount(lineItemCount(xstore))
                 .totalQuantity(totalQuantity(xstore))
                 .xstoreChecksum(xstore.getChecksum());
+    }
+
+    private static Builder base(FlatSimTransaction source) {
+        return builder()
+                .transactionKey(source.getTransactionKey())
+                .externalId(source.getExternalId())
+                .storeId(source.getStoreId())
+                .wkstnId(source.getWkstnId())
+                .businessDate(source.getBusinessDate())
+                .transactionType(source.getTransactionTypeDesc() != null
+                        ? source.getTransactionTypeDesc()
+                        : source.getTransactionType() != null ? String.valueOf(source.getTransactionType()) : null)
+                .lineItemCount(source.getLineItemCount())
+                .totalQuantity(source.getTotalQuantity())
+                .xstoreChecksum(source.getChecksum());
     }
 
     private static Builder applyMatchEvaluation(Builder builder, MatchEvaluation evaluation) {

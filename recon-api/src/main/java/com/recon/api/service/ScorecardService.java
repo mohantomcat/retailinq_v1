@@ -42,6 +42,7 @@ public class ScorecardService {
             mergeStatusCounts(overallStatuses, esRepository.aggregateByStatus(
                     storeIds,
                     List.of(),
+                    null,
                     from,
                     to,
                     view
@@ -68,6 +69,7 @@ public class ScorecardService {
                     10,
                     storeIds,
                     List.of(),
+                    null,
                     from,
                     to,
                     reconView
@@ -98,6 +100,7 @@ public class ScorecardService {
                     500,
                     storeIds,
                     List.of(),
+                    null,
                     from,
                     to,
                     reconView
@@ -281,6 +284,7 @@ public class ScorecardService {
     private String moduleLabel(String reconView) {
         return switch (Objects.toString(reconView, "").toUpperCase()) {
             case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
+            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
             case "XSTORE_XOCS" -> "Xstore vs XOCS";
             case "XSTORE_SIM" -> "Xstore vs SIM";
             default -> Objects.toString(reconView, "Unknown Module");

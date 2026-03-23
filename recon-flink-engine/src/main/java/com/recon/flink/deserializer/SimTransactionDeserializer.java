@@ -91,6 +91,14 @@ public class SimTransactionDeserializer
             case 2 -> "Return";
             case 3 -> "VoidSale";
             case 4 -> "VoidReturn";
+            case 10, 11, 12 -> "Transfer";
+            case 20, 21, 22 -> "Receiving";
+            case 30 -> "DirectStoreDelivery";
+            case 40 -> "InventoryAdjustment";
+            case 50 -> "PurchaseOrder";
+            case 60 -> "ReturnToVendor";
+            case 70 -> "WarehouseDelivery";
+            case 80 -> "StoreTransfer";
             default -> "Unknown";
         };
     }

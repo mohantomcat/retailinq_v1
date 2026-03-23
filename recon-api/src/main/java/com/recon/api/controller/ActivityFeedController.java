@@ -8,6 +8,7 @@ import com.recon.api.domain.RunAuditArchiveRequest;
 import com.recon.api.domain.SaveAuditRetentionPolicyRequest;
 import com.recon.api.domain.SoxAuditReportResponse;
 import com.recon.api.security.ReconUserPrincipal;
+import com.recon.api.service.AccessScopeService;
 import com.recon.api.service.AuditComplianceService;
 import com.recon.api.service.ActivityFeedService;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class ActivityFeedController {
 
     private final ActivityFeedService activityFeedService;
     private final AuditComplianceService auditComplianceService;
+    private final AccessScopeService accessScopeService;
 
     @GetMapping
     public ApiResponse<ActivityFeedResponse> getActivity(
@@ -47,8 +49,11 @@ public class ActivityFeedController {
             @RequestParam(required = false) Integer limit
     ) {
         requireAuditView(principal);
+        AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, java.util.List.of());
         return ApiResponse.ok(activityFeedService.getActivity(
                 principal.getTenantId(),
+                storeScope.storeIds(),
+                principal.getPermissions().contains("AUDIT_GLOBAL_VIEW"),
                 moduleKey,
                 sourceType,
                 actor,
@@ -63,7 +68,7 @@ public class ActivityFeedController {
     public ApiResponse<AuditRetentionCenterResponse> getRetentionCenter(
             @AuthenticationPrincipal ReconUserPrincipal principal
     ) {
-        requireAuditView(principal);
+        requireGlobalAuditView(principal);
         return ApiResponse.ok(auditComplianceService.getRetentionCenter(principal.getTenantId()));
     }
 
@@ -72,7 +77,7 @@ public class ActivityFeedController {
             @AuthenticationPrincipal ReconUserPrincipal principal,
             @RequestBody SaveAuditRetentionPolicyRequest request
     ) {
-        requireAuditManage(principal);
+        requireGlobalAuditManage(principal);
         return ApiResponse.ok(auditComplianceService.saveRetentionPolicy(
                 principal.getTenantId(),
                 request,
@@ -85,7 +90,7 @@ public class ActivityFeedController {
             @AuthenticationPrincipal ReconUserPrincipal principal,
             @RequestBody(required = false) RunAuditArchiveRequest request
     ) {
-        requireAuditManage(principal);
+        requireGlobalAuditManage(principal);
         return ApiResponse.ok(auditComplianceService.runArchive(
                 principal.getTenantId(),
                 request,
@@ -100,7 +105,7 @@ public class ActivityFeedController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate
     ) {
-        requireAuditView(principal);
+        requireGlobalAuditView(principal);
         return ApiResponse.ok(auditComplianceService.getSoxReport(
                 principal.getTenantId(),
                 moduleKey,
@@ -120,7 +125,7 @@ public class ActivityFeedController {
             @RequestParam(required = false, defaultValue = "true") boolean includeArchived,
             @RequestParam(required = false, defaultValue = "CSV") String format
     ) {
-        requireAuditExport(principal);
+        requireGlobalAuditExport(principal);
         AuditComplianceService.ExportBundle bundle = auditComplianceService.exportEntries(
                 principal.getTenantId(),
                 moduleKey,
@@ -153,6 +158,27 @@ public class ActivityFeedController {
 
     private void requireAuditManage(ReconUserPrincipal principal) {
         requireAuditView(principal);
+        if (!principal.getPermissions().contains("AUDIT_MANAGE")) {
+            throw new AccessDeniedException("Missing permission: AUDIT_MANAGE");
+        }
+    }
+
+    private void requireGlobalAuditView(ReconUserPrincipal principal) {
+        requireAuditView(principal);
+        if (!principal.getPermissions().contains("AUDIT_GLOBAL_VIEW")) {
+            throw new AccessDeniedException("Missing permission: AUDIT_GLOBAL_VIEW");
+        }
+    }
+
+    private void requireGlobalAuditExport(ReconUserPrincipal principal) {
+        requireGlobalAuditView(principal);
+        if (!principal.getPermissions().contains("AUDIT_EXPORT")) {
+            throw new AccessDeniedException("Missing permission: AUDIT_EXPORT");
+        }
+    }
+
+    private void requireGlobalAuditManage(ReconUserPrincipal principal) {
+        requireGlobalAuditView(principal);
         if (!principal.getPermissions().contains("AUDIT_MANAGE")) {
             throw new AccessDeniedException("Missing permission: AUDIT_MANAGE");
         }

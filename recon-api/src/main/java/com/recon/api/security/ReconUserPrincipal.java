@@ -13,18 +13,23 @@ public class ReconUserPrincipal {
     private final String tenantId;
     private final Set<String> permissions;
     private final Set<String> storeIds;
+    private final boolean allStoreAccess;
+    private final String authMode;
 
     public boolean hasPermission(String permission) {
         return permissions.contains(permission);
     }
 
     public boolean hasAnyStoreAccess() {
-        return storeIds == null || storeIds.isEmpty();
+        return allStoreAccess || storeIds == null || !storeIds.isEmpty();
     }
 
     public boolean canAccessStore(String storeId) {
-        // empty storeIds = access to all stores (admin)
-        if (storeIds == null || storeIds.isEmpty()) return true;
+        if (allStoreAccess) return true;
         return storeIds.contains(storeId);
+    }
+
+    public Set<String> getEffectiveStoreIds() {
+        return storeIds;
     }
 }

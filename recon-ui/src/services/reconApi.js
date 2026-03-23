@@ -1,7 +1,6 @@
 import {apiFetch, parseResponse} from './apiFetch'
 
 const BASE = '/api/v1/recon'
-const TENANT = 'tenant-india'
 
 const validateIsoDate = (date) => {
     if (!date) return undefined
@@ -21,7 +20,7 @@ export const reconApi = {
                              fromBusinessDate = null,
                              toBusinessDate = null,
                          } = {}) => {
-        const params = new URLSearchParams({tenantId: TENANT})
+        const params = new URLSearchParams()
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
@@ -40,14 +39,18 @@ export const reconApi = {
     getDashboardAnalytics: async ({
                                       storeIds = [],
                                       wkstnIds = [],
+                                      transactionTypes = [],
                                       reconView = null,
                                   } = {}) => {
-        const params = new URLSearchParams({tenantId: TENANT})
+        const params = new URLSearchParams()
         if (storeIds?.length) {
             storeIds.forEach((s) => params.append('storeIds', s))
         }
         if (wkstnIds?.length) {
             wkstnIds.forEach((w) => params.append('wkstnIds', w))
+        }
+        if (transactionTypes?.length) {
+            transactionTypes.forEach((type) => params.append('transactionTypes', type))
         }
         if (reconView) {
             params.append('reconView', reconView)
@@ -63,7 +66,7 @@ export const reconApi = {
                               fromBusinessDate = null,
                               toBusinessDate = null,
                           } = {}) => {
-        const params = new URLSearchParams({tenantId: TENANT})
+        const params = new URLSearchParams()
         if (storeIds?.length) {
             storeIds.forEach((s) => params.append('storeIds', s))
         }
@@ -81,20 +84,22 @@ export const reconApi = {
     },
 
     getTransactions: async ({
-                                storeIds, wkstnIds,
+                                storeIds, wkstnIds, transactionTypes,
                                 reconView,
                                 fromBusinessDate, toBusinessDate,
                                 reconStatus, fromDate, toDate,
                                 page = 0, size = 20,
                             } = {}) => {
-        const params = new URLSearchParams(
-            {tenantId: TENANT, page, size})
+        const params = new URLSearchParams({page, size})
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
         if (wkstnIds?.length)
             wkstnIds.forEach(w =>
                 params.append('wkstnIds', w))
+        if (transactionTypes?.length)
+            transactionTypes.forEach(type =>
+                params.append('transactionTypes', type))
         if (reconView)
             params.append('reconView', reconView)
         if (validateIsoDate(fromBusinessDate))
@@ -113,9 +118,7 @@ export const reconApi = {
 
     getTransaction: async (transactionKey) => {
         const encoded = encodeURIComponent(transactionKey)
-        const res = await apiFetch(
-            `${BASE}/transactions/${encoded}` +
-            `?tenantId=${TENANT}`)
+        const res = await apiFetch(`${BASE}/transactions/${encoded}`)
         const json = await res.json()
         return json.data
     },
@@ -124,8 +127,7 @@ export const reconApi = {
                               storeIds = [], fromBusinessDate,
                               toBusinessDate, page = 0, size = 50,
                           } = {}) => {
-        const params = new URLSearchParams(
-            {tenantId: TENANT, page, size})
+        const params = new URLSearchParams({page, size})
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
@@ -143,8 +145,7 @@ export const reconApi = {
                            storeIds = [], fromBusinessDate,
                            toBusinessDate, page = 0, size = 20,
                        } = {}) => {
-        const params = new URLSearchParams(
-            {tenantId: TENANT, page, size})
+        const params = new URLSearchParams({page, size})
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
@@ -159,7 +160,7 @@ export const reconApi = {
     },
 
     getStores: async (reconView = null) => {
-        const params = new URLSearchParams({tenantId: TENANT})
+        const params = new URLSearchParams()
         if (reconView)
             params.append('reconView', reconView)
         const res = await apiFetch(
@@ -169,8 +170,7 @@ export const reconApi = {
     },
 
     getRegisters: async (storeIds, reconView = null) => {
-        const params = new URLSearchParams(
-            {tenantId: TENANT})
+        const params = new URLSearchParams()
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
@@ -178,6 +178,19 @@ export const reconApi = {
             params.append('reconView', reconView)
         const res = await apiFetch(
             `${BASE}/registers?${params}`)
+        const json = await res.json()
+        return json.data || []
+    },
+
+    getTransactionTypes: async (storeIds, reconView = null) => {
+        const params = new URLSearchParams()
+        if (storeIds?.length)
+            storeIds.forEach(s =>
+                params.append('storeIds', s))
+        if (reconView)
+            params.append('reconView', reconView)
+        const res = await apiFetch(
+            `${BASE}/transaction-types?${params}`)
         const json = await res.json()
         return json.data || []
     },

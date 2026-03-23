@@ -9,6 +9,7 @@ import com.recon.api.domain.ReconSummary;
 import com.recon.api.domain.ScorecardsResponse;
 import com.recon.api.domain.TenantConfig;
 import com.recon.api.security.ReconUserPrincipal;
+import com.recon.api.service.AccessScopeService;
 import com.recon.api.service.ReconQueryService;
 import com.recon.api.service.DashboardAnalyticsService;
 import com.recon.api.service.ScorecardService;
@@ -36,6 +37,7 @@ public class ReconController {
     private final DashboardAnalyticsService analyticsService;
     private final ScorecardService scorecardService;
     private final TenantService tenantService;
+    private final AccessScopeService accessScopeService;
 
     @GetMapping("/health")
     public ResponseEntity<ApiResponse<String>> health() {
@@ -51,7 +53,6 @@ public class ReconController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<DashboardStats>> getDashboard(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "reconView", required = false) String reconView,
             @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
@@ -59,9 +60,15 @@ public class ReconController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
-            TenantConfig tenant = tenantService.getTenant(tenantId);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(DashboardStats.builder()
+                        .asOf(com.recon.api.util.TimezoneConverter.toDisplay(java.time.Instant.now().toString(), tenant))
+                        .build()));
+            }
             DashboardStats stats = queryService.getDashboardStats(
-                    storeIds, fromBusinessDate, toBusinessDate, reconView, tenant);
+                    storeScope.storeIds(), fromBusinessDate, toBusinessDate, reconView, tenant);
             return ResponseEntity.ok(ApiResponse.ok(stats));
         } catch (Exception e) {
             log.error("Dashboard error: {}", e.getMessage(), e);
@@ -72,15 +79,25 @@ public class ReconController {
 
     @GetMapping("/dashboard/analytics")
     public ResponseEntity<ApiResponse<DashboardAnalyticsResponse>> getDashboardAnalytics(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "wkstnIds", required = false) List<String> wkstnIds,
+            @RequestParam(name = "transactionTypes", required = false) List<String> transactionTypes,
             @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(DashboardAnalyticsResponse.builder()
+                        .last7Days(List.of())
+                        .last30Days(List.of())
+                        .topFailingStores(List.of())
+                        .topFailingRegisters(List.of())
+                        .exceptionAging(List.of())
+                        .build()));
+            }
             DashboardAnalyticsResponse analytics = analyticsService.getAnalytics(
-                    tenantId, storeIds, wkstnIds, reconView);
+                    principal.getTenantId(), storeScope.storeIds(), wkstnIds, transactionTypes, reconView);
             return ResponseEntity.ok(ApiResponse.ok(analytics));
         } catch (Exception e) {
             log.error("Dashboard analytics error: {}", e.getMessage(), e);
@@ -91,7 +108,6 @@ public class ReconController {
 
     @GetMapping("/scorecards")
     public ResponseEntity<ApiResponse<ScorecardsResponse>> getScorecards(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "reconView", required = false) String reconView,
             @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
@@ -100,9 +116,16 @@ public class ReconController {
         try {
             requireReportsAccess(principal);
             requireReconAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(ScorecardsResponse.builder()
+                        .moduleScorecards(List.of())
+                        .storeScorecards(List.of())
+                        .build()));
+            }
             ScorecardsResponse response = scorecardService.getScorecards(
-                    tenantId,
-                    storeIds,
+                    principal.getTenantId(),
+                    storeScope.storeIds(),
                     fromBusinessDate,
                     toBusinessDate,
                     reconView,
@@ -118,9 +141,9 @@ public class ReconController {
 
     @GetMapping("/transactions")
     public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>> getTransactions(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "wkstnIds", required = false) List<String> wkstnIds,
+            @RequestParam(name = "transactionTypes", required = false) List<String> transactionTypes,
             @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
             @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
             @RequestParam(name = "reconStatus", required = false) String reconStatus,
@@ -133,10 +156,22 @@ public class ReconController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
-            TenantConfig tenant = tenantService.getTenant(tenantId);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(PagedResult.<ReconSummary>builder()
+                        .content(List.of())
+                        .page(page)
+                        .size(Math.min(size, 100))
+                        .totalElements(0)
+                        .totalPages(0)
+                        .last(true)
+                        .build()));
+            }
             ReconSearchRequest req = ReconSearchRequest.builder()
-                    .storeIds(storeIds)
+                    .storeIds(storeScope.storeIds())
                     .wkstnIds(wkstnIds)
+                    .transactionTypes(transactionTypes)
                     .fromBusinessDate(fromBusinessDate)
                     .toBusinessDate(toBusinessDate)
                     .reconStatus(reconStatus)
@@ -159,14 +194,16 @@ public class ReconController {
     @GetMapping("/transactions/{transactionKey}")
     public ResponseEntity<ApiResponse<ReconSummary>> getTransaction(
             @PathVariable("transactionKey") String transactionKey,
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireGenericReconAccess(principal);
-            TenantConfig tenant = tenantService.getTenant(tenantId);
+            TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
             ReconSummary summary = queryService.getByTransactionKey(transactionKey, tenant);
             if (summary == null) {
                 return ResponseEntity.notFound().build();
+            }
+            if (!accessScopeService.canAccessStore(principal, summary.getStoreId())) {
+                throw new AccessDeniedException("Missing access to store: " + summary.getStoreId());
             }
             return ResponseEntity.ok(ApiResponse.ok(summary));
         } catch (Exception e) {
@@ -178,7 +215,6 @@ public class ReconController {
 
     @GetMapping("/mismatches")
     public ResponseEntity<ApiResponse<List<ReconSummary>>> getMismatches(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
             @RequestParam(name = "toBusinessDate", required = false) String toBusinessDate,
@@ -187,9 +223,13 @@ public class ReconController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireGenericReconAccess(principal);
-            TenantConfig tenant = tenantService.getTenant(tenantId);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(List.of()));
+            }
             List<ReconSummary> results = queryService.getMismatches(
-                    storeIds, fromBusinessDate, toBusinessDate, page, size, tenant);
+                    storeScope.storeIds(), fromBusinessDate, toBusinessDate, page, size, tenant);
             return ResponseEntity.ok(ApiResponse.ok(results));
         } catch (Exception e) {
             log.error("Mismatches error: {}", e.getMessage(), e);
@@ -200,7 +240,6 @@ public class ReconController {
 
     @GetMapping("/missing")
     public ResponseEntity<ApiResponse<PagedResult<ReconSummary>>> getMissing(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @RequestParam(name = "reconView", required = false) String reconView,
             @RequestParam(name = "fromBusinessDate", required = false) String fromBusinessDate,
@@ -210,9 +249,20 @@ public class ReconController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
-            TenantConfig tenant = tenantService.getTenant(tenantId);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(PagedResult.<ReconSummary>builder()
+                        .content(List.of())
+                        .page(page)
+                        .size(size)
+                        .totalElements(0)
+                        .totalPages(0)
+                        .last(true)
+                        .build()));
+            }
             ReconSearchRequest req = ReconSearchRequest.builder()
-                    .storeIds(storeIds)
+                    .storeIds(storeScope.storeIds())
                     .fromBusinessDate(fromBusinessDate)
                     .toBusinessDate(toBusinessDate)
                     .reconView(reconView)
@@ -231,12 +281,15 @@ public class ReconController {
 
     @GetMapping("/stores")
     public ResponseEntity<ApiResponse<List<String>>> getStores(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
-            List<String> stores = queryService.getStores(reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, List.of());
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(List.of()));
+            }
+            List<String> stores = storeScope.storeIds();
             return ResponseEntity.ok(ApiResponse.ok(stores));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
@@ -246,14 +299,36 @@ public class ReconController {
 
     @GetMapping("/registers")
     public ResponseEntity<ApiResponse<List<String>>> getRegisters(
-            @RequestParam(name = "tenantId", defaultValue = "tenant-india") String tenantId,
             @RequestParam(name = "reconView", required = false) String reconView,
             @RequestParam(name = "storeIds", required = false) List<String> storeIds,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireReconAccess(principal, reconView);
-            List<String> registers = queryService.getRegisters(storeIds, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(List.of()));
+            }
+            List<String> registers = queryService.getRegisters(storeScope.storeIds(), reconView);
             return ResponseEntity.ok(ApiResponse.ok(registers));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/transaction-types")
+    public ResponseEntity<ApiResponse<List<String>>> getTransactionTypes(
+            @RequestParam(name = "reconView", required = false) String reconView,
+            @RequestParam(name = "storeIds", required = false) List<String> storeIds,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        try {
+            requireReconAccess(principal, reconView);
+            AccessScopeService.StoreScopeFilter storeScope = accessScopeService.resolveStoreScope(principal, storeIds);
+            if (storeScope.denyAll()) {
+                return ResponseEntity.ok(ApiResponse.ok(List.of()));
+            }
+            List<String> transactionTypes = queryService.getTransactionTypes(storeScope.storeIds(), reconView);
+            return ResponseEntity.ok(ApiResponse.ok(transactionTypes));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error(e.getMessage()));
@@ -263,6 +338,9 @@ public class ReconController {
     private String resolveMissingStatus(String reconView) {
         if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
             return "MISSING_IN_SIOCS";
+        }
+        if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
+            return "MISSING_IN_MFCS";
         }
         if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
             return "MISSING_IN_XOCS";
@@ -293,6 +371,9 @@ public class ReconController {
         if (principal.hasPermission("RECON_XSTORE_XOCS")) {
             allowed.add("XSTORE_XOCS");
         }
+        if (principal.hasPermission("RECON_SIOCS_MFCS")) {
+            allowed.add("SIOCS_MFCS");
+        }
         return allowed;
     }
 
@@ -306,6 +387,7 @@ public class ReconController {
             case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
             case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
             case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
+            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
             default -> null;
         };
 

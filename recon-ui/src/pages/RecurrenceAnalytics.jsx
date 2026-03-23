@@ -27,12 +27,9 @@ import dayjs from 'dayjs'
 import {useAuth} from '../context/AuthContext'
 import {exceptionApi} from '../services/exceptionApi'
 import {reconApi} from '../services/reconApi'
+import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM', permission: 'RECON_XSTORE_SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS', permission: 'RECON_XSTORE_SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS', permission: 'RECON_XSTORE_XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS
 
 function formatPercent(value) {
     return `${Number(value || 0).toFixed(2)}%`

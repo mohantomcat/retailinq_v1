@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: mfcs-rds-ingestion-connector
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    table: mfcs_rds_flyway_schema_history
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+
+server:
+  port: ${MFCS_CONNECTOR_PORT:8185}
+
+mfcs:
+  connector:
+    enabled: ${MFCS_CONNECTOR_ENABLED:false}
+    connector-name: ${MFCS_CONNECTOR_NAME:mfcs-rds-main}
+    source-name: ${MFCS_SOURCE_NAME:MFCS}
+    tenant-id: ${TENANT_ID:tenant-india}
+    tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+    org-id: ${ORG_ID:1}
+    download-interval-ms: ${MFCS_DOWNLOAD_INTERVAL_MS:300000}
+    publish-interval-ms: ${MFCS_PUBLISH_INTERVAL_MS:30000}
+    batch-size: ${MFCS_BATCH_SIZE:500}
+    publisher-batch-size: ${MFCS_PUBLISHER_BATCH_SIZE:200}
+    overlap-minutes: ${MFCS_OVERLAP_MINUTES:10}
+    processing-lock-timeout-minutes: ${MFCS_PROCESSING_LOCK_TIMEOUT_MINUTES:15}
+    max-retries: ${MFCS_MAX_RETRIES:5}
+    connect-timeout-ms: ${MFCS_CONNECT_TIMEOUT_MS:10000}
+    read-timeout-ms: ${MFCS_READ_TIMEOUT_MS:30000}
+    metrics-refresh-interval-ms: ${MFCS_METRICS_REFRESH_INTERVAL_MS:60000}
+    retry-max-attempts: ${MFCS_RETRY_MAX_ATTEMPTS:3}
+    retry-initial-interval-ms: ${MFCS_RETRY_INITIAL_INTERVAL_MS:1000}
+    retry-multiplier: ${MFCS_RETRY_MULTIPLIER:2.0}
+    retry-max-interval-ms: ${MFCS_RETRY_MAX_INTERVAL_MS:10000}
+    auth-type: ${MFCS_AUTH_TYPE:IDCS}
+    auth-header-name: ${MFCS_AUTH_HEADER_NAME:X-API-Key}
+    bearer-token: ${MFCS_BEARER_TOKEN:}
+    basic-username: ${MFCS_BASIC_USERNAME:}
+    basic-password: ${MFCS_BASIC_PASSWORD:}
+    idcs-token-url: ${MFCS_IDCS_TOKEN_URL:}
+    idcs-client-id: ${MFCS_IDCS_CLIENT_ID:}
+    idcs-client-secret: ${MFCS_IDCS_CLIENT_SECRET:}
+    idcs-scope: ${MFCS_IDCS_SCOPE:}
+    idcs-grant-type: ${MFCS_IDCS_GRANT_TYPE:client_credentials}
+    idcs-refresh-skew-seconds: ${MFCS_IDCS_REFRESH_SKEW_SECONDS:60}
+    base-url: ${MFCS_API_BASE_URL:}
+    transactions-path: ${MFCS_API_TRANSACTIONS_PATH:}
+    api-key: ${MFCS_API_KEY:}
+    scheduler-enabled: ${MFCS_SCHEDULER_ENABLED:true}
+    normalized-retention-days: ${MFCS_NORMALIZED_RETENTION_DAYS:35}
+    raw-retention-days: ${MFCS_RAW_RETENTION_DAYS:10}
+    error-retention-days: ${MFCS_ERROR_RETENTION_DAYS:35}
+    retention-interval-ms: ${MFCS_RETENTION_INTERVAL_MS:86400000}
+
+kafka:
+  topic:
+    mfcs-transactions: ${KAFKA_MFCS_TOPIC:mfcs.transactions.raw}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,cloudConnector
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+logging:
+  level:
+    com.recon: DEBUG

@@ -98,6 +98,7 @@ public class SlaController {
             case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
             case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
             case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
+            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
             default -> null;
         };
         if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {

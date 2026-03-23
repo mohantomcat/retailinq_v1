@@ -24,12 +24,9 @@ import {
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined'
 import {slaApi} from '../services/slaApi'
 import {useAuth} from '../context/AuthContext'
+import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
 
-const MODULE_OPTIONS = [
-    {value: 'XSTORE_SIM', label: 'Xstore vs SIM'},
-    {value: 'XSTORE_SIOCS', label: 'Xstore vs SIOCS'},
-    {value: 'XSTORE_XOCS', label: 'Xstore vs XOCS'},
-]
+const MODULE_OPTIONS = RECON_VIEW_OPTIONS
 
 const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
 const WEEK_START_OPTIONS = ['MONDAY', 'SUNDAY', 'SATURDAY']

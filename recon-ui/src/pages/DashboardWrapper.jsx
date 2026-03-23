@@ -1,11 +1,14 @@
 import {useEffect, useMemo, useState} from 'react'
 import {Box, Typography} from '@mui/material'
+import BrandLockup from '../components/BrandLockup'
 import Sidebar from '../components/Sidebar'
 import UserMenu from '../components/UserMenu'
 import MyProfileDialog from '../components/MyProfileDialog'
 import ChangePasswordDialog from '../components/ChangePasswordDialog'
 import {useAuth} from '../context/AuthContext'
+import {useBranding} from '../context/BrandingContext'
 import {useI18n} from '../context/I18nContext'
+import {PRODUCT_NAME, PRODUCT_TAGLINE, getBrandTokens} from '../branding/brandingUtils'
 
 const THEME_KEY = 'recon_ui_theme'
 
@@ -26,6 +29,7 @@ export default function DashboardWrapper({
     onSidebarCollapse,
 }) {
     const {user} = useAuth()
+    const {branding} = useBranding()
     const {language, languageLabel, setLanguage, t, direction, isRTL} =
         useI18n()
     const [profileOpen, setProfileOpen] = useState(false)
@@ -50,6 +54,7 @@ export default function DashboardWrapper({
     }, [theme, language])
 
     const isDark = theme === 'Dark'
+    const brandTokens = useMemo(() => getBrandTokens(branding), [branding])
 
     const shellColors = useMemo(() => {
         if (isDark) {
@@ -58,20 +63,22 @@ export default function DashboardWrapper({
                 mainBg: '#0B1220',
                 mainText: '#E2E8F0',
                 headerBg: 'linear-gradient(90deg, #0F172A, #1E293B)',
+                headerBorder: 'rgba(255,255,255,0.08)',
                 headerSubText: 'rgba(255,255,255,0.76)',
-                brandInq: '#60A5FA',
+                mainOverlay: 'none',
             }
         }
 
         return {
-            appBg: '#F8FAFC',
-            mainBg: '#F8FAFC',
-            mainText: '#0F172A',
-            headerBg: 'linear-gradient(90deg, #0F7C86, #157F8B)',
-            headerSubText: 'rgba(255,255,255,0.86)',
-            brandInq: '#93C5FD',
+            appBg: '#F4F6FB',
+            mainBg: '#F4F6FB',
+            mainText: '#22314D',
+            headerBg: `linear-gradient(180deg, #FFFFFF 0%, rgba(${brandTokens.primaryRgb}, 0.04) 100%)`,
+            headerBorder: '#DCE3EF',
+            headerSubText: '#6F7C93',
+            mainOverlay: `radial-gradient(circle at top left, rgba(${brandTokens.primaryRgb}, 0.08), transparent 28%), radial-gradient(circle at top right, rgba(${brandTokens.secondaryRgb}, 0.10), transparent 24%)`,
         }
-    }, [isDark])
+    }, [brandTokens.primaryRgb, brandTokens.secondaryRgb, isDark])
 
     return (
         <Box
@@ -100,7 +107,8 @@ export default function DashboardWrapper({
                     background: shellColors.headerBg,
                     boxShadow: isDark
                         ? '0 3px 12px rgba(0,0,0,0.34)'
-                        : '0 3px 10px rgba(0,0,0,0.18)',
+                        : '0 8px 28px rgba(34,49,77,0.10)',
+                    borderBottom: `1px solid ${shellColors.headerBorder}`,
                     overflow: 'hidden',
                     transition: 'background 0.2s ease',
                     '&::before': {
@@ -108,49 +116,56 @@ export default function DashboardWrapper({
                         position: 'absolute',
                         inset: 0,
                         pointerEvents: 'none',
-                        opacity: 0.16,
-                        backgroundImage: `
-                            radial-gradient(circle at 12% 28%, rgba(255,255,255,0.55) 2px, transparent 3px),
-                            radial-gradient(circle at 22% 52%, rgba(255,255,255,0.45) 2px, transparent 3px),
-                            radial-gradient(circle at 34% 32%, rgba(255,255,255,0.42) 2px, transparent 3px),
-                            radial-gradient(circle at 58% 38%, rgba(255,255,255,0.35) 2px, transparent 3px),
-                            radial-gradient(circle at 74% 24%, rgba(255,255,255,0.35) 2px, transparent 3px),
-                            radial-gradient(circle at 84% 58%, rgba(255,255,255,0.40) 2px, transparent 3px),
-                            linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)),
-                            linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)),
-                            linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08))
-                        `,
-                        backgroundSize: `
-                            220px 72px,
-                            220px 72px,
-                            220px 72px,
-                            220px 72px,
-                            220px 72px,
-                            220px 72px,
-                            90px 1px,
-                            120px 1px,
-                            80px 1px
-                        `,
-                        backgroundPosition: `
-                            0 0,
-                            0 0,
-                            0 0,
-                            0 0,
-                            0 0,
-                            0 0,
-                            12% 28%,
-                            22% 52%,
-                            34% 32%
-                        `,
-                        backgroundRepeat: 'repeat-x',
+                        opacity: isDark ? 0.16 : 1,
+                        backgroundImage: isDark
+                            ? `
+                                radial-gradient(circle at 12% 28%, rgba(255,255,255,0.55) 2px, transparent 3px),
+                                radial-gradient(circle at 22% 52%, rgba(255,255,255,0.45) 2px, transparent 3px),
+                                radial-gradient(circle at 34% 32%, rgba(255,255,255,0.42) 2px, transparent 3px),
+                                radial-gradient(circle at 58% 38%, rgba(255,255,255,0.35) 2px, transparent 3px),
+                                radial-gradient(circle at 74% 24%, rgba(255,255,255,0.35) 2px, transparent 3px),
+                                radial-gradient(circle at 84% 58%, rgba(255,255,255,0.40) 2px, transparent 3px),
+                                linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)),
+                                linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)),
+                                linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08))
+                              `
+                            : `linear-gradient(90deg, rgba(${brandTokens.primaryRgb}, 0.08), transparent 38%, rgba(${brandTokens.secondaryRgb}, 0.10))`,
+                        backgroundSize: isDark
+                            ? `
+                                220px 72px,
+                                220px 72px,
+                                220px 72px,
+                                220px 72px,
+                                220px 72px,
+                                220px 72px,
+                                90px 1px,
+                                120px 1px,
+                                80px 1px
+                              `
+                            : '100% 100%',
+                        backgroundPosition: isDark
+                            ? `
+                                0 0,
+                                0 0,
+                                0 0,
+                                0 0,
+                                0 0,
+                                0 0,
+                                12% 28%,
+                                22% 52%,
+                                34% 32%
+                              `
+                            : '0 0',
+                        backgroundRepeat: isDark ? 'repeat-x' : 'no-repeat',
                     },
                     '&::after': {
                         content: '""',
                         position: 'absolute',
                         inset: 0,
                         pointerEvents: 'none',
-                        background:
-                            'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0))',
+                        background: isDark
+                            ? 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0))'
+                            : 'linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0))',
                     },
                 }}
             >
@@ -162,91 +177,27 @@ export default function DashboardWrapper({
                         alignItems: 'center',
                         minWidth: 0,
                         direction: 'ltr',
+                        flexShrink: 0,
                     }}
                 >
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 48,
-                            height: 48,
-                            mr: 1.5,
-                            flexShrink: 0,
-                        }}
-                    >
-                        <img
-                            src="/logo9.svg"
-                            alt="RetailINQ Logo"
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'contain',
-                                display: 'block',
-                            }}
-                        />
-                    </Box>
-
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'center',
-                            minWidth: 0,
-                            mr: 3,
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'baseline',
-                                lineHeight: 1,
-                            }}
-                        >
-                            <Typography
-                                sx={{
-                                    fontSize: {xs: '1.35rem', md: '1.5rem'},
-                                    fontWeight: 600,
-                                    color: '#ffffff',
-                                    letterSpacing: '-0.4px',
-                                    lineHeight: 1,
-                                }}
-                            >
-                                Retail
-                            </Typography>
-                            <Typography
-                                sx={{
-                                    ml: 0.15,
-                                    fontSize: {xs: '1.35rem', md: '1.5rem'},
-                                    fontWeight: 800,
-                                    letterSpacing: '-0.4px',
-                                    lineHeight: 1,
-                                    color: shellColors.brandInq,
-                                    textShadow:
-                                        '0 1px 4px rgba(37,99,235,0.18)',
-                                }}
-                            >
-                                INQ
-                            </Typography>
-                        </Box>
-
-                        <Typography
-                            sx={{
-                                mt: 0.4,
-                                fontSize: '0.78rem',
-                                fontWeight: 400,
-                                color: shellColors.headerSubText,
-                                letterSpacing: '0.25px',
-                                lineHeight: 1.2,
-                                display: {xs: 'none', md: 'block'},
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {t(
-                                'Retail Reconciliation • Analytics • Integrations'
-                            )}
-                        </Typography>
-                    </Box>
+                    <BrandLockup
+                        branding={branding}
+                        mode={isDark ? 'dark' : 'light'}
+                        appNameColor={isDark ? '#FFFFFF' : '#22314D'}
+                        productName={PRODUCT_NAME}
+                        subtitle={t(PRODUCT_TAGLINE)}
+                        subtitleColor={shellColors.headerSubText}
+                        logoWidth={{xs: 86, md: 112}}
+                        logoHeight={{xs: 38, md: 44}}
+                        defaultLogoWidth={{xs: 176, md: 254}}
+                        defaultLogoHeight={{xs: 46, md: 58}}
+                        nameFontSize={{xs: '1.14rem', md: '1.34rem'}}
+                        nameFontWeight={800}
+                        gap={1.1}
+                        maxTextWidth={{xs: 160, md: 280}}
+                        subtitleWrap
+                        hideProductNameWhenDefaultLogo
+                    />
                 </Box>
 
                 <Box sx={{flexGrow: 1}}/>
@@ -289,6 +240,7 @@ export default function DashboardWrapper({
                     transition:
                         'width 0.2s ease, margin-left 0.2s ease, background-color 0.2s ease',
                     backgroundColor: shellColors.mainBg,
+                    backgroundImage: shellColors.mainOverlay,
                     color: shellColors.mainText,
                     minHeight: 'calc(100vh - 72px)',
                     direction,

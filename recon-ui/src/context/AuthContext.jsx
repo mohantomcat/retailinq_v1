@@ -99,13 +99,20 @@ export function AuthProvider({children}) {
                 ...(JSON.parse(sessionStorage.getItem(USER_KEY) || '{}')),
                 accessToken: data.accessToken,
                 permissions: data.permissions,
+                storeIds: data.storeIds ?? user?.storeIds,
+                effectiveStoreIds:
+                    data.effectiveStoreIds ?? user?.effectiveStoreIds,
+                allStoreAccess:
+                    data.allStoreAccess ?? user?.allStoreAccess,
+                accessScope: data.accessScope ?? user?.accessScope,
+                authMode: data.authMode ?? user?.authMode,
             }
 
             persistUser(updatedUser)
         } catch {
             logout()
         }
-    }, [logout, persistUser])
+    }, [logout, persistUser, user])
 
     const updateUserProfile = useCallback(async (profileData) => {
         const updatedUserDto = await authApi.updateProfile(profileData)
@@ -121,6 +128,13 @@ export function AuthProvider({children}) {
             permissions:
                 updatedUserDto.permissions ?? currentUser.permissions,
             storeIds: updatedUserDto.storeIds ?? currentUser.storeIds,
+            effectiveStoreIds:
+                updatedUserDto.effectiveStoreIds ??
+                currentUser.effectiveStoreIds,
+            allStoreAccess:
+                updatedUserDto.allStoreAccess ?? currentUser.allStoreAccess,
+            accessScope:
+                updatedUserDto.accessScope ?? currentUser.accessScope,
             active: updatedUserDto.active,
             tenantId: updatedUserDto.tenantId ?? currentUser.tenantId,
         }
@@ -169,7 +183,7 @@ export function AuthProvider({children}) {
     }, [user])
 
     const getAccessibleStores = useCallback(() => {
-        return user?.storeIds || []
+        return user?.effectiveStoreIds || user?.storeIds || []
     }, [user])
 
     const value = {

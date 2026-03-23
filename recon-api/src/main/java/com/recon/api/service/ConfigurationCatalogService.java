@@ -32,6 +32,7 @@ public class ConfigurationCatalogService {
                 ? List.of(
                 buildXstoreSim(overrides),
                 buildXstoreSiocs(overrides),
+                buildSiocsMfcs(overrides),
                 buildXstoreXocs(overrides)
         ).stream().map(module -> maskEditable(module, allowEdit)).collect(Collectors.toList())
                 : List.of();
@@ -174,6 +175,17 @@ public class ConfigurationCatalogService {
                 .sections(List.of(
                         xstorePublisherSection(overrides),
                         xocsCloudSection(overrides)
+                ))
+                .build();
+    }
+
+    private ModuleConfigurationDto buildSiocsMfcs(Map<String, String> overrides) {
+        return ModuleConfigurationDto.builder()
+                .moduleId("siocs-mfcs")
+                .moduleLabel("SIOCS vs MFCS")
+                .sections(List.of(
+                        siocsCloudSection(overrides),
+                        mfcsRdsSection(overrides)
                 ))
                 .build();
     }
@@ -482,6 +494,88 @@ public class ConfigurationCatalogService {
                 .build();
     }
 
+    private ConfigurationSectionDto mfcsRdsSection(Map<String, String> overrides) {
+        return ConfigurationSectionDto.builder()
+                .id("mfcs-rds")
+                .label("MFCS RDS Connector")
+                .description("ORDS API pull, staging, publish, and retention settings for MFCS RDS custom views.")
+                .entries(List.of(
+                        entry(overrides, "enabled", "Connector Enabled",
+                                "Turns the MFCS RDS connector on or off.",
+                                "MFCS_CONNECTOR_ENABLED", "false", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "connectorName", "Connector Name",
+                                "Logical connector identifier stored in checkpoints and logs.",
+                                "MFCS_CONNECTOR_NAME", "mfcs-rds-main", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "sourceName", "Source Name",
+                                "Source label stored in staged records.",
+                                "MFCS_SOURCE_NAME", "MFCS", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "downloadIntervalMs", "Download Interval (ms)",
+                                "How often the MFCS ORDS API is polled.",
+                                "MFCS_DOWNLOAD_INTERVAL_MS", "300000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "publishIntervalMs", "Publish Interval (ms)",
+                                "How often staged MFCS rows are published to Kafka.",
+                                "MFCS_PUBLISH_INTERVAL_MS", "30000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "batchSize", "Download Batch Size",
+                                "Rows requested per MFCS ORDS page.",
+                                "MFCS_BATCH_SIZE", "500", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "publisherBatchSize", "Publisher Batch Size",
+                                "Rows claimed per Kafka publish batch.",
+                                "MFCS_PUBLISHER_BATCH_SIZE", "200", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "overlapMinutes", "Overlap Minutes",
+                                "Incremental polling overlap window.",
+                                "MFCS_OVERLAP_MINUTES", "10", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "lockTimeoutMinutes", "Processing Lock Timeout (min)",
+                                "Timeout before stale MFCS publish claims are released.",
+                                "MFCS_PROCESSING_LOCK_TIMEOUT_MINUTES", "15", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "maxRetries", "Max Retries",
+                                "Max retries for staged MFCS rows.",
+                                "MFCS_MAX_RETRIES", "5", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "connectTimeoutMs", "Connect Timeout (ms)",
+                                "HTTP connect timeout for the MFCS ORDS API.",
+                                "MFCS_CONNECT_TIMEOUT_MS", "10000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "readTimeoutMs", "Read Timeout (ms)",
+                                "HTTP read timeout for the MFCS ORDS API.",
+                                "MFCS_READ_TIMEOUT_MS", "30000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "schedulerEnabled", "Scheduler Enabled",
+                                "Controls scheduled MFCS ORDS download and publish jobs.",
+                                "MFCS_SCHEDULER_ENABLED", "true", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "normalizedRetentionDays", "Normalized Retention (days)",
+                                "Retention for staged normalized MFCS transactions.",
+                                "MFCS_NORMALIZED_RETENTION_DAYS", "35", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "rawRetentionDays", "Raw Retention (days)",
+                                "Retention for raw MFCS ORDS payloads.",
+                                "MFCS_RAW_RETENTION_DAYS", "10", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "errorRetentionDays", "Error Retention (days)",
+                                "Retention for staged MFCS ingestion errors.",
+                                "MFCS_ERROR_RETENTION_DAYS", "35", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "retentionIntervalMs", "Retention Interval (ms)",
+                                "How often MFCS retention cleanup runs.",
+                                "MFCS_RETENTION_INTERVAL_MS", "86400000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "authType", "Auth Type",
+                                "Authentication mode for the MFCS ORDS API.",
+                                "MFCS_AUTH_TYPE", "IDCS", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "baseUrl", "API Base URL",
+                                "Base URL for the MFCS ORDS API.",
+                                "MFCS_API_BASE_URL", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "transactionsPath", "Transactions Path",
+                                "Relative path for the MFCS transactions endpoint.",
+                                "MFCS_API_TRANSACTIONS_PATH", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "idcsTokenUrl", "IDCS Token URL",
+                                "Token URL for MFCS IDCS authentication.",
+                                "MFCS_IDCS_TOKEN_URL", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "idcsClientId", "IDCS Client ID",
+                                "Client ID for MFCS IDCS authentication.",
+                                "MFCS_IDCS_CLIENT_ID", "", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "idcsClientSecret", "IDCS Client Secret",
+                                "Client secret for MFCS IDCS authentication.",
+                                "MFCS_IDCS_CLIENT_SECRET", "", true, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "mfcsTopic", "MFCS Topic",
+                                "Kafka topic for MFCS transaction events.",
+                                "KAFKA_MFCS_TOPIC", "mfcs.transactions.raw", false, true, APPLY_MODE_RESTART_REQUIRED)
+                ))
+                .build();
+    }
+
     private ConfigurationSectionDto xocsCloudSection(Map<String, String> overrides) {
         return ConfigurationSectionDto.builder()
                 .id("xocs-cloud")
@@ -635,6 +729,16 @@ public class ConfigurationCatalogService {
                  "CLOUD_NORMALIZED_RETENTION_DAYS",
                  "CLOUD_RAW_RETENTION_DAYS",
                  "CLOUD_ERROR_RETENTION_DAYS",
+                 "MFCS_CONNECTOR_ENABLED",
+                 "MFCS_SCHEDULER_ENABLED",
+                 "MFCS_BATCH_SIZE",
+                 "MFCS_PUBLISHER_BATCH_SIZE",
+                 "MFCS_OVERLAP_MINUTES",
+                 "MFCS_PROCESSING_LOCK_TIMEOUT_MINUTES",
+                 "MFCS_MAX_RETRIES",
+                 "MFCS_NORMALIZED_RETENTION_DAYS",
+                 "MFCS_RAW_RETENTION_DAYS",
+                 "MFCS_ERROR_RETENTION_DAYS",
                  "XOCS_CONNECTOR_ENABLED",
                  "XOCS_SCHEDULER_ENABLED",
                  "XOCS_BATCH_SIZE",

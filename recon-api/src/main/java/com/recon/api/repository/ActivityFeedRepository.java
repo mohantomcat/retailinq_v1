@@ -439,6 +439,7 @@ public class ActivityFeedRepository {
         return switch (moduleId) {
             case "xstore-publisher", "sim-poller" -> "XSTORE_SIM";
             case "siocs-cloud-connector" -> "XSTORE_SIOCS";
+            case "mfcs-rds-connector" -> "SIOCS_MFCS";
             case "xocs-cloud-connector" -> "XSTORE_XOCS";
             default -> "OPERATIONS";
         };

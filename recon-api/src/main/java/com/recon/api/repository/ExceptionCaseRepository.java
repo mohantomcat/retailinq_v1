@@ -55,4 +55,23 @@ public interface ExceptionCaseRepository extends JpaRepository<ExceptionCase, UU
     List<ExceptionCase> findForRecurrenceAnalytics(String tenantId,
                                                    String reconView,
                                                    LocalDateTime since);
+
+    @Query("""
+            select distinct e.storeId
+            from ExceptionCase e
+            where e.tenantId = :tenantId
+              and e.storeId is not null
+              and trim(e.storeId) <> ''
+            order by e.storeId
+            """)
+    List<String> findDistinctStoreIdsByTenantId(String tenantId);
+
+    @Query("""
+            select distinct e.transactionKey
+            from ExceptionCase e
+            where e.tenantId = :tenantId
+              and e.storeId in :storeIds
+            """)
+    List<String> findTransactionKeysByTenantIdAndStoreIdIn(String tenantId,
+                                                           List<String> storeIds);
 }

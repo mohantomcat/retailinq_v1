@@ -453,6 +453,9 @@ public class AlertController {
         if (principal.hasPermission("RECON_XSTORE_XOCS")) {
             allowed.add("XSTORE_XOCS");
         }
+        if (principal.hasPermission("RECON_SIOCS_MFCS")) {
+            allowed.add("SIOCS_MFCS");
+        }
         return allowed;
     }
 
