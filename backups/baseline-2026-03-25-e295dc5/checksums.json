@@ -1,0 +1,77 @@
+[
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "B3477DD6FB506BE3419DB319CE6A7052764401615CBAFD3DB5F1B8F4DD4B3E90",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\checksums.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "FDD395A7DCBFCFBDF027994F633174D849A8946393204C8FDFACA578A0CF47F6",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\code-snapshot.txt"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "4C74FE3A506E5068B6B75C4D87E1301398E06984D271B29AB267B4FA8B4881B7",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-cluster-health.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "1E5A4D4AEF48EB9E3B1CE53437A2A1EC8F3A654B2A56EAA811CD1E2B13B7CFC6",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-indices.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "7D18C6E3B015A17C2FB6C526A5C018EC536BDD062A2A57D75CEDA61ABBE21425",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-recon-transactions-bulk.ndjson"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "726EBB279D3997852153DD781E6A95AE2BB99D581208A68CCFC75DDE4856CDB0",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-recon-transactions-create.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "0C4F90518B48FFDF75A8EC85A22EEB6ECA22722A068586BD3C95FDD774DEE324",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-recon-transactions-docs.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "C7DC6B24A3EF3AC3E5A3F0076F311FA917254B4638066541C21BFB5E3C0DCCD6",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-recon-transactions-mapping.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "D9073E55B866CEE0768983F2DDFB5859455E479541B76348DFF9B7F217EC0CC8",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-recon-transactions-settings.json"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "F37294F8941BCC325455436CB352C9D5339C6E15D6456F692F8ACBB0BFFFA114",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\elasticsearch-summary.txt"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "BC162EF73421DA0B61ED9BB3A18D83F99630747B4E081824E70529D65FD1AF14",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\postgres-globals.sql"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "54B8CAFA64BCC80D2668B4F528024291CB52FB0B11F94E114DD892D888A8D401",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\postgres-summary.txt"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "C50DD900590CBAED98A2A5153FB4E9961CBA9576B7A5354C5D7161BF0E445463",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\README.md"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "BE936F22518D37D6AF0CF44F469FB00CB0DDDDA3524578381D5ADAD1C02C83DB",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\recondb-schema.sql"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "E2F1382E17AE3A2B118CC479C4D7DC7D56E26A29B49E7C8F779FC1C786CE248B",
+        "Path":  "D:\\Projects\\recon-platform\\backups\\baseline-2026-03-25-e295dc5\\recondb.dump"
+    }
+]

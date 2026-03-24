@@ -1,0 +1,177 @@
+{
+    "settings":  {
+                     "number_of_shards":  1,
+                     "number_of_replicas":  1
+                 },
+    "mappings":  {
+                     "properties":  {
+                                        "businessDate":  {
+                                                             "type":  "date",
+                                                             "format":  "yyyy-MM-dd||strict_date_optional_time||epoch_millis"
+                                                         },
+                                        "checksumMatch":  {
+                                                              "type":  "boolean"
+                                                          },
+                                        "discrepancies":  {
+                                                              "properties":  {
+                                                                                 "description":  {
+                                                                                                     "type":  "text",
+                                                                                                     "fields":  {
+                                                                                                                    "keyword":  {
+                                                                                                                                    "type":  "keyword",
+                                                                                                                                    "ignore_above":  256
+                                                                                                                                }
+                                                                                                                }
+                                                                                                 },
+                                                                                 "itemId":  {
+                                                                                                "type":  "text",
+                                                                                                "fields":  {
+                                                                                                               "keyword":  {
+                                                                                                                               "type":  "keyword",
+                                                                                                                               "ignore_above":  256
+                                                                                                                           }
+                                                                                                           }
+                                                                                            },
+                                                                                 "siocsQuantity":  {
+                                                                                                       "type":  "double"
+                                                                                                   },
+                                                                                 "siocsUom":  {
+                                                                                                  "type":  "text",
+                                                                                                  "fields":  {
+                                                                                                                 "keyword":  {
+                                                                                                                                 "type":  "keyword",
+                                                                                                                                 "ignore_above":  256
+                                                                                                                             }
+                                                                                                             }
+                                                                                              },
+                                                                                 "type":  {
+                                                                                              "type":  "text",
+                                                                                              "fields":  {
+                                                                                                             "keyword":  {
+                                                                                                                             "type":  "keyword",
+                                                                                                                             "ignore_above":  256
+                                                                                                                         }
+                                                                                                         }
+                                                                                          },
+                                                                                 "xstoreQuantity":  {
+                                                                                                        "type":  "double"
+                                                                                                    },
+                                                                                 "xstoreUom":  {
+                                                                                                   "type":  "text",
+                                                                                                   "fields":  {
+                                                                                                                  "keyword":  {
+                                                                                                                                  "type":  "keyword",
+                                                                                                                                  "ignore_above":  256
+                                                                                                                              }
+                                                                                                              }
+                                                                                               }
+                                                                             }
+                                                          },
+                                        "duplicateFlag":  {
+                                                              "type":  "boolean"
+                                                          },
+                                        "duplicatePostingCount":  {
+                                                                      "type":  "long"
+                                                                  },
+                                        "externalId":  {
+                                                           "type":  "text",
+                                                           "fields":  {
+                                                                          "keyword":  {
+                                                                                          "type":  "keyword",
+                                                                                          "ignore_above":  256
+                                                                                      }
+                                                                      }
+                                                       },
+                                        "processingStatus":  {
+                                                                 "type":  "long"
+                                                             },
+                                        "reconStatus":  {
+                                                            "type":  "text",
+                                                            "fields":  {
+                                                                           "keyword":  {
+                                                                                           "type":  "keyword",
+                                                                                           "ignore_above":  256
+                                                                                       }
+                                                                       }
+                                                        },
+                                        "reconView":  {
+                                                          "type":  "text",
+                                                          "fields":  {
+                                                                         "keyword":  {
+                                                                                         "type":  "keyword",
+                                                                                         "ignore_above":  256
+                                                                                     }
+                                                                     }
+                                                      },
+                                        "reconciledAt":  {
+                                                             "type":  "date"
+                                                         },
+                                        "simSource":  {
+                                                          "type":  "text",
+                                                          "fields":  {
+                                                                         "keyword":  {
+                                                                                         "type":  "keyword",
+                                                                                         "ignore_above":  256
+                                                                                     }
+                                                                     }
+                                                      },
+                                        "siocsChecksum":  {
+                                                              "type":  "text",
+                                                              "fields":  {
+                                                                             "keyword":  {
+                                                                                             "type":  "keyword",
+                                                                                             "ignore_above":  256
+                                                                                         }
+                                                                         }
+                                                          },
+                                        "storeId":  {
+                                                        "type":  "text",
+                                                        "fields":  {
+                                                                       "keyword":  {
+                                                                                       "type":  "keyword",
+                                                                                       "ignore_above":  256
+                                                                                   }
+                                                                   }
+                                                    },
+                                        "timerDriftMs":  {
+                                                             "type":  "long"
+                                                         },
+                                        "transactionKey":  {
+                                                               "type":  "text",
+                                                               "fields":  {
+                                                                              "keyword":  {
+                                                                                              "type":  "keyword",
+                                                                                              "ignore_above":  256
+                                                                                          }
+                                                                          }
+                                                           },
+                                        "transactionType":  {
+                                                                "type":  "text",
+                                                                "fields":  {
+                                                                               "keyword":  {
+                                                                                               "type":  "keyword",
+                                                                                               "ignore_above":  256
+                                                                                           }
+                                                                           }
+                                                            },
+                                        "wkstnId":  {
+                                                        "type":  "text",
+                                                        "fields":  {
+                                                                       "keyword":  {
+                                                                                       "type":  "keyword",
+                                                                                       "ignore_above":  256
+                                                                                   }
+                                                                   }
+                                                    },
+                                        "xstoreChecksum":  {
+                                                               "type":  "text",
+                                                               "fields":  {
+                                                                              "keyword":  {
+                                                                                              "type":  "keyword",
+                                                                                              "ignore_above":  256
+                                                                                          }
+                                                                          }
+                                                           }
+                                    }
+                 }
+}

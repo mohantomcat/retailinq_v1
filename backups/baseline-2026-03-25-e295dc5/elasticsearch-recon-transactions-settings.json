@@ -1,0 +1,24 @@
+{
+  "recon-transactions" : {
+    "settings" : {
+      "index" : {
+        "routing" : {
+          "allocation" : {
+            "include" : {
+              "_tier_preference" : "data_content"
+            }
+          }
+        },
+        "number_of_shards" : "1",
+        "provided_name" : "recon-transactions",
+        "creation_date" : "1773590024281",
+        "number_of_replicas" : "1",
+        "uuid" : "35Q7btzDT5Woy4Q2qfPADg",
+        "version" : {
+          "created" : "8503000"
+        }
+      }
+    }
+  }
+}
+

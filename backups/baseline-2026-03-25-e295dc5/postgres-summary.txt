@@ -1,0 +1,3 @@
+database=recondb
+tables=76
+size=19 MB
