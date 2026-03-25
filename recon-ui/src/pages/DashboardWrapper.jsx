@@ -18,6 +18,7 @@ export default function DashboardWrapper({
     alerts,
     exceptionItems,
     slaItems,
+    integration,
     operations,
     activity,
     configurations,
@@ -220,6 +221,7 @@ export default function DashboardWrapper({
                 alerts={alerts}
                 exceptionItems={exceptionItems}
                 slaItems={slaItems}
+                integration={integration}
                 operations={operations}
                 activity={activity}
                 configurations={configurations}

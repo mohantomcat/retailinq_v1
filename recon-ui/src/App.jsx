@@ -1,19 +1,28 @@
-import {useEffect, useMemo, useState} from 'react'
+import {lazy, Suspense, useEffect, useMemo, useState} from 'react'
 import {Navigate, Route, Routes} from 'react-router-dom'
-import {createTheme, CssBaseline, ThemeProvider} from '@mui/material'
+import {Box, CircularProgress, createTheme, CssBaseline, ThemeProvider} from '@mui/material'
 import {useAuth} from './context/AuthContext'
 import {BrandingProvider, useBranding} from './context/BrandingContext'
 import {I18nProvider, useI18n} from './context/I18nContext'
-import DashboardWrapper from './pages/DashboardWrapper'
-import Dashboard from './pages/Dashboard'
-import KpiMockup from './pages/KpiMockup'
-import Login from './pages/Login'
-import Unauthorized from './pages/Unauthorized'
 import ProtectedRoute from './components/ProtectedRoute'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS, getTabLabel} from './constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS, getTabLabel} from './constants/navigation'
 import {getBrandTokens} from './branding/brandingUtils'
 
+const DashboardWrapper = lazy(() => import('./pages/DashboardWrapper'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const KpiMockup = lazy(() => import('./pages/KpiMockup'))
+const Login = lazy(() => import('./pages/Login'))
+const Unauthorized = lazy(() => import('./pages/Unauthorized'))
+
 const THEME_KEY = 'recon_ui_theme'
+
+function RouteLoadingFallback() {
+    return (
+        <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh'}}>
+            <CircularProgress size={32}/>
+        </Box>
+    )
+}
 
 function getThemeMode() {
     if (typeof document !== 'undefined') {
@@ -337,6 +346,10 @@ function AppRoutes() {
         id,
         label: getTabLabel(t, id),
     }))
+    const integrationPairs = INTEGRATION_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
     const slaPairs = SLA_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
@@ -389,6 +402,7 @@ function AppRoutes() {
                 alerts={alertPairs}
                 exceptionItems={exceptionPairs}
                 slaItems={slaPairs}
+                integration={integrationPairs}
                 operations={operationsPairs}
                 activity={activityPairs}
                 configurations={configurationPairs}
@@ -403,47 +417,50 @@ function AppRoutes() {
     )
 
     return (
-        <Routes>
-            <Route
-                path="/login"
-                element={
-                    isAuthenticated ? (
-                        <Navigate to="/" replace/>
-                    ) : (
-                        <Login/>
-                    )
-                }
-            />
+        <Suspense fallback={<RouteLoadingFallback/>}>
+            <Routes>
+                <Route
+                    path="/login"
+                    element={
+                        isAuthenticated ? (
+                            <Navigate to="/" replace/>
+                        ) : (
+                            <Login/>
+                        )
+                    }
+                />
 
-            <Route path="/unauthorized" element={<Unauthorized/>}/>
+                <Route path="/unauthorized" element={<Unauthorized/>}/>
 
-            <Route
-                path="/"
-                element={
-                    <ProtectedRoute>
-                        {wrapper(
-                            <Dashboard
-                                openTabs={openTabs}
-                                activeTab={activeTab}
-                                setActiveTab={setActiveTab}
-                                handleCloseTab={handleCloseTab}
-                            />
-                        )}
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/"
+                    element={
+                        <ProtectedRoute>
+                            {wrapper(
+                                <Dashboard
+                                    openTabs={openTabs}
+                                    activeTab={activeTab}
+                                    setActiveTab={setActiveTab}
+                                    handleOpenTab={handleSidebarClick}
+                                    handleCloseTab={handleCloseTab}
+                                />
+                            )}
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/kpi-mockup"
-                element={
-                    <ProtectedRoute>
-                        <KpiMockup/>
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/kpi-mockup"
+                    element={
+                        <ProtectedRoute>
+                            <KpiMockup/>
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route path="*" element={<Navigate to="/" replace/>}/>
-        </Routes>
+                <Route path="*" element={<Navigate to="/" replace/>}/>
+            </Routes>
+        </Suspense>
     )
 }
 

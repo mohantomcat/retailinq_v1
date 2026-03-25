@@ -116,9 +116,14 @@ export const reconApi = {
         return json.data
     },
 
-    getTransaction: async (transactionKey) => {
+    getTransaction: async (transactionKey, reconView = null) => {
         const encoded = encodeURIComponent(transactionKey)
-        const res = await apiFetch(`${BASE}/transactions/${encoded}`)
+        const params = new URLSearchParams()
+        if (reconView) {
+            params.append('reconView', reconView)
+        }
+        const suffix = params.toString() ? `?${params}` : ''
+        const res = await apiFetch(`${BASE}/transactions/${encoded}${suffix}`)
         const json = await res.json()
         return json.data
     },

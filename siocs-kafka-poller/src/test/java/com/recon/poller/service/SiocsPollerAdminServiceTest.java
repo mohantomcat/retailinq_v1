@@ -43,7 +43,7 @@ class SiocsPollerAdminServiceTest {
     @Test
     void getStatusReturnsCheckpointState() {
         SiocsPollCheckpoint cp = SiocsPollCheckpoint.builder()
-                .pollerId("siocs-main")
+                .pollerId("sim-main")
                 .tenantId("tenant-india")
                 .lastProcessedTimestamp(Timestamp.from(Instant.parse("2026-03-14T00:00:00Z")))
                 .lastProcessedExternalId("0100700100008620251128")
@@ -51,19 +51,19 @@ class SiocsPollerAdminServiceTest {
                 .lastPollStatus("SUCCESS")
                 .totalRecordsPolled(100L)
                 .build();
-        when(checkpointRepository.findOrCreate("siocs-main", "tenant-india")).thenReturn(cp);
+        when(checkpointRepository.findOrCreate("sim-main", "tenant-india")).thenReturn(cp);
 
         var status = adminService.getStatus();
 
-        assertEquals("siocs-kafka-poller", status.getService());
+        assertEquals("sim-kafka-poller", status.getService());
         assertEquals(42L, status.getLastProcessedId());
         assertEquals("SUCCESS", status.getLastPollStatus());
     }
 
     @Test
     void resetCheckpointResetsCompositeCursor() {
-        when(checkpointRepository.findOrCreate("siocs-main", "tenant-india"))
-                .thenReturn(SiocsPollCheckpoint.builder().pollerId("siocs-main").tenantId("tenant-india").build());
+        when(checkpointRepository.findOrCreate("sim-main", "tenant-india"))
+                .thenReturn(SiocsPollCheckpoint.builder().pollerId("sim-main").tenantId("tenant-india").build());
 
         adminService.resetCheckpoint(SiocsResetCheckpointRequest.builder()
                 .lastProcessedTimestamp("2025-11-25T00:00:00Z")
@@ -72,7 +72,7 @@ class SiocsPollerAdminServiceTest {
                 .build());
 
         verify(checkpointRepository).resetCheckpoint(
-                eq("siocs-main"),
+                eq("sim-main"),
                 any(Timestamp.class),
                 eq(""),
                 eq(0L));

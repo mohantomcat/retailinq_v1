@@ -194,11 +194,12 @@ public class ReconController {
     @GetMapping("/transactions/{transactionKey}")
     public ResponseEntity<ApiResponse<ReconSummary>> getTransaction(
             @PathVariable("transactionKey") String transactionKey,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
-            requireGenericReconAccess(principal);
+            requireReconAccess(principal, reconView);
             TenantConfig tenant = tenantService.getTenant(principal.getTenantId());
-            ReconSummary summary = queryService.getByTransactionKey(transactionKey, tenant);
+            ReconSummary summary = queryService.getByTransactionKey(transactionKey, reconView, tenant);
             if (summary == null) {
                 return ResponseEntity.notFound().build();
             }

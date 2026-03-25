@@ -7,6 +7,8 @@ import com.recon.cloud.domain.CloudLineItem;
 import com.recon.cloud.domain.CloudStagedTransaction;
 import com.recon.cloud.domain.CloudTransactionEvent;
 import com.recon.cloud.repository.CloudTransactionRepository;
+import com.recon.cloud.repository.IntegrationRunJournalRepository;
+import com.recon.integration.model.CanonicalIntegrationEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,12 +34,18 @@ public class CloudIngestionPublisher {
     private final CloudConnectorProperties properties;
     private final CloudTransactionRepository transactionRepository;
     private final CloudTransactionEventMapper eventMapper;
+    private final CanonicalEnvelopeMapper canonicalEnvelopeMapper;
+    private final SiocsIntegrationContract integrationContract;
+    private final IntegrationRunJournalRepository integrationRunJournalRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final CloudRuntimeConfigService runtimeConfigService;
 
     @Value("${kafka.topic.sim-transactions}")
     private String topic;
+
+    @Value("${kafka.topic.integration-canonical}")
+    private String integrationCanonicalTopic;
 
     @Scheduled(fixedDelayString =
             "${cloud.connector.publish-interval-ms:30000}")
@@ -83,6 +91,15 @@ public class CloudIngestionPublisher {
                         CloudIngestionTransactionRow::getExternalId,
                         LinkedHashMap::new,
                         Collectors.toList()));
+        UUID runId = integrationRunJournalRepository.startRun(properties.getTenantId(), integrationContract, "SCHEDULED");
+        UUID stepId = integrationRunJournalRepository.startStep(
+                runId,
+                "MAP_AND_PUBLISH",
+                "Map source transactions and publish canonical integration events",
+                1
+        );
+        int successCount = 0;
+        int errorCount = 0;
 
         for (Map.Entry<String, List<CloudIngestionTransactionRow>> entry : grouped.entrySet()) {
             List<CloudIngestionTransactionRow> transactionRows = entry.getValue();
@@ -92,6 +109,7 @@ public class CloudIngestionPublisher {
             try {
                 CloudStagedTransaction stagedTransaction = aggregate(transactionRows);
                 CloudTransactionEvent event = eventMapper.map(stagedTransaction);
+                CanonicalIntegrationEnvelope envelope = canonicalEnvelopeMapper.map(integrationContract, stagedTransaction, event);
                 if (stagedTransaction.getExternalId() == null || stagedTransaction.getExternalId().isBlank()) {
                     log.warn("Publishing staged cloud transaction without externalId using fallback key={} sourceRecordKey={} firstRowId={}",
                             event.getTransactionKey(), stagedTransaction.getSourceRecordKey(), stagedTransaction.getFirstRowId());
@@ -99,14 +117,38 @@ public class CloudIngestionPublisher {
                 String payload = objectMapper.writeValueAsString(event);
                 kafkaTemplate.send(topic, event.getTransactionKey(), payload)
                         .get(10, TimeUnit.SECONDS);
+                boolean canonicalPublished = publishCanonicalEnvelope(runId, envelope);
                 transactionRepository.markPublished(ids);
+                if (canonicalPublished) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
                 log.debug("Published staged cloud transaction key={}", event.getTransactionKey());
             } catch (Exception e) {
                 transactionRepository.markFailed(ids, e.getMessage(), maxRetries);
+                recordCanonicalFailure(runId, entry.getKey(), transactionRows, e);
+                errorCount++;
                 log.error("Failed to publish staged transaction externalId={}: {}",
                         entry.getKey(), e.getMessage(), e);
             }
         }
+
+        integrationRunJournalRepository.completeStep(
+                stepId,
+                successCount,
+                errorCount,
+                "Processed " + grouped.size() + " staged transactions",
+                errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+        );
+        integrationRunJournalRepository.completeRun(
+                runId,
+                grouped.size(),
+                successCount,
+                errorCount,
+                "Legacy recon publish kept active while canonical integration events were journaled in parallel",
+                errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+        );
     }
 
     private CloudStagedTransaction aggregate(List<CloudIngestionTransactionRow> rows) {
@@ -163,6 +205,90 @@ public class CloudIngestionPublisher {
                 .totalQuantity(totalQuantity)
                 .postingCount((int) Math.max(postingCount, duplicateItemKeys + 1))
                 .duplicateFlag(postingCount > 1 || duplicateItemKeys > 0)
+                .rawPayloadId(first.getRawPayloadId())
                 .build();
+    }
+
+    private boolean publishCanonicalEnvelope(UUID runId,
+                                             CanonicalIntegrationEnvelope envelope) {
+        String canonicalPayload;
+        try {
+            canonicalPayload = objectMapper.writeValueAsString(envelope);
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope.getMessageId(),
+                    envelope.getTraceId(),
+                    envelope.getBusinessKey(),
+                    envelope.getDocumentId(),
+                    null,
+                    "MAPPING_ERROR",
+                    "CANONICAL_ENVELOPE_SERIALIZATION_FAILED",
+                    ex.getMessage(),
+                    false
+            );
+            log.error("Canonical integration event serialization failed for businessKey={}: {}",
+                    envelope.getBusinessKey(), ex.getMessage(), ex);
+            return false;
+        }
+        try {
+            kafkaTemplate.send(integrationCanonicalTopic, envelope.getBusinessKey(), canonicalPayload)
+                    .get(10, TimeUnit.SECONDS);
+            integrationRunJournalRepository.recordPublishedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope,
+                    canonicalPayload
+            );
+            return true;
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope.getMessageId(),
+                    envelope.getTraceId(),
+                    envelope.getBusinessKey(),
+                    envelope.getDocumentId(),
+                    canonicalPayload,
+                    "PUBLISH_ERROR",
+                    "CANONICAL_TOPIC_PUBLISH_FAILED",
+                    ex.getMessage(),
+                    true
+            );
+            log.error("Canonical integration event publish failed for businessKey={}: {}",
+                    envelope.getBusinessKey(), ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    private void recordCanonicalFailure(UUID runId,
+                                        String externalId,
+                                        List<CloudIngestionTransactionRow> transactionRows,
+                                        Exception exception) {
+        CloudIngestionTransactionRow first = transactionRows.isEmpty() ? null : transactionRows.get(0);
+        String payloadSnapshot;
+        try {
+            payloadSnapshot = objectMapper.writeValueAsString(transactionRows);
+        } catch (Exception ignored) {
+            payloadSnapshot = null;
+        }
+        integrationRunJournalRepository.recordFailedMessage(
+                properties.getTenantId(),
+                runId,
+                integrationContract,
+                UUID.randomUUID().toString(),
+                null,
+                externalId,
+                first != null ? first.getExternalId() : externalId,
+                payloadSnapshot,
+                "LEGACY_PUBLISH_ERROR",
+                "SIOCS_LEGACY_TOPIC_PUBLISH_FAILED",
+                exception.getMessage(),
+                true
+        );
     }
 }

@@ -54,6 +54,7 @@ siocs:
 kafka:
   topic:
     sim-transactions: ${KAFKA_SIM_TOPIC:sim.transactions.raw}
+    integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
     dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
 
 management:

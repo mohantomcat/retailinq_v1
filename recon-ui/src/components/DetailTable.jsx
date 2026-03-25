@@ -1,8 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import {Box, Button, Divider, Paper, Stack, Typography,} from '@mui/material'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import {useI18n} from '../context/I18nContext'
 
 function getThemeMode() {
@@ -102,27 +99,35 @@ const DetailTable = ({
     const handleExportExcel = () => {
         if (!exportData.length) return
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData)
-        const workbook = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Data')
-        XLSX.writeFile(workbook, 'reconciliation_data.xlsx')
+        import('xlsx').then((XLSX) => {
+            const worksheet = XLSX.utils.json_to_sheet(exportData)
+            const workbook = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Data')
+            XLSX.writeFile(workbook, 'reconciliation_data.xlsx')
+        })
     }
 
     const handleExportPDF = () => {
         if (!exportData.length) return
 
-        const doc = new jsPDF()
+        Promise.all([
+            import('jspdf'),
+            import('jspdf-autotable'),
+        ]).then(([jspdfModule, autoTableModule]) => {
+            const jsPDF = jspdfModule.default
+            const autoTable = autoTableModule.default
+            const doc = new jsPDF()
+            const headers = [Object.keys(exportData[0])]
+            const body = exportData.map((row) => Object.values(row))
 
-        const headers = [Object.keys(exportData[0])]
-        const body = exportData.map((row) => Object.values(row))
+            autoTable(doc, {
+                head: headers,
+                body,
+                styles: {fontSize: 8},
+            })
 
-        autoTable(doc, {
-            head: headers,
-            body,
-            styles: {fontSize: 8},
+            doc.save('reconciliation_data.pdf')
         })
-
-        doc.save('reconciliation_data.pdf')
     }
 
     return (

@@ -70,9 +70,9 @@ public class ReconQueryService {
     }
 
     public ReconSummary getByTransactionKey(
-            String transactionKey, TenantConfig tenant) {
+            String transactionKey, String reconView, TenantConfig tenant) {
         ReconSummary summary =
-                esRepository.findByTransactionKey(transactionKey);
+                esRepository.findByTransactionKey(transactionKey, reconView);
         if (summary == null) return null;
         return convertTimestamps(summary, tenant);
     }

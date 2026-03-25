@@ -73,6 +73,7 @@ mfcs:
 kafka:
   topic:
     mfcs-transactions: ${KAFKA_MFCS_TOPIC:mfcs.transactions.raw}
+    integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
 
 management:
   endpoints:

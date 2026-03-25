@@ -43,7 +43,10 @@ public class KafkaProducerConfig {
 
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+        KafkaTemplate<String, String> kafkaTemplate = new KafkaTemplate<>(producerFactory());
+        // Legacy raw publishing stays transactional; canonical integration events can publish outside that tx.
+        kafkaTemplate.setAllowNonTransactional(true);
+        return kafkaTemplate;
     }
 
     @Bean

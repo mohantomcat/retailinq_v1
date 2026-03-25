@@ -13,6 +13,10 @@ export const SECURITY_TAB_IDS = [
     'branding-center',
 ]
 
+export const INTEGRATION_TAB_IDS = [
+    'integration-hub',
+]
+
 export const REPORT_TAB_IDS = [
     'operations-command-center',
     'executive-scorecards',
@@ -72,6 +76,10 @@ export function getTabLabel(t, id) {
             return t('Tenant Access Center')
         case 'branding-center':
             return t('Branding Center')
+        case 'transaction-drill-down':
+            return t('Transaction Drill-down')
+        case 'integration-hub':
+            return t('Integration Hub')
         case 'executive-scorecards':
             return t('Executive Scorecards')
         case 'operations-command-center':

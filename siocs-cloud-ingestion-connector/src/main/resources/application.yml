@@ -70,6 +70,7 @@ cloud:
 kafka:
   topic:
     sim-transactions: ${KAFKA_SIM_TOPIC:siocs.transactions.raw}
+    integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
 
 management:
   endpoints:

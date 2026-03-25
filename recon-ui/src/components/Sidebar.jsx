@@ -35,9 +35,10 @@ import DnsRoundedIcon from '@mui/icons-material/DnsRounded'
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined'
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SECURITY_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SECURITY_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 
 const ITEM_PERMISSIONS = {
     'xstore-sim': 'RECON_XSTORE_SIM',
@@ -70,6 +71,7 @@ const ITEM_PERMISSIONS = {
     'org-hierarchy': 'ADMIN_ORG',
     'tenant-access': 'TENANT_ACCESS_MANAGE',
     'branding-center': 'BRANDING_MANAGE',
+    'integration-hub': 'INTEGRATION_HUB_VIEW',
     'module-configs': 'CONFIG_MODULE_VIEW',
     'system-configs': 'CONFIG_SYSTEM_VIEW',
 }
@@ -81,6 +83,7 @@ const SECTION_PERMISSIONS = {
     alerts: 'ALERT_VIEW',
     exceptions: 'EXCEPTION_QUEUE_VIEW',
     sla: 'SLA_VIEW',
+    integration: 'INTEGRATION_HUB_VIEW',
     operations: 'OPS_VIEW',
     activity: 'AUDIT_VIEW',
     configurations: ['CONFIG_MODULE_VIEW', 'CONFIG_SYSTEM_VIEW'],
@@ -94,6 +97,7 @@ const SECTION_ICONS = {
     alerts: <NotificationsActiveRoundedIcon sx={{fontSize: 18}}/>,
     exceptions: <FactCheckOutlinedIcon sx={{fontSize: 18}}/>,
     sla: <TimerOutlinedIcon sx={{fontSize: 18}}/>,
+    integration: <HubOutlinedIcon sx={{fontSize: 18}}/>,
     operations: <BuildCircleRoundedIcon sx={{fontSize: 18}}/>,
     activity: <AssessmentIcon sx={{fontSize: 18}}/>,
     configurations: <SettingsSuggestIcon sx={{fontSize: 18}}/>,
@@ -124,6 +128,10 @@ const SECTION_COLORS = {
     sla: {
         icon: 'var(--brand-primary)',
         bg: 'var(--brand-primary-surface)',
+    },
+    integration: {
+        icon: 'var(--brand-secondary)',
+        bg: 'var(--brand-secondary-surface)',
     },
     operations: {
         icon: 'var(--brand-secondary)',
@@ -165,6 +173,7 @@ const ITEM_ICONS = {
     'approval-center': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
     'routing-playbooks': <FactCheckOutlinedIcon sx={{fontSize: 17}}/>,
     'sla-management': <TimerOutlinedIcon sx={{fontSize: 17}}/>,
+    'integration-hub': <HubOutlinedIcon sx={{fontSize: 17}}/>,
     operations: <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
     'recon-jobs': <AutorenewRoundedIcon sx={{fontSize: 17}}/>,
     'audit-activity': <AssessmentIcon sx={{fontSize: 17}}/>,
@@ -186,6 +195,7 @@ export default function Sidebar({
                                     alerts = [],
                                     exceptionItems = [],
                                     slaItems = [],
+                                    integration = [],
                                     operations = [],
                                     activity = [],
                                     configurations = [],
@@ -207,6 +217,10 @@ export default function Sidebar({
         label: getTabLabel(t, id),
     }))
     const exceptionTabs = EXCEPTION_TAB_IDS.map((id) => ({
+        id,
+        label: getTabLabel(t, id),
+    }))
+    const integrationItems = INTEGRATION_TAB_IDS.map((id) => ({
         id,
         label: getTabLabel(t, id),
     }))
@@ -236,6 +250,7 @@ export default function Sidebar({
         alerts: false,
         exceptions: false,
         sla: false,
+        integration: false,
         operations: false,
         activity: false,
         reports: false,
@@ -371,6 +386,7 @@ export default function Sidebar({
                                 return (
                                     <ListItemButton
                                         key={mod.id}
+                                        data-testid={`sidebar-item-${mod.id}`}
                                         selected={isActive}
                                         onClick={() => handleItemClick(mod.id)}
                                         sx={{
@@ -464,6 +480,7 @@ export default function Sidebar({
                                     arrow
                                 >
                                     <ListItemButton
+                                        data-testid={`sidebar-item-${mod.id}`}
                                         selected={isActive}
                                         onClick={() => handleItemClick(mod.id)}
                                         sx={{
@@ -591,6 +608,7 @@ export default function Sidebar({
                 {renderGroup(t('Alerts'), alerts.length ? alerts : alertItems, 'alerts')}
                 {renderGroup(t('Exceptions'), exceptionItems.length ? exceptionItems : exceptionTabs, 'exceptions')}
                 {renderGroup(t('SLA & Aging'), slaItems.length ? slaItems : slaTabs, 'sla')}
+                {renderGroup(t('Integration Hub'), integration.length ? integration : integrationItems, 'integration')}
                 {renderGroup(t('Operations'), operations.length ? operations : operationItems, 'operations')}
                 {renderGroup(t('Audit & Activity'), activity.length ? activity : activityItems, 'activity')}
                 {renderGroup(t('Configurations'), configurations.length ? configurations : configurationItems, 'configurations')}

@@ -134,14 +134,28 @@ public class ReconElasticsearchRepository {
         return count(status, null, null, null, null, null, null);
     }
 
-    public ReconSummary findByTransactionKey(String transactionKey) {
+    public ReconSummary findByTransactionKey(String transactionKey, String reconView) {
         try {
             SearchRequest esReq = SearchRequest.of(s -> s
                     .index(INDEX)
                     .query(q -> q
-                            .term(t -> t
-                                    .field("transactionKey.keyword")
-                                    .value(transactionKey)))
+                            .bool(b -> {
+                                b.filter(f -> f
+                                        .term(t -> t
+                                                .field("transactionKey.keyword")
+                                                .value(transactionKey)));
+                                if (reconView != null && !reconView.isBlank()) {
+                                    b.filter(f -> f
+                                            .term(t -> t
+                                                    .field("reconView.keyword")
+                                                    .value(reconView)));
+                                }
+                                return b;
+                            }))
+                    .sort(so -> so
+                            .field(f -> f
+                                    .field("reconciledAt")
+                                    .order(SortOrder.Desc)))
                     .size(1));
 
             SearchResponse<Map> response =

@@ -28,6 +28,7 @@
         </dependencies>
     </dependencyManagement>
     <modules>
+        <module>integration-core</module>
         <module>xstore-kafka-publisher</module>
         <module>siocs-kafka-poller</module>
         <module>siocs-cloud-ingestion-connector</module>

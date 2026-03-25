@@ -439,6 +439,7 @@ export default function Login() {
                                     onChange={(e) =>
                                         setUsername(e.target.value)
                                     }
+                                    inputProps={{'data-testid': 'login-username'}}
                                     fullWidth
                                     size="small"
                                     autoComplete="username"
@@ -453,6 +454,7 @@ export default function Login() {
                                     onChange={(e) =>
                                         setPassword(e.target.value)
                                     }
+                                    inputProps={{'data-testid': 'login-password'}}
                                     fullWidth
                                     size="small"
                                     autoComplete="current-password"
@@ -486,6 +488,7 @@ export default function Login() {
                                     label={t('Organisation')}
                                     value={tenantId}
                                     onChange={(e) => setTenantId(e.target.value)}
+                                    inputProps={{'data-testid': 'login-tenant'}}
                                     fullWidth
                                     size="small"
                                     disabled={loading}
@@ -509,6 +512,7 @@ export default function Login() {
                                 <Button
                                     type="submit"
                                     variant="contained"
+                                    data-testid="login-submit"
                                     fullWidth
                                     disabled={
                                         loading ||

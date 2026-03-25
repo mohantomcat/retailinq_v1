@@ -19,10 +19,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,9 +55,9 @@ class CloudRestDownloadServiceTest {
         properties.setTenantId("tenant-india");
         properties.setBatchSize(100);
         properties.setOverlapMinutes(10);
-        when(runtimeConfigService.getBoolean("MFCS_CONNECTOR_ENABLED", true)).thenReturn(true);
-        when(runtimeConfigService.getInt("MFCS_OVERLAP_MINUTES", 10)).thenReturn(10);
-        when(runtimeConfigService.getInt("MFCS_BATCH_SIZE", 100)).thenReturn(100);
+        lenient().when(runtimeConfigService.getBoolean("MFCS_CONNECTOR_ENABLED", true)).thenReturn(true);
+        lenient().when(runtimeConfigService.getInt("MFCS_OVERLAP_MINUTES", 10)).thenReturn(10);
+        lenient().when(runtimeConfigService.getInt("MFCS_BATCH_SIZE", 100)).thenReturn(100);
         service = new CloudRestDownloadService(
                 properties,
                 checkpointRepository,
@@ -111,10 +111,17 @@ class CloudRestDownloadServiceTest {
                 .externalId("")
                 .build();
 
-        assertThrows(IllegalArgumentException.class,
-                () -> service.persistPage("", List.of(invalid)));
+        service.persistPage("", List.of(invalid));
 
         verify(rawRepository, never()).insert(any(), any(), any(), any(), any(), any());
         verify(transactionRepository, never()).upsertTransactionRows(any(), any(), any(), anyLong(), any());
+        verify(errorRepository).save(
+                eq("tenant-india"),
+                eq("MFCS_SIM"),
+                eq(""),
+                any(),
+                eq("VALIDATION_ERROR"),
+                eq("Missing sourceRecordKey")
+        );
     }
 }

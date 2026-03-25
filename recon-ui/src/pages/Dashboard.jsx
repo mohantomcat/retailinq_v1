@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react'
+import {Suspense, lazy, useEffect, useMemo, useState} from 'react'
 import {
     Box,
     Button,
@@ -20,47 +20,58 @@ import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSetting
 import CompareArrowsRoundedIcon from '@mui/icons-material/CompareArrowsRounded'
 import KPI from '../components/KPI'
 import DetailTable from '../components/DetailTable'
-import ExceptionWorkbenchPanel from '../components/ExceptionWorkbenchPanel'
 import LineChartComponent from '../components/LineChartComponent'
 import {reconApi} from '../services/reconApi'
-import Alerts from './Alerts'
-import ApprovalCenter from './ApprovalCenter'
-import Activity from './Activity'
-import Configurations from './Configurations'
-import ExecutiveScorecards from './ExecutiveScorecards'
-import ExceptionQueues from './ExceptionQueues'
-import KnownIssues from './KnownIssues'
-import NoiseSuppression from './NoiseSuppression'
-import Operations from './Operations'
-import ReconciliationJobs from './ReconciliationJobs'
-import OperationsCommandCenter from './OperationsCommandCenter'
-import RegionalIncidentBoard from './RegionalIncidentBoard'
-import RecurrenceAnalytics from './RecurrenceAnalytics'
-import RootCauseAnalytics from './RootCauseAnalytics'
-import RoutingPlaybooks from './RoutingPlaybooks'
-import SlaManagement from './SlaManagement'
-import StoreManagerLite from './StoreManagerLite'
-import StoreScorecards from './StoreScorecards'
-import TicketingCommunications from './TicketingCommunications'
-import ManageUsers from './admin/ManageUsers'
-import ManageRoles from './admin/ManageRoles'
-import ManagePermissions from './admin/ManagePermissions'
-import OrganizationHierarchy from './admin/OrganizationHierarchy'
-import TenantAccessCenter from './admin/TenantAccessCenter'
-import BrandingCenter from './admin/BrandingCenter'
 import {LocalizationProvider} from '@mui/x-date-pickers/LocalizationProvider'
 import {DatePicker} from '@mui/x-date-pickers/DatePicker'
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import {useI18n} from '../context/I18nContext'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
+import {useAuth} from '../context/AuthContext'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 import {RECON_VIEW_BY_TAB, getReconTargetSystemByTab} from '../constants/reconViews'
+import {
+    EXCEPTION_QUEUE_PREFILL_EVENT,
+    EXCEPTION_QUEUE_PREFILL_KEY,
+    TRANSACTION_DRILLDOWN_PREFILL_EVENT,
+    TRANSACTION_DRILLDOWN_PREFILL_KEY,
+} from '../constants/uiStateKeys'
+
+const Alerts = lazy(() => import('./Alerts'))
+const ApprovalCenter = lazy(() => import('./ApprovalCenter'))
+const Activity = lazy(() => import('./Activity'))
+const Configurations = lazy(() => import('./Configurations'))
+const ExecutiveScorecards = lazy(() => import('./ExecutiveScorecards'))
+const ExceptionQueues = lazy(() => import('./ExceptionQueues'))
+const KnownIssues = lazy(() => import('./KnownIssues'))
+const NoiseSuppression = lazy(() => import('./NoiseSuppression'))
+const Operations = lazy(() => import('./Operations'))
+const ReconciliationJobs = lazy(() => import('./ReconciliationJobs'))
+const IntegrationHub = lazy(() => import('./IntegrationHub'))
+const OperationsCommandCenter = lazy(() => import('./OperationsCommandCenter'))
+const RegionalIncidentBoard = lazy(() => import('./RegionalIncidentBoard'))
+const RecurrenceAnalytics = lazy(() => import('./RecurrenceAnalytics'))
+const RootCauseAnalytics = lazy(() => import('./RootCauseAnalytics'))
+const RoutingPlaybooks = lazy(() => import('./RoutingPlaybooks'))
+const SlaManagement = lazy(() => import('./SlaManagement'))
+const StoreManagerLite = lazy(() => import('./StoreManagerLite'))
+const StoreScorecards = lazy(() => import('./StoreScorecards'))
+const TicketingCommunications = lazy(() => import('./TicketingCommunications'))
+const ManageUsers = lazy(() => import('./admin/ManageUsers'))
+const ManageRoles = lazy(() => import('./admin/ManageRoles'))
+const ManagePermissions = lazy(() => import('./admin/ManagePermissions'))
+const OrganizationHierarchy = lazy(() => import('./admin/OrganizationHierarchy'))
+const TenantAccessCenter = lazy(() => import('./admin/TenantAccessCenter'))
+const BrandingCenter = lazy(() => import('./admin/BrandingCenter'))
+const TransactionDrillDown = lazy(() => import('./TransactionDrillDown'))
 
 const PAGE_SIZE = 20
+const TRANSACTION_DRILLDOWN_TAB_ID = 'transaction-drill-down'
 const SECURITY_IDS = ['manage-users', 'manage-roles', 'manage-perms', 'org-hierarchy', 'tenant-access', 'branding-center']
 const ALERT_IDS = ALERT_TAB_IDS
 const EXCEPTION_IDS = EXCEPTION_TAB_IDS
 const OPERATION_IDS = OPERATIONS_TAB_IDS
+const INTEGRATION_IDS = INTEGRATION_TAB_IDS
 const SLA_IDS = SLA_TAB_IDS
 const ACTIVITY_IDS = ACTIVITY_TAB_IDS
 const CONFIGURATION_IDS = CONFIGURATION_TAB_IDS
@@ -312,6 +323,17 @@ function ClearableDatePicker({
                     ✕
                 </Box>
             )}
+        </Box>
+    )
+}
+
+function TabLoadingPanel({palette, label}) {
+    return (
+        <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 10, gap: 1.5}}>
+            <CircularProgress size={28}/>
+            <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                {label}
+            </Typography>
         </Box>
     )
 }
@@ -713,8 +735,10 @@ function ComingSoonModule({tabId, palette, t}) {
     )
 }
 
-function ReconContent({tabId, palette, t}) {
+function ReconContent({tabId, palette, t, onOpenTab}) {
     const reconView = RECON_VIEW_BY_TAB[tabId] || null
+    const {hasPermission} = useAuth()
+    const canViewExceptionQueue = hasPermission('EXCEPTION_QUEUE_VIEW')
     const [kpis, setKpis] = useState({})
     const [selectedKpi, setSelectedKpi] = useState(null)
     const [detailData, setDetailData] = useState([])
@@ -932,6 +956,47 @@ function ReconContent({tabId, palette, t}) {
         totalElements === 0
             ? 0
             : Math.min((page + 1) * PAGE_SIZE, totalElements)
+
+    const selectedRecordSummary = selectedDetailRow
+        ? {
+            transactionKey: selectedDetailRow.transactionKey || '-',
+            reconView: selectedDetailRow.reconView || reconView || '-',
+            storeId: selectedDetailRow.storeId || '-',
+            businessDate: selectedDetailRow.businessDateDisplay || selectedDetailRow.businessDate || '-',
+            transactionType: selectedDetailRow.transactionType || '-',
+            reconStatus: selectedDetailRow.reconStatus || '-',
+            matchBand: selectedDetailRow.matchBand || '-',
+            matchScore: selectedDetailRow.matchScore ?? '-',
+        }
+        : null
+
+    const openSelectedRecordInExceptionQueue = () => {
+        if (!selectedDetailRow || !canViewExceptionQueue) {
+            return
+        }
+        const prefill = {
+            reconView: selectedDetailRow.reconView || reconView || '',
+            transactionKey: selectedDetailRow.transactionKey || '',
+            search: selectedDetailRow.transactionKey || '',
+        }
+        sessionStorage.setItem(EXCEPTION_QUEUE_PREFILL_KEY, JSON.stringify(prefill))
+        window.dispatchEvent(new CustomEvent(EXCEPTION_QUEUE_PREFILL_EVENT, {detail: prefill}))
+        onOpenTab?.('exception-queues')
+    }
+
+    const openSelectedRecordDrillDown = () => {
+        if (!selectedDetailRow) {
+            return
+        }
+        const prefill = {
+            transactionKey: selectedDetailRow.transactionKey,
+            reconView: selectedDetailRow.reconView || reconView || '',
+            source: 'dashboard-kpi',
+        }
+        sessionStorage.setItem(TRANSACTION_DRILLDOWN_PREFILL_KEY, JSON.stringify(prefill))
+        window.dispatchEvent(new CustomEvent(TRANSACTION_DRILLDOWN_PREFILL_EVENT, {detail: prefill}))
+        onOpenTab?.(TRANSACTION_DRILLDOWN_TAB_ID)
+    }
 
     const trend7Data = (analytics?.last7Days || []).map((point) => ({
         date: point.businessDate?.slice(5) || point.businessDate,
@@ -1387,6 +1452,7 @@ function ReconContent({tabId, palette, t}) {
                                         <KPI
                                             title={kpi.title}
                                             value={kpis[kpi.key]}
+                                            testId={`kpi-card-${kpi.key}`}
                                             onClick={() =>
                                                 handleKpiClick(kpi.title, kpi.key)
                                             }
@@ -1445,6 +1511,7 @@ function ReconContent({tabId, palette, t}) {
                                     <KPI
                                         title={kpi.title}
                                         value={kpis[kpi.key]}
+                                        testId={`kpi-card-${kpi.key}`}
                                         onClick={() =>
                                             handleKpiClick(kpi.title, kpi.key)
                                         }
@@ -1517,6 +1584,7 @@ function ReconContent({tabId, palette, t}) {
                         <Grid item xs={12}>
                             <Paper
                                 elevation={0}
+                                data-testid="selected-record-summary"
                                 sx={{
                                     p: 2,
                                     borderRadius: 3,
@@ -1775,7 +1843,92 @@ function ReconContent({tabId, palette, t}) {
                             selectedRowKey={selectedDetailRow?.transactionKey || null}
                         />
 
-                        <ExceptionWorkbenchPanel record={selectedDetailRow}/>
+                        {selectedRecordSummary ? (
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    mt: 2,
+                                    p: 2.25,
+                                    borderRadius: 3,
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    backgroundColor: palette.cardBgAlt,
+                                }}
+                            >
+                                <Box
+                                    sx={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'flex-start',
+                                        gap: 2,
+                                        flexWrap: 'wrap',
+                                    }}
+                                >
+                                    <Box>
+                                        <Typography sx={{fontSize: '0.98rem', fontWeight: 800, color: palette.text}}>
+                                            {t('Selected Record')}
+                                        </Typography>
+                                        <Typography sx={{mt: 0.35, fontSize: '0.8rem', color: palette.textMuted}}>
+                                            {t('Review the currently selected KPI row here, or jump to Exception Queues for full case triage and case-level workflow.')}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                                        <Button
+                                            variant="outlined"
+                                            data-testid="selected-record-open-drilldown"
+                                            onClick={openSelectedRecordDrillDown}
+                                        >
+                                            {t('Open Transaction Drill-down')}
+                                        </Button>
+                                        {canViewExceptionQueue ? (
+                                            <Button
+                                                variant="outlined"
+                                                data-testid="selected-record-open-exception-queues"
+                                                onClick={openSelectedRecordInExceptionQueue}
+                                            >
+                                                {t('Open in Exception Queues')}
+                                            </Button>
+                                        ) : null}
+                                    </Box>
+                                </Box>
+
+                                <Box
+                                    sx={{
+                                        mt: 1.6,
+                                        display: 'grid',
+                                        gridTemplateColumns: {xs: '1fr', md: 'repeat(4, minmax(0, 1fr))'},
+                                        gap: 1.2,
+                                    }}
+                                >
+                                    {[
+                                        {label: t('Transaction Key'), value: selectedRecordSummary.transactionKey},
+                                        {label: t('Recon View'), value: selectedRecordSummary.reconView},
+                                        {label: t('Store'), value: selectedRecordSummary.storeId},
+                                        {label: t('Business Date'), value: selectedRecordSummary.businessDate},
+                                        {label: t('Transaction Type'), value: selectedRecordSummary.transactionType},
+                                        {label: t('Recon Status'), value: selectedRecordSummary.reconStatus},
+                                        {label: t('Match Band'), value: selectedRecordSummary.matchBand},
+                                        {label: t('Match Score'), value: selectedRecordSummary.matchScore},
+                                    ].map((item) => (
+                                        <Box
+                                            key={item.label}
+                                            sx={{
+                                                p: 1.25,
+                                                borderRadius: 2.5,
+                                                border: `1px solid ${palette.border}`,
+                                                backgroundColor: palette.cardBg,
+                                            }}
+                                        >
+                                            <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, fontWeight: 700}}>
+                                                {item.label}
+                                            </Typography>
+                                            <Typography sx={{mt: 0.45, fontSize: '0.86rem', color: palette.text, fontWeight: 700, wordBreak: 'break-word'}}>
+                                                {item.value}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                </Box>
+                            </Paper>
+                        ) : null}
 
                         {totalElements > PAGE_SIZE && (
                             <Box
@@ -1851,6 +2004,7 @@ export default function Dashboard({
                                       openTabs,
                                       activeTab,
                                       setActiveTab,
+                                      handleOpenTab,
                                       handleCloseTab,
                                   }) {
     const [themeMode, setThemeMode] = useState(getThemeMode())
@@ -1987,55 +2141,61 @@ export default function Dashboard({
                             display: activeTab === tabId ? 'block' : 'none',
                         }}
                     >
-                        {SECURITY_IDS.includes(tabId) ? (
-                            renderSecurityTab(tabId)
-                        ) : REPORT_IDS.includes(tabId) ? (
-                            tabId === 'operations-command-center' ? (
-                                <OperationsCommandCenter palette={palette} t={t}/>
-                            ) : tabId === 'executive-scorecards' ? (
-                                <ExecutiveScorecards palette={palette} t={t}/>
-                            ) : tabId === 'store-scorecards' ? (
-                                <StoreScorecards palette={palette} t={t}/>
-                            ) : tabId === 'recurrence-analytics' ? (
-                                <RecurrenceAnalytics palette={palette} t={t}/>
+                        <Suspense fallback={<TabLoadingPanel palette={palette} label={t('Loading module...')}/>}>
+                            {tabId === TRANSACTION_DRILLDOWN_TAB_ID ? (
+                                <TransactionDrillDown palette={palette} t={t} onOpenTab={handleOpenTab}/>
+                            ) : SECURITY_IDS.includes(tabId) ? (
+                                renderSecurityTab(tabId)
+                            ) : REPORT_IDS.includes(tabId) ? (
+                                tabId === 'operations-command-center' ? (
+                                    <OperationsCommandCenter palette={palette} t={t}/>
+                                ) : tabId === 'executive-scorecards' ? (
+                                    <ExecutiveScorecards palette={palette} t={t}/>
+                                ) : tabId === 'store-scorecards' ? (
+                                    <StoreScorecards palette={palette} t={t}/>
+                                ) : tabId === 'recurrence-analytics' ? (
+                                    <RecurrenceAnalytics palette={palette} t={t}/>
+                                ) : (
+                                    <RootCauseAnalytics palette={palette} t={t}/>
+                                )
+                            ) : ALERT_IDS.includes(tabId) ? (
+                                <Alerts palette={palette} t={t}/>
+                            ) : EXCEPTION_IDS.includes(tabId) ? (
+                                tabId === 'approval-center' ? (
+                                    <ApprovalCenter palette={palette} t={t}/>
+                                ) : tabId === 'store-manager-lite' ? (
+                                    <StoreManagerLite palette={palette} t={t}/>
+                                ) : tabId === 'regional-incident-board' ? (
+                                    <RegionalIncidentBoard palette={palette} t={t}/>
+                                ) : tabId === 'noise-suppression' ? (
+                                    <NoiseSuppression palette={palette} t={t}/>
+                                ) : tabId === 'known-issues' ? (
+                                    <KnownIssues palette={palette} t={t}/>
+                                ) : tabId === 'ticketing-comms' ? (
+                                    <TicketingCommunications palette={palette} t={t}/>
+                                ) : tabId === 'routing-playbooks' ? (
+                                    <RoutingPlaybooks palette={palette} t={t}/>
+                                ) : (
+                                    <ExceptionQueues palette={palette} t={t}/>
+                                )
+                            ) : OPERATION_IDS.includes(tabId) ? (
+                                tabId === 'recon-jobs' ? (
+                                    <ReconciliationJobs palette={palette} t={t}/>
+                                ) : (
+                                    <Operations palette={palette} t={t}/>
+                                )
+                            ) : INTEGRATION_IDS.includes(tabId) ? (
+                                <IntegrationHub palette={palette} t={t}/>
+                            ) : SLA_IDS.includes(tabId) ? (
+                                <SlaManagement palette={palette} t={t}/>
+                            ) : ACTIVITY_IDS.includes(tabId) ? (
+                                <Activity palette={palette} t={t}/>
+                            ) : CONFIGURATION_IDS.includes(tabId) ? (
+                                <Configurations tabId={tabId} palette={palette} t={t}/>
                             ) : (
-                                <RootCauseAnalytics palette={palette} t={t}/>
-                            )
-                        ) : ALERT_IDS.includes(tabId) ? (
-                            <Alerts palette={palette} t={t}/>
-                        ) : EXCEPTION_IDS.includes(tabId) ? (
-                            tabId === 'approval-center' ? (
-                                <ApprovalCenter palette={palette} t={t}/>
-                            ) : tabId === 'store-manager-lite' ? (
-                                <StoreManagerLite palette={palette} t={t}/>
-                            ) : tabId === 'regional-incident-board' ? (
-                                <RegionalIncidentBoard palette={palette} t={t}/>
-                            ) : tabId === 'noise-suppression' ? (
-                                <NoiseSuppression palette={palette} t={t}/>
-                            ) : tabId === 'known-issues' ? (
-                                <KnownIssues palette={palette} t={t}/>
-                            ) : tabId === 'ticketing-comms' ? (
-                                <TicketingCommunications palette={palette} t={t}/>
-                            ) : tabId === 'routing-playbooks' ? (
-                                <RoutingPlaybooks palette={palette} t={t}/>
-                            ) : (
-                                <ExceptionQueues palette={palette} t={t}/>
-                            )
-                        ) : OPERATION_IDS.includes(tabId) ? (
-                            tabId === 'recon-jobs' ? (
-                                <ReconciliationJobs palette={palette} t={t}/>
-                            ) : (
-                                <Operations palette={palette} t={t}/>
-                            )
-                        ) : SLA_IDS.includes(tabId) ? (
-                            <SlaManagement palette={palette} t={t}/>
-                        ) : ACTIVITY_IDS.includes(tabId) ? (
-                            <Activity palette={palette} t={t}/>
-                        ) : CONFIGURATION_IDS.includes(tabId) ? (
-                            <Configurations tabId={tabId} palette={palette} t={t}/>
-                        ) : (
-                            <ReconContent tabId={tabId} palette={palette} t={t}/>
-                        )}
+                                <ReconContent tabId={tabId} palette={palette} t={t} onOpenTab={handleOpenTab}/>
+                            )}
+                        </Suspense>
                     </Box>
                 ))}
             </Box>

@@ -6,7 +6,9 @@ import com.recon.publisher.domain.ParseResult;
 import com.recon.publisher.domain.PosTransactionEvent;
 import com.recon.publisher.domain.PoslogRecord;
 import com.recon.publisher.parser.PoslogStaxParser;
+import com.recon.publisher.repository.IntegrationRunJournalRepository;
 import com.recon.publisher.repository.PublishTrackerRepository;
+import com.recon.integration.model.CanonicalIntegrationEnvelope;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,10 +24,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,6 +48,12 @@ class XstoreKafkaPublisherTest {
     private KafkaOperations<String, String> kafkaOperations;
     @Mock
     private XstoreRuntimeConfigService runtimeConfigService;
+    @Mock
+    private CanonicalEnvelopeMapper canonicalEnvelopeMapper;
+    @Mock
+    private XstoreIntegrationContract integrationContract;
+    @Mock
+    private IntegrationRunJournalRepository integrationRunJournalRepository;
 
     private XstoreKafkaPublisher publisher;
     private PublisherConfig config;
@@ -62,13 +72,19 @@ class XstoreKafkaPublisherTest {
                 parser,
                 kafkaTemplate,
                 config,
+                canonicalEnvelopeMapper,
+                integrationContract,
+                integrationRunJournalRepository,
                 new ObjectMapper(),
                 runtimeConfigService);
-        when(runtimeConfigService.getBoolean("PUBLISHER_SCHEDULER_ENABLED", true)).thenReturn(true);
-        when(runtimeConfigService.getInt("PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES", 15)).thenReturn(15);
-        when(runtimeConfigService.getInt("PUBLISHER_BATCH_SIZE", 10)).thenReturn(10);
-        when(runtimeConfigService.getInt("PUBLISHER_MAX_RETRIES", 5)).thenReturn(5);
+        lenient().when(runtimeConfigService.getBoolean("PUBLISHER_SCHEDULER_ENABLED", true)).thenReturn(true);
+        lenient().when(runtimeConfigService.getInt("PUBLISHER_PROCESSING_LOCK_TIMEOUT_MINUTES", 15)).thenReturn(15);
+        lenient().when(runtimeConfigService.getInt("PUBLISHER_BATCH_SIZE", 10)).thenReturn(10);
+        lenient().when(runtimeConfigService.getInt("PUBLISHER_MAX_RETRIES", 5)).thenReturn(5);
+        lenient().when(integrationRunJournalRepository.startRun(anyString(), any(), anyString())).thenReturn(UUID.randomUUID());
+        lenient().when(integrationRunJournalRepository.startStep(any(), anyString(), anyString(), anyInt())).thenReturn(UUID.randomUUID());
         ReflectionTestUtils.setField(publisher, "topic", "pos.transactions.raw");
+        ReflectionTestUtils.setField(publisher, "integrationCanonicalTopic", "integration.canonical.transactions");
         ReflectionTestUtils.setField(publisher, "dlqTopic", "recon.dlq");
     }
 
@@ -105,6 +121,19 @@ class XstoreKafkaPublisherTest {
         when(trackerRepository.find(record)).thenReturn(null);
         when(parser.parse(1L, 1007L, LocalDate.parse("2025-11-28"), 1L, 86L, record.getPoslogBytes()))
                 .thenReturn(ParseResult.success(event, false));
+        when(canonicalEnvelopeMapper.map(any(), any(), any(), any(Boolean.class)))
+                .thenReturn(CanonicalIntegrationEnvelope.builder()
+                        .messageId("msg-1")
+                        .traceId("trace-1")
+                        .businessKey("1|0100700100008620251128")
+                        .documentId("0100700100008620251128")
+                        .messageType("POS_TRANSACTION")
+                        .sourceSystem("XSTORE")
+                        .targetSystem("RECON")
+                        .payloadVersion("1.0")
+                        .schemaKey("canonical-transaction")
+                        .status("PUBLISHED")
+                        .build());
         when(kafkaTemplate.executeInTransaction(any())).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked")
             var callback = (org.springframework.kafka.core.KafkaOperations.OperationsCallback<String, String, Object>) invocation.getArgument(0);
@@ -118,6 +147,14 @@ class XstoreKafkaPublisherTest {
                     anyString())).thenReturn(future);
             return callback.doInOperations(kafkaOperations);
         });
+        RecordMetadata canonicalMetadata = new RecordMetadata(
+                new TopicPartition("integration.canonical.transactions", 1),
+                0L, 11L, System.currentTimeMillis(), 0L, 0, 0);
+        CompletableFuture<SendResult<String, String>> canonicalFuture =
+                CompletableFuture.completedFuture(new SendResult<>(null, canonicalMetadata));
+        when(kafkaTemplate.send(ArgumentMatchers.eq("integration.canonical.transactions"),
+                ArgumentMatchers.eq("1|0100700100008620251128"),
+                anyString())).thenReturn(canonicalFuture);
 
         publisher.publishPendingTransactions();
 
@@ -132,5 +169,11 @@ class XstoreKafkaPublisherTest {
                 ArgumentMatchers.eq(10L),
                 ArgumentMatchers.eq("abc123"),
                 ArgumentMatchers.eq(false));
+        verify(integrationRunJournalRepository).recordPublishedMessage(
+                ArgumentMatchers.eq("tenant-india"),
+                any(),
+                any(),
+                any(),
+                anyString());
     }
 }

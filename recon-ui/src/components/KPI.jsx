@@ -26,7 +26,7 @@ function getPalette(themeMode) {
     }
 }
 
-export default function KPI({title, value, onClick, selected}) {
+export default function KPI({title, value, onClick, selected, testId}) {
     const [themeMode, setThemeMode] = useState(getThemeMode())
 
     useEffect(() => {
@@ -47,6 +47,7 @@ export default function KPI({title, value, onClick, selected}) {
     return (
         <Card
             onClick={onClick}
+            data-testid={testId}
             sx={{
                 position: 'relative',
                 cursor: 'pointer',

@@ -7,8 +7,10 @@ import com.recon.publisher.util.ChecksumUtil;
 import com.recon.xocs.config.XocsConnectorProperties;
 import com.recon.xocs.domain.XocsStagedLine;
 import com.recon.xocs.domain.XocsStagedTransaction;
+import com.recon.xocs.repository.IntegrationRunJournalRepository;
 import com.recon.xocs.repository.XocsLineRepository;
 import com.recon.xocs.repository.XocsTransactionRepository;
+import com.recon.integration.model.CanonicalIntegrationEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,12 +36,18 @@ public class XocsIngestionPublisher {
     private final XocsConnectorProperties properties;
     private final XocsTransactionRepository transactionRepository;
     private final XocsLineRepository lineRepository;
+    private final CanonicalEnvelopeMapper canonicalEnvelopeMapper;
+    private final XocsIntegrationContract integrationContract;
+    private final IntegrationRunJournalRepository integrationRunJournalRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final XocsRuntimeConfigService runtimeConfigService;
 
     @Value("${kafka.topic.xocs-transactions}")
     private String topic;
+
+    @Value("${kafka.topic.integration-canonical}")
+    private String integrationCanonicalTopic;
 
     @Scheduled(fixedDelayString = "${xocs.connector.publish-interval-ms:30000}")
     public void publish() {
@@ -79,19 +87,53 @@ public class XocsIngestionPublisher {
 
         Map<Long, List<XocsStagedLine>> linesByTransactionId = lineRepository.findByTransactionIds(
                 rows.stream().map(XocsStagedTransaction::getId).toList());
+        UUID runId = integrationRunJournalRepository.startRun(properties.getTenantId(), integrationContract, "SCHEDULED");
+        UUID stepId = integrationRunJournalRepository.startStep(
+                runId,
+                "MAP_AND_PUBLISH",
+                "Map XOCS staged transactions and journal canonical integration events",
+                1
+        );
+        int successCount = 0;
+        int errorCount = 0;
 
         for (XocsStagedTransaction row : rows) {
             try {
                 row.setLineItems(linesByTransactionId.getOrDefault(row.getId(), List.of()));
                 PosTransactionEvent event = mapToEvent(row);
+                CanonicalIntegrationEnvelope envelope = canonicalEnvelopeMapper.map(integrationContract, row, event);
                 String payload = objectMapper.writeValueAsString(event);
                 kafkaTemplate.send(topic, event.getTransactionKey(), payload).get(10, TimeUnit.SECONDS);
+                boolean canonicalPublished = publishCanonicalEnvelope(runId, envelope);
                 transactionRepository.markPublished(List.of(row.getId()));
+                if (canonicalPublished) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
             } catch (Exception e) {
                 transactionRepository.markFailed(List.of(row.getId()), e.getMessage(), maxRetries);
+                recordCanonicalFailure(runId, row, e);
+                errorCount++;
                 log.error("Failed to publish XOCS staged transaction id={}: {}", row.getId(), e.getMessage(), e);
             }
         }
+
+        integrationRunJournalRepository.completeStep(
+                stepId,
+                successCount,
+                errorCount,
+                "Processed " + rows.size() + " XOCS staged transactions",
+                errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+        );
+        integrationRunJournalRepository.completeRun(
+                runId,
+                rows.size(),
+                successCount,
+                errorCount,
+                "Legacy raw-topic publish kept active while XOCS integration messages were journaled in parallel",
+                errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+        );
     }
 
     private PosTransactionEvent mapToEvent(XocsStagedTransaction row) {
@@ -138,5 +180,86 @@ public class XocsIngestionPublisher {
             return null;
         }
         return TIMESTAMP_FORMAT.format(timestamp.toInstant().atOffset(ZoneOffset.UTC));
+    }
+
+    private boolean publishCanonicalEnvelope(UUID runId,
+                                             CanonicalIntegrationEnvelope envelope) {
+        String canonicalPayload;
+        try {
+            canonicalPayload = objectMapper.writeValueAsString(envelope);
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope.getMessageId(),
+                    envelope.getTraceId(),
+                    envelope.getBusinessKey(),
+                    envelope.getDocumentId(),
+                    null,
+                    "MAPPING_ERROR",
+                    "CANONICAL_ENVELOPE_SERIALIZATION_FAILED",
+                    ex.getMessage(),
+                    false
+            );
+            log.error("XOCS canonical integration event serialization failed for businessKey={}: {}",
+                    envelope.getBusinessKey(), ex.getMessage(), ex);
+            return false;
+        }
+        try {
+            kafkaTemplate.send(integrationCanonicalTopic, envelope.getBusinessKey(), canonicalPayload)
+                    .get(10, TimeUnit.SECONDS);
+            integrationRunJournalRepository.recordPublishedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope,
+                    canonicalPayload
+            );
+            return true;
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    properties.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope.getMessageId(),
+                    envelope.getTraceId(),
+                    envelope.getBusinessKey(),
+                    envelope.getDocumentId(),
+                    canonicalPayload,
+                    "PUBLISH_ERROR",
+                    "CANONICAL_TOPIC_PUBLISH_FAILED",
+                    ex.getMessage(),
+                    true
+            );
+            log.error("XOCS canonical integration event publish failed for businessKey={}: {}",
+                    envelope.getBusinessKey(), ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    private void recordCanonicalFailure(UUID runId,
+                                        XocsStagedTransaction row,
+                                        Exception exception) {
+        String payloadSnapshot;
+        try {
+            payloadSnapshot = objectMapper.writeValueAsString(row);
+        } catch (Exception ignored) {
+            payloadSnapshot = null;
+        }
+        integrationRunJournalRepository.recordFailedMessage(
+                properties.getTenantId(),
+                runId,
+                integrationContract,
+                UUID.randomUUID().toString(),
+                null,
+                row.getTransactionKey(),
+                row.getExternalId(),
+                payloadSnapshot,
+                "LEGACY_PUBLISH_ERROR",
+                "XOCS_LEGACY_TOPIC_PUBLISH_FAILED",
+                exception.getMessage(),
+                true
+        );
     }
 }

@@ -1,6 +1,7 @@
 package com.recon.poller.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.integration.model.CanonicalIntegrationEnvelope;
 import com.recon.poller.aggregator.SiocsRowAggregator;
 import com.recon.poller.config.PollerConfig;
 import com.recon.poller.domain.AggregationResult;
@@ -10,6 +11,7 @@ import com.recon.poller.domain.SiocsRawRow;
 import com.recon.poller.domain.SiocsTransactionRow;
 import com.recon.poller.mapper.SiocsTransactionMapper;
 import com.recon.poller.repository.CheckpointRepository;
+import com.recon.poller.repository.IntegrationRunJournalRepository;
 import com.recon.poller.repository.SiocsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,9 @@ public class SiocsKafkaPoller {
     private final CheckpointRepository checkpointRepository;
     private final SiocsRowAggregator aggregator;
     private final SiocsTransactionMapper mapper;
+    private final IntegrationEnvelopeMapper integrationEnvelopeMapper;
+    private final SiocsIntegrationContract integrationContract;
+    private final IntegrationRunJournalRepository integrationRunJournalRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final PollerConfig config;
     private final ObjectMapper objectMapper;
@@ -39,6 +44,9 @@ public class SiocsKafkaPoller {
 
     @Value("${kafka.topic.sim-transactions}")
     private String topic;
+
+    @Value("${kafka.topic.integration-canonical}")
+    private String integrationCanonicalTopic;
 
     @Value("${kafka.topic.dlq}")
     private String dlqTopic;
@@ -66,6 +74,14 @@ public class SiocsKafkaPoller {
             return;
         }
 
+        UUID runId = integrationRunJournalRepository.startRun(config.getTenantId(), integrationContract, "SCHEDULED");
+        UUID stepId = integrationRunJournalRepository.startStep(
+                runId,
+                "POLL_AND_PUBLISH",
+                "Poll SIOCS target status rows and journal Integration Hub status messages",
+                1
+        );
+
         try {
             int safetyMarginMinutes = runtimeConfigService.getInt(
                     "SIOCS_POLLER_SAFETY_MARGIN_MIN",
@@ -83,23 +99,70 @@ public class SiocsKafkaPoller {
             log.info("Poll started from={} extId={} id={} ({}min overlap)",
                     fromTs, fromExtId, fromId, safetyMarginMinutes);
 
-            int total = pollAllPages(fromTs, fromExtId, fromId, pageSize);
-            checkpointRepository.markCompleted(pollerId, total);
-            log.info("Poll completed. Total transactions: {}", total);
+            PollMetrics metrics = pollAllPages(fromTs, fromExtId, fromId, pageSize, runId);
+            checkpointRepository.markCompleted(pollerId, metrics.sourceCount());
+            integrationRunJournalRepository.completeStep(
+                    stepId,
+                    metrics.publishedCount(),
+                    metrics.errorCount(),
+                    "Processed " + metrics.sourceCount() + " SIM status transactions",
+                    metrics.errorCount() > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+            );
+            integrationRunJournalRepository.completeRun(
+                    runId,
+                    metrics.sourceCount(),
+                    metrics.publishedCount(),
+                    metrics.errorCount(),
+                    "Legacy SIM raw-topic publish kept active while Integration Hub status messages were journaled in parallel",
+                    metrics.errorCount() > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
+            );
+            log.info("Poll completed. Total transactions: {}", metrics.sourceCount());
 
         } catch (Exception e) {
             checkpointRepository.markFailed(pollerId, e.getMessage());
+            integrationRunJournalRepository.recordFailedMessage(
+                    config.getTenantId(),
+                    runId,
+                    integrationContract,
+                    UUID.randomUUID().toString(),
+                    null,
+                    pollerId,
+                    pollerId,
+                    null,
+                    "POLL_ERROR",
+                    "SIM_POLL_CYCLE_FAILED",
+                    e.getMessage(),
+                    true
+            );
+            integrationRunJournalRepository.completeStep(
+                    stepId,
+                    0,
+                    1,
+                    e.getMessage(),
+                    "FAILED"
+            );
+            integrationRunJournalRepository.completeRun(
+                    runId,
+                    0,
+                    0,
+                    1,
+                    e.getMessage(),
+                    "FAILED"
+            );
             log.error("Poll failed: {}", e.getMessage(), e);
         } finally {
             checkpointRepository.releaseLease(pollerId, leaseOwner);
         }
     }
 
-    private int pollAllPages(Timestamp fromTs,
-                             String fromExtId,
-                             long fromId,
-                             int pageSize) throws Exception {
-        int total = 0;
+    private PollMetrics pollAllPages(Timestamp fromTs,
+                                     String fromExtId,
+                                     long fromId,
+                                     int pageSize,
+                                     UUID runId) throws Exception {
+        int sourceCount = 0;
+        int publishedCount = 0;
+        int errorCount = 0;
         List<SiocsRawRow> page;
 
         do {
@@ -122,8 +185,10 @@ public class SiocsKafkaPoller {
             }
 
             if (!result.getTransactions().isEmpty()) {
-                publishPage(result.getTransactions());
-                total += result.getTransactions().size();
+                PublishMetrics pageMetrics = publishPage(result.getTransactions(), runId);
+                sourceCount += result.getTransactions().size();
+                publishedCount += pageMetrics.publishedCount();
+                errorCount += pageMetrics.errorCount();
             }
 
             SiocsRawRow last = page.get(page.size() - 1);
@@ -135,10 +200,12 @@ public class SiocsKafkaPoller {
 
         } while (page.size() >= pageSize);
 
-        return total;
+        return new PollMetrics(sourceCount, publishedCount, errorCount);
     }
 
-    private void publishPage(List<SiocsTransactionRow> transactions) {
+    private PublishMetrics publishPage(List<SiocsTransactionRow> transactions, UUID runId) {
+        final int[] publishedCount = {0};
+        final int[] errorCount = {0};
         kafkaTemplate.executeInTransaction(ops -> {
             for (SiocsTransactionRow row : transactions) {
                 try {
@@ -149,17 +216,85 @@ public class SiocsKafkaPoller {
                             objectMapper.writeValueAsString(event);
                     ops.send(topic, event.getTransactionKey(), payload)
                             .get(10, TimeUnit.SECONDS);
+                    boolean journaled = publishIntegrationEnvelope(runId, event);
+                    if (journaled) {
+                        publishedCount[0]++;
+                    } else {
+                        errorCount[0]++;
+                    }
                     log.debug("Published simTxn key={}",
                             event.getTransactionKey());
 
                 } catch (Exception e) {
+                    errorCount[0]++;
                     log.error("Failed to publish row externalId={}: {}",
                             row.getExternalId(), e.getMessage());
+                    recordStatusFailure(runId, row, null, "LEGACY_PUBLISH_ERROR", "SIM_RAW_TOPIC_PUBLISH_FAILED", e.getMessage(), true);
                     sendToDlq(row, e.getMessage());
                 }
             }
             return null;
         });
+        return new PublishMetrics(publishedCount[0], errorCount[0]);
+    }
+
+    private boolean publishIntegrationEnvelope(UUID runId,
+                                               SimTransactionEvent event) {
+        CanonicalIntegrationEnvelope envelope;
+        String envelopeJson;
+        try {
+            envelope = integrationEnvelopeMapper.map(integrationContract, event);
+            envelopeJson = objectMapper.writeValueAsString(envelope);
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    config.getTenantId(),
+                    runId,
+                    integrationContract,
+                    event.getEventId(),
+                    event.getEventId(),
+                    event.getTransactionKey(),
+                    event.getExternalId(),
+                    null,
+                    "MAPPING_ERROR",
+                    "SIM_STATUS_ENVELOPE_SERIALIZATION_FAILED",
+                    ex.getMessage(),
+                    false
+            );
+            log.error("SIM Integration Hub envelope serialization failed for businessKey={}: {}",
+                    event.getTransactionKey(), ex.getMessage(), ex);
+            return false;
+        }
+
+        try {
+            kafkaTemplate.send(integrationCanonicalTopic, envelope.getBusinessKey(), envelopeJson)
+                    .get(10, TimeUnit.SECONDS);
+            integrationRunJournalRepository.recordPublishedMessage(
+                    config.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope,
+                    objectMapper.writeValueAsString(event)
+            );
+            return true;
+        } catch (Exception ex) {
+            integrationRunJournalRepository.recordFailedMessage(
+                    config.getTenantId(),
+                    runId,
+                    integrationContract,
+                    envelope.getMessageId(),
+                    envelope.getTraceId(),
+                    envelope.getBusinessKey(),
+                    envelope.getDocumentId(),
+                    serializeEvent(event),
+                    "PUBLISH_ERROR",
+                    "SIM_STATUS_INTEGRATION_PUBLISH_FAILED",
+                    ex.getMessage(),
+                    true
+            );
+            log.error("SIM Integration Hub publish failed for businessKey={}: {}",
+                    envelope.getBusinessKey(), ex.getMessage(), ex);
+            return false;
+        }
     }
 
     private void validateRow(SiocsTransactionRow row) {
@@ -184,6 +319,47 @@ public class SiocsKafkaPoller {
         return normalized.isBlank() ? "0" : normalized;
     }
 
+    private void recordStatusFailure(UUID runId,
+                                     SiocsTransactionRow row,
+                                     SimTransactionEvent event,
+                                     String errorType,
+                                     String errorCode,
+                                     String errorMessage,
+                                     boolean retryable) {
+        String businessKey = event != null ? event.getTransactionKey() : config.getOrgId() + "|" + row.getExternalId();
+        String traceId = event != null ? event.getEventId() : null;
+        integrationRunJournalRepository.recordFailedMessage(
+                config.getTenantId(),
+                runId,
+                integrationContract,
+                UUID.randomUUID().toString(),
+                traceId,
+                businessKey,
+                row.getExternalId(),
+                event != null ? serializeEvent(event) : serializeRow(row),
+                errorType,
+                errorCode,
+                errorMessage,
+                retryable
+        );
+    }
+
+    private String serializeEvent(SimTransactionEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String serializeRow(SiocsTransactionRow row) {
+        try {
+            return objectMapper.writeValueAsString(row);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private void sendToDlq(SiocsTransactionRow row,
                            String errorMessage) {
         try {
@@ -194,5 +370,11 @@ public class SiocsKafkaPoller {
             log.error("DLQ send also failed externalId={}: {}",
                     row.getExternalId(), e.getMessage());
         }
+    }
+
+    private record PollMetrics(int sourceCount, int publishedCount, int errorCount) {
+    }
+
+    private record PublishMetrics(int publishedCount, int errorCount) {
     }
 }

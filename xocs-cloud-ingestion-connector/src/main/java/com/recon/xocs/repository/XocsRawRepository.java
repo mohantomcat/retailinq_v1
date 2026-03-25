@@ -51,7 +51,7 @@ public class XocsRawRepository {
     public int purgeOlderThanDays(int retentionDays) {
         return jdbcTemplate.update("""
                 DELETE FROM recon.xocs_ingestion_raw
-                WHERE received_at < NOW() - (? * INTERVAL '1 day')
+                WHERE created_at < NOW() - (? * INTERVAL '1 day')
                 """, retentionDays);
     }
 }

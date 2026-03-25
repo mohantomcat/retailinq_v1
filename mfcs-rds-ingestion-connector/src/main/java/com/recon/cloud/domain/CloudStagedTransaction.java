@@ -18,6 +18,7 @@ public class CloudStagedTransaction {
     private String externalId;
     private String sourceRecordKey;
     private Long firstRowId;
+    private Long rawPayloadId;
     private Long requestId;
     private String storeId;
     private Timestamp transactionDateTime;

@@ -15,6 +15,11 @@
     <artifactId>xstore-kafka-publisher</artifactId>
     <name>Xstore Kafka Publisher</name>
     <dependencies>
+        <dependency>
+            <groupId>com.recon</groupId>
+            <artifactId>integration-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

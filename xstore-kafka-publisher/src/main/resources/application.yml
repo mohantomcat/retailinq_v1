@@ -52,6 +52,7 @@ publisher:
 kafka:
   topic:
     pos-transactions: ${KAFKA_POS_TOPIC:pos.transactions.raw}
+    integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
     dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
 
 management:

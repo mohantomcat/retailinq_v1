@@ -28,6 +28,10 @@ import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
 import ExceptionWorkbenchPanel from '../components/ExceptionWorkbenchPanel'
 import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
+import {
+    EXCEPTION_QUEUE_PREFILL_EVENT,
+    EXCEPTION_QUEUE_PREFILL_KEY,
+} from '../constants/uiStateKeys'
 
 const CLEAR_FIELD_TOKEN = '__CLEAR__'
 
@@ -60,7 +64,6 @@ const REASON_CODE_OPTIONS = [
     'SOURCE_DATA_ISSUE',
     'MANUAL_REVIEW_REQUIRED',
 ]
-
 function SummaryCard({label, value, palette, tone}) {
     const styles = {
         blue: {color: palette.blueChipText},
@@ -162,6 +165,18 @@ function ownershipLabel(status, t) {
     }
 }
 
+function buildPrefillFilters(prefill) {
+    return {
+        reconView: prefill?.reconView || '',
+        queueType: 'ALL',
+        caseStatus: '',
+        severity: '',
+        assignee: '',
+        assignedRole: '',
+        search: prefill?.search || prefill?.transactionKey || '',
+    }
+}
+
 export default function ExceptionQueues({palette, t}) {
     const {hasPermission} = useAuth()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
@@ -175,6 +190,7 @@ export default function ExceptionQueues({palette, t}) {
     const [selectedIncidentKey, setSelectedIncidentKey] = useState('')
     const [selectedKeys, setSelectedKeys] = useState([])
     const [workbenchRefreshToken, setWorkbenchRefreshToken] = useState(0)
+    const [activePrefill, setActivePrefill] = useState(null)
     const [filters, setFilters] = useState({
         reconView: '',
         queueType: 'HIGH_IMPACT',
@@ -198,7 +214,7 @@ export default function ExceptionQueues({palette, t}) {
         captureAuditSnapshot: false,
     })
 
-    const loadQueues = async (nextFilters = filters) => {
+    const loadQueues = async (nextFilters = filters, preferredSelection = null) => {
         try {
             setLoading(true)
             setError('')
@@ -207,6 +223,11 @@ export default function ExceptionQueues({palette, t}) {
             setSelectedKeys((current) => current.filter((key) => (queueData?.items || []).some((item) => selectionKey(item) === key)))
             setSelectedIncidentKey((current) => (queueData?.storeIncidents || []).some((item) => item.incidentKey === current) ? current : '')
             const firstItem = (queueData?.items || [])[0]
+            const exactItem = preferredSelection?.transactionKey
+                ? (queueData?.items || []).find((item) =>
+                    item.transactionKey === preferredSelection.transactionKey
+                    && (!preferredSelection.reconView || item.reconView === preferredSelection.reconView))
+                : null
             setSelectedRecord((current) => {
                 if (
                     current &&
@@ -218,7 +239,9 @@ export default function ExceptionQueues({palette, t}) {
                 ) {
                     return current
                 }
-                return firstItem ? toWorkbenchRecord(firstItem) : null
+                return exactItem
+                    ? toWorkbenchRecord(exactItem)
+                    : firstItem ? toWorkbenchRecord(firstItem) : null
             })
         } catch (err) {
             setError(err.message || 'Failed to load exception queues')
@@ -241,6 +264,39 @@ export default function ExceptionQueues({palette, t}) {
             loadQueues(filters)
             loadAssignmentOptions()
         }
+    }, [canView])
+
+    useEffect(() => {
+        if (!canView) {
+            return undefined
+        }
+
+        const applyPrefill = (prefill) => {
+            if (!prefill) {
+                return
+            }
+            const nextFilters = buildPrefillFilters(prefill)
+            setActivePrefill(prefill)
+            setFilters(nextFilters)
+            loadQueues(nextFilters, prefill)
+            sessionStorage.removeItem(EXCEPTION_QUEUE_PREFILL_KEY)
+        }
+
+        const stored = sessionStorage.getItem(EXCEPTION_QUEUE_PREFILL_KEY)
+        if (stored) {
+            try {
+                applyPrefill(JSON.parse(stored))
+            } catch {
+                sessionStorage.removeItem(EXCEPTION_QUEUE_PREFILL_KEY)
+            }
+        }
+
+        const handlePrefill = (event) => {
+            applyPrefill(event.detail)
+        }
+
+        window.addEventListener(EXCEPTION_QUEUE_PREFILL_EVENT, handlePrefill)
+        return () => window.removeEventListener(EXCEPTION_QUEUE_PREFILL_EVENT, handlePrefill)
     }, [canView])
 
     const records = useMemo(() => data?.items || [], [data])
@@ -281,6 +337,11 @@ export default function ExceptionQueues({palette, t}) {
 
     if (!canView) {
         return null
+    }
+
+    const updateFilter = (field, value) => {
+        setActivePrefill(null)
+        setFilters((current) => ({...current, [field]: value}))
     }
 
     const toggleRecordSelection = (record) => {
@@ -382,7 +443,7 @@ export default function ExceptionQueues({palette, t}) {
     }
 
     return (
-        <Box sx={{px: 1, py: 3}}>
+        <Box sx={{px: 1, py: 3}} data-testid="exception-queues-page">
             <Paper elevation={0} sx={{p: 3, mb: 3, borderRadius: '24px', border: `1px solid ${palette.border}`, background: palette.heroBg}}>
                 <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}}>
                     <Box sx={{mt: 0.3, width: 40, height: 40, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: palette.tealChipBg, color: palette.tealChipText, flexShrink: 0}}>
@@ -430,38 +491,38 @@ export default function ExceptionQueues({palette, t}) {
                         >
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Module')}</InputLabel>
-                                <Select value={filters.reconView} label={t('Module')} onChange={(event) => setFilters((current) => ({...current, reconView: event.target.value}))}>
+                                <Select value={filters.reconView} label={t('Module')} onChange={(event) => updateFilter('reconView', event.target.value)}>
                                     {MODULE_OPTIONS.map((option) => <MenuItem key={option.value} value={option.value}>{t(option.label)}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Queue')}</InputLabel>
-                                <Select value={filters.queueType} label={t('Queue')} onChange={(event) => setFilters((current) => ({...current, queueType: event.target.value}))}>
+                                <Select value={filters.queueType} label={t('Queue')} onChange={(event) => updateFilter('queueType', event.target.value)}>
                                     {QUEUE_OPTIONS.map((option) => <MenuItem key={option.value} value={option.value}>{t(option.label)}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Status')}</InputLabel>
-                                <Select value={filters.caseStatus} label={t('Status')} onChange={(event) => setFilters((current) => ({...current, caseStatus: event.target.value}))}>
+                                <Select value={filters.caseStatus} label={t('Status')} onChange={(event) => updateFilter('caseStatus', event.target.value)}>
                                     {CASE_STATUS_OPTIONS.map((option) => <MenuItem key={option || 'all'} value={option}>{option ? option : t('All')}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Severity')}</InputLabel>
-                                <Select value={filters.severity} label={t('Severity')} onChange={(event) => setFilters((current) => ({...current, severity: event.target.value}))}>
+                                <Select value={filters.severity} label={t('Severity')} onChange={(event) => updateFilter('severity', event.target.value)}>
                                     {SEVERITY_OPTIONS.map((option) => <MenuItem key={option || 'all'} value={option}>{option ? option : t('All')}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Assignee')}</InputLabel>
-                                <Select value={filters.assignee} label={t('Assignee')} onChange={(event) => setFilters((current) => ({...current, assignee: event.target.value}))}>
+                                <Select value={filters.assignee} label={t('Assignee')} onChange={(event) => updateFilter('assignee', event.target.value)}>
                                     <MenuItem value="">{t('All')}</MenuItem>
                                     {assignmentOptions.usernames.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <FormControl size="small" fullWidth>
                                 <InputLabel>{t('Assigned Team')}</InputLabel>
-                                <Select value={filters.assignedRole} label={t('Assigned Team')} onChange={(event) => setFilters((current) => ({...current, assignedRole: event.target.value}))}>
+                                <Select value={filters.assignedRole} label={t('Assigned Team')} onChange={(event) => updateFilter('assignedRole', event.target.value)}>
                                     <MenuItem value="">{t('All')}</MenuItem>
                                     {assignmentOptions.roleNames.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
                                 </Select>
@@ -484,7 +545,7 @@ export default function ExceptionQueues({palette, t}) {
                                 label={t('Search')}
                                 fullWidth
                                 value={filters.search}
-                                onChange={(event) => setFilters((current) => ({...current, search: event.target.value}))}
+                                onChange={(event) => updateFilter('search', event.target.value)}
                             />
                             <Stack direction={{xs: 'column', sm: 'row'}} spacing={1} justifyContent="flex-end">
                                 <Button variant="contained" onClick={() => loadQueues(filters)} sx={{minWidth: 112, height: 40}}>
@@ -494,6 +555,7 @@ export default function ExceptionQueues({palette, t}) {
                                     variant="outlined"
                                     onClick={() => {
                                         const cleared = {reconView: '', queueType: 'HIGH_IMPACT', caseStatus: '', severity: '', assignee: '', assignedRole: '', search: ''}
+                                        setActivePrefill(null)
                                         setFilters(cleared)
                                         loadQueues(cleared)
                                     }}
@@ -504,6 +566,18 @@ export default function ExceptionQueues({palette, t}) {
                             </Stack>
                         </Box>
                     </Paper>
+
+                    {activePrefill?.transactionKey && !loading && incidents.length === 0 && visibleRecords.length === 0 ? (
+                        <Alert severity="info" sx={{borderRadius: 3}}>
+                            {t(
+                                'No exception case exists yet for transaction {transactionKey} in {module}. The queue jump is scoped correctly; there is simply no active case to work.',
+                                {
+                                    transactionKey: activePrefill.transactionKey,
+                                    module: activePrefill.reconView || t('the selected module'),
+                                }
+                            )}
+                        </Alert>
+                    ) : null}
 
                     <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                         <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2}}>
