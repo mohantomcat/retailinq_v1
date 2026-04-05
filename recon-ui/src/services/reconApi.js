@@ -1,4 +1,13 @@
 import {apiFetch, parseResponse} from './apiFetch'
+import {
+    getSiocsMfcsDemoDashboard,
+    getSiocsMfcsDemoDashboardAnalytics,
+    getSiocsMfcsDemoStores,
+    getSiocsMfcsDemoTransaction,
+    getSiocsMfcsDemoTransactionFamilies,
+    getSiocsMfcsDemoTransactions,
+    isSiocsMfcsDemoEnabled,
+} from './siocsMfcsDemoData'
 
 const BASE = '/api/v1/recon'
 
@@ -16,14 +25,28 @@ export const reconApi = {
 
     getDashboard: async ({
                              storeIds = [],
+                             transactionFamilies = [],
+                             transactionPhases = [],
                              reconView = null,
                              fromBusinessDate = null,
                              toBusinessDate = null,
                          } = {}) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoDashboard({
+                storeIds,
+                transactionFamilies,
+                transactionPhases,
+                fromBusinessDate,
+                toBusinessDate,
+            })
+        }
         const params = new URLSearchParams()
         if (storeIds?.length)
             storeIds.forEach(s =>
                 params.append('storeIds', s))
+        if (transactionFamilies?.length)
+            transactionFamilies.forEach(f =>
+                params.append('transactionFamilies', f))
         if (reconView)
             params.append('reconView', reconView)
         if (validateIsoDate(fromBusinessDate))
@@ -40,8 +63,17 @@ export const reconApi = {
                                       storeIds = [],
                                       wkstnIds = [],
                                       transactionTypes = [],
+                                      transactionFamilies = [],
+                                      transactionPhases = [],
                                       reconView = null,
                                   } = {}) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoDashboardAnalytics({
+                storeIds,
+                transactionFamilies,
+                transactionPhases,
+            })
+        }
         const params = new URLSearchParams()
         if (storeIds?.length) {
             storeIds.forEach((s) => params.append('storeIds', s))
@@ -51,6 +83,9 @@ export const reconApi = {
         }
         if (transactionTypes?.length) {
             transactionTypes.forEach((type) => params.append('transactionTypes', type))
+        }
+        if (transactionFamilies?.length) {
+            transactionFamilies.forEach((family) => params.append('transactionFamilies', family))
         }
         if (reconView) {
             params.append('reconView', reconView)
@@ -62,6 +97,7 @@ export const reconApi = {
 
     getScorecards: async ({
                               storeIds = [],
+                              transactionFamilies = [],
                               reconView = null,
                               fromBusinessDate = null,
                               toBusinessDate = null,
@@ -72,6 +108,9 @@ export const reconApi = {
         }
         if (reconView) {
             params.append('reconView', reconView)
+        }
+        if (transactionFamilies?.length) {
+            transactionFamilies.forEach((family) => params.append('transactionFamilies', family))
         }
         if (validateIsoDate(fromBusinessDate)) {
             params.append('fromBusinessDate', fromBusinessDate)
@@ -84,12 +123,27 @@ export const reconApi = {
     },
 
     getTransactions: async ({
-                                storeIds, wkstnIds, transactionTypes,
+                                storeIds, wkstnIds, transactionTypes, transactionFamilies,
+                                transactionPhases,
+                                reconStatuses,
                                 reconView,
                                 fromBusinessDate, toBusinessDate,
                                 reconStatus, fromDate, toDate,
                                 page = 0, size = 20,
                             } = {}) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoTransactions({
+                storeIds,
+                transactionFamilies,
+                transactionPhases,
+                reconStatuses,
+                reconStatus,
+                fromBusinessDate,
+                toBusinessDate,
+                page,
+                size,
+            })
+        }
         const params = new URLSearchParams({page, size})
         if (storeIds?.length)
             storeIds.forEach(s =>
@@ -100,6 +154,9 @@ export const reconApi = {
         if (transactionTypes?.length)
             transactionTypes.forEach(type =>
                 params.append('transactionTypes', type))
+        if (transactionFamilies?.length)
+            transactionFamilies.forEach(family =>
+                params.append('transactionFamilies', family))
         if (reconView)
             params.append('reconView', reconView)
         if (validateIsoDate(fromBusinessDate))
@@ -117,6 +174,9 @@ export const reconApi = {
     },
 
     getTransaction: async (transactionKey, reconView = null) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoTransaction(transactionKey)
+        }
         const encoded = encodeURIComponent(transactionKey)
         const params = new URLSearchParams()
         if (reconView) {
@@ -165,6 +225,9 @@ export const reconApi = {
     },
 
     getStores: async (reconView = null) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoStores()
+        }
         const params = new URLSearchParams()
         if (reconView)
             params.append('reconView', reconView)
@@ -196,6 +259,22 @@ export const reconApi = {
             params.append('reconView', reconView)
         const res = await apiFetch(
             `${BASE}/transaction-types?${params}`)
+        const json = await res.json()
+        return json.data || []
+    },
+
+    getTransactionFamilies: async (storeIds, reconView = null) => {
+        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
+            return getSiocsMfcsDemoTransactionFamilies(storeIds)
+        }
+        const params = new URLSearchParams()
+        if (storeIds?.length)
+            storeIds.forEach(s =>
+                params.append('storeIds', s))
+        if (reconView)
+            params.append('reconView', reconView)
+        const res = await apiFetch(
+            `${BASE}/transaction-families?${params}`)
         const json = await res.json()
         return json.data || []
     },

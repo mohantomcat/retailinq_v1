@@ -37,6 +37,7 @@ public class SimTransactionDeserializer
         FlatSimTransaction flat = new FlatSimTransaction();
         flat.setTransactionKey(src.getTransactionKey());
         flat.setExternalId(src.getExternalId());
+        flat.setTenantId(src.getTenantId());
         flat.setSource(src.getSource());
         flat.setStoreId(src.getStoreId());
         flat.setBusinessDate(src.getBusinessDate());

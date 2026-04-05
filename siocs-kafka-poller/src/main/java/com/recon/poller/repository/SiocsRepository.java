@@ -1,5 +1,6 @@
 package com.recon.poller.repository;
 
+import com.recon.integration.recon.TransactionDomainResolver;
 import com.recon.poller.domain.SiocsRawRow;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -10,11 +11,22 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Repository
 @Slf4j
 public class SiocsRepository {
+
+    private static final List<Integer> SUPPORTED_TRANSACTION_TYPES =
+            TransactionDomainResolver.supportedTransactionTypes().stream()
+                    .sorted()
+                    .toList();
+    private static final String SUPPORTED_TRANSACTION_TYPE_PLACEHOLDERS =
+            SUPPORTED_TRANSACTION_TYPES.stream()
+                    .map(ignored -> "?")
+                    .collect(Collectors.joining(", "));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -35,7 +47,7 @@ public class SiocsRepository {
                 pt.DROP_SHIP, pt.REASON
             FROM POS_TRANSACTION pt
             WHERE pt.SOURCE_TYPE = 2
-              AND pt.TYPE IN (1, 2, 3, 4)
+              AND pt.TYPE IN (%s)
               AND (
                   pt.UPDATE_DATE_TIME > ?
                   OR (
@@ -50,7 +62,7 @@ public class SiocsRepository {
                      pt.EXTERNAL_ID ASC,
                      pt.ID ASC
             FETCH FIRST ? ROWS ONLY
-            """;
+            """.formatted(SUPPORTED_TRANSACTION_TYPE_PLACEHOLDERS);
 
     public List<SiocsRawRow> findRawRows(Timestamp fromTimestamp,
                                          String fromExternalId,
@@ -58,11 +70,18 @@ public class SiocsRepository {
                                          int pageSize) {
         String safeExtId = fromExternalId != null
                 ? fromExternalId : "";
+        List<Object> args = new ArrayList<>(SUPPORTED_TRANSACTION_TYPES.size() + 6);
+        args.addAll(SUPPORTED_TRANSACTION_TYPES);
+        args.add(fromTimestamp);
+        args.add(fromTimestamp);
+        args.add(safeExtId);
+        args.add(safeExtId);
+        args.add(fromId);
+        args.add(pageSize);
         return jdbcTemplate.query(
                 FIND_RAW_ROWS,
                 new SiocsRawRowMapper(),
-                fromTimestamp, fromTimestamp,
-                safeExtId, safeExtId, fromId, pageSize);
+                args.toArray());
     }
 
     private static class SiocsRawRowMapper

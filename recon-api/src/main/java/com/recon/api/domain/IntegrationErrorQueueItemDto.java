@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class IntegrationErrorQueueItemDto {
@@ -16,6 +16,10 @@ public class IntegrationErrorQueueItemDto {
     private UUID integrationMessageId;
     private String connectorKey;
     private String flowKey;
+    private String endpointMode;
+    private boolean sharedAsset;
+    private java.util.List<String> affectedReconViews;
+    private java.util.List<String> affectedReconLabels;
     private String businessKey;
     private String documentId;
     private String errorType;

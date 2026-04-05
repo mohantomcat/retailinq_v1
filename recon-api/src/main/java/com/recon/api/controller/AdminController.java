@@ -256,6 +256,30 @@ public class AdminController {
                         principal.getUsername())));
     }
 
+    @PutMapping("/recon-group-selections")
+    public ResponseEntity<ApiResponse<List<ReconGroupSelectionDto>>> saveTenantReconGroupSelections(
+            @RequestBody SaveTenantReconGroupSelectionsRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveTenantReconGroupSelections(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
+    @PutMapping("/system-endpoint-profiles")
+    public ResponseEntity<ApiResponse<List<SystemEndpointProfileDto>>> saveTenantSystemEndpointProfiles(
+            @RequestBody SaveTenantSystemEndpointProfilesRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveTenantSystemEndpointProfiles(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
     @PostMapping("/api-keys")
     public ResponseEntity<ApiResponse<CreatedTenantApiKeyResponse>> createTenantApiKey(
             @RequestBody CreateTenantApiKeyRequest request,

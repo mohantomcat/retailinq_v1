@@ -24,9 +24,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront'
 import dayjs from 'dayjs'
 import {reconApi} from '../services/reconApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS
+import {useReconModules} from '../hooks/useReconModules'
 
 function formatPercent(value) {
     return `${Number(value || 0).toFixed(2)}%`
@@ -68,6 +66,7 @@ function SummaryStat({label, value, palette, accent}) {
 
 export default function StoreScorecards({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions: MODULE_OPTIONS} = useReconModules()
     const defaultFromDate = useMemo(() => dayjs().subtract(29, 'day').format('YYYY-MM-DD'), [])
     const defaultToDate = useMemo(() => dayjs().format('YYYY-MM-DD'), [])
     const [loading, setLoading] = useState(true)

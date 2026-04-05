@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class IntegrationRunDto {
@@ -17,6 +17,10 @@ public class IntegrationRunDto {
     private String flowKey;
     private String sourceSystem;
     private String targetSystem;
+    private String endpointMode;
+    private boolean sharedAsset;
+    private java.util.List<String> affectedReconViews;
+    private java.util.List<String> affectedReconLabels;
     private String triggerType;
     private String runStatus;
     private String startedAt;

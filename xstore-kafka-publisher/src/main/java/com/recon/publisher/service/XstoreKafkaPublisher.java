@@ -1,7 +1,9 @@
 package com.recon.publisher.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.integration.kafka.KafkaTopicCatalog;
 import com.recon.integration.model.CanonicalIntegrationEnvelope;
+import com.recon.integration.recon.TransactionDomain;
 import com.recon.publisher.config.PublisherConfig;
 import com.recon.publisher.domain.ParseResult;
 import com.recon.publisher.domain.PosTransactionEvent;
@@ -38,7 +40,7 @@ public class XstoreKafkaPublisher {
     private final ObjectMapper objectMapper;
     private final XstoreRuntimeConfigService runtimeConfigService;
 
-    @Value("${kafka.topic.pos-transactions}")
+    @Value("${kafka.topic.xstore-pos-transactions:}")
     private String topic;
 
     @Value("${kafka.topic.integration-canonical}")
@@ -206,10 +208,11 @@ public class XstoreKafkaPublisher {
                                           UUID runId) {
         try {
             String payload = objectMapper.writeValueAsString(event);
+            String rawTopic = configuredTopic();
 
             LegacyPublishResult publishResult = kafkaTemplate.executeInTransaction(ops -> {
                 try {
-                    var result = ops.send(topic, event.getTransactionKey(), payload)
+                    var result = ops.send(rawTopic, event.getTransactionKey(), payload)
                             .get(10, TimeUnit.SECONDS);
 
                     var meta = result.getRecordMetadata();
@@ -231,8 +234,9 @@ public class XstoreKafkaPublisher {
             });
 
             boolean canonicalPublished = publishCanonicalEnvelope(runId, record, event, compressed);
-            log.info("Published key={} partition={} offset={}",
+            log.info("Published key={} topic={} partition={} offset={}",
                     event.getTransactionKey(),
+                    rawTopic,
                     publishResult.partition(), publishResult.offset());
             return canonicalPublished ? PublishOutcome.PUBLISHED : PublishOutcome.FAILED;
 
@@ -251,6 +255,13 @@ public class XstoreKafkaPublisher {
             );
             return PublishOutcome.FAILED;
         }
+    }
+
+    private String configuredTopic() {
+        if (topic != null && !topic.isBlank()) {
+            return topic.trim();
+        }
+        return KafkaTopicCatalog.rawTransactionTopic("XSTORE", TransactionDomain.POS);
     }
 
     private boolean publishCanonicalEnvelope(UUID runId,

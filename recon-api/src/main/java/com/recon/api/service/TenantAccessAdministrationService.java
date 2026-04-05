@@ -7,20 +7,30 @@ import com.recon.api.domain.CreatedTenantApiKeyResponse;
 import com.recon.api.domain.LoginOptionsResponse;
 import com.recon.api.domain.OrganizationUnit;
 import com.recon.api.domain.OrganizationUnitDto;
+import com.recon.api.domain.ReconGroupCatalog;
+import com.recon.api.domain.ReconGroupSelectionAssignmentRequest;
+import com.recon.api.domain.ReconGroupSelectionDto;
+import com.recon.api.domain.ReconModuleDto;
 import com.recon.api.domain.SaveOrganizationUnitRequest;
 import com.recon.api.domain.SaveTenantAuthConfigRequest;
+import com.recon.api.domain.SaveTenantReconGroupSelectionsRequest;
+import com.recon.api.domain.SaveTenantSystemEndpointProfilesRequest;
+import com.recon.api.domain.SystemEndpointProfileDto;
 import com.recon.api.domain.TenantAccessCenterResponse;
 import com.recon.api.domain.TenantApiKey;
 import com.recon.api.domain.TenantApiKeyDto;
 import com.recon.api.domain.TenantAuthConfigDto;
 import com.recon.api.domain.TenantAuthConfigEntity;
+import com.recon.api.domain.TenantGroupSelection;
 import com.recon.api.domain.User;
 import com.recon.api.domain.UserOrganizationScope;
 import com.recon.api.domain.UserOrganizationScopeDto;
 import com.recon.api.repository.OrganizationUnitRepository;
 import com.recon.api.repository.PermissionRepository;
+import com.recon.api.repository.ReconGroupCatalogRepository;
 import com.recon.api.repository.TenantApiKeyRepository;
 import com.recon.api.repository.TenantAuthConfigRepository;
+import com.recon.api.repository.TenantGroupSelectionRepository;
 import com.recon.api.repository.UserOrganizationScopeRepository;
 import com.recon.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,9 +39,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +62,10 @@ public class TenantAccessAdministrationService {
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final TenantApiKeyRepository tenantApiKeyRepository;
     private final PermissionRepository permissionRepository;
+    private final ReconGroupCatalogRepository reconGroupCatalogRepository;
+    private final TenantGroupSelectionRepository tenantGroupSelectionRepository;
+    private final ReconModuleService reconModuleService;
+    private final SystemEndpointProfileService systemEndpointProfileService;
     private final AuditLedgerService auditLedgerService;
 
     @Transactional
@@ -61,6 +77,8 @@ public class TenantAccessAdministrationService {
                         .map(this::toDto)
                         .toList())
                 .storeCatalog(accessScopeService.getTenantStoreCatalog(tenantId))
+                .reconGroups(reconModuleService.getTenantReconGroups(tenantId))
+                .systemEndpointProfiles(systemEndpointProfileService.getTenantProfiles(tenantId))
                 .build();
     }
 
@@ -220,6 +238,138 @@ public class TenantAccessAdministrationService {
                 before,
                 saved);
         return toDto(saved);
+    }
+
+    @Transactional
+    public List<ReconGroupSelectionDto> saveTenantReconGroupSelections(String tenantId,
+                                                                       SaveTenantReconGroupSelectionsRequest request,
+                                                                       String actor) {
+        List<ReconGroupSelectionAssignmentRequest> requestedSelections =
+                request != null && request.getSelections() != null ? request.getSelections() : List.of();
+        if (requestedSelections.isEmpty()) {
+            return reconModuleService.getTenantReconGroups(tenantId);
+        }
+
+        Map<String, String> beforeSelections = tenantGroupSelectionRepository.findByTenantId(tenantId).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        selection -> normalizeUpper(selection.getGroupCode()),
+                        selection -> normalizeUpper(selection.getSelectedReconView()),
+                        (left, right) -> right,
+                        LinkedHashMap::new
+                ));
+
+        Map<String, ReconGroupCatalog> groupsByCode = reconGroupCatalogRepository.findByActiveTrueOrderByDisplayOrderAsc().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        group -> normalizeUpper(group.getGroupCode()),
+                        group -> group,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<String, ReconModuleDto> modulesByReconView = reconModuleService.getAllActiveModules().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ReconModuleDto::getReconView,
+                        module -> module,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<String, String> requestedSelectionByGroupCode = new LinkedHashMap<>();
+
+        for (ReconGroupSelectionAssignmentRequest selectionRequest : requestedSelections) {
+            String groupCode = normalizeUpper(selectionRequest != null ? selectionRequest.getGroupCode() : null);
+            if (groupCode == null) {
+                throw new IllegalArgumentException("Group code is required");
+            }
+            ReconGroupCatalog group = groupsByCode.get(groupCode);
+            if (group == null) {
+                throw new IllegalArgumentException("Unknown reconciliation group: " + groupCode);
+            }
+
+            String selectedReconView = normalizeUpper(selectionRequest.getSelectedReconView());
+            requestedSelectionByGroupCode.put(groupCode, selectedReconView);
+            if (selectedReconView == null) {
+                continue;
+            }
+
+            ReconModuleDto selectedModule = modulesByReconView.get(selectedReconView);
+            if (selectedModule == null) {
+                throw new IllegalArgumentException("Unknown reconciliation lane: " + selectedReconView);
+            }
+            if (!groupCode.equals(selectedModule.getGroupCode())) {
+                throw new IllegalArgumentException("Reconciliation lane " + selectedReconView + " does not belong to group " + groupCode);
+            }
+        }
+
+        boolean strictSelectionMode = requestedSelectionByGroupCode.values().stream().anyMatch(Objects::nonNull);
+        if (strictSelectionMode) {
+            List<String> missingRequiredGroups = groupsByCode.values().stream()
+                    .filter(ReconGroupCatalog::isSelectionRequired)
+                    .map(group -> normalizeUpper(group.getGroupCode()))
+                    .filter(Objects::nonNull)
+                    .filter(groupCode -> requestedSelectionByGroupCode.get(groupCode) == null)
+                    .toList();
+            if (!missingRequiredGroups.isEmpty()) {
+                throw new IllegalArgumentException("Selections are required for groups: " + String.join(", ", missingRequiredGroups));
+            }
+        }
+
+        for (ReconGroupCatalog group : groupsByCode.values()) {
+            String groupCode = normalizeUpper(group.getGroupCode());
+            if (groupCode == null || !requestedSelectionByGroupCode.containsKey(groupCode)) {
+                continue;
+            }
+            String selectedReconView = requestedSelectionByGroupCode.get(groupCode);
+            if (selectedReconView == null) {
+                tenantGroupSelectionRepository.deleteByTenantIdAndGroupCodeIgnoreCase(tenantId, groupCode);
+                continue;
+            }
+
+            TenantGroupSelection selection = tenantGroupSelectionRepository.findByTenantIdAndGroupCodeIgnoreCase(tenantId, groupCode)
+                    .orElseGet(() -> TenantGroupSelection.builder()
+                            .tenantId(tenantId)
+                            .groupCode(groupCode)
+                            .build());
+            selection.setSelectedReconView(selectedReconView);
+            selection.setUpdatedBy(defaultActor(actor));
+            tenantGroupSelectionRepository.save(selection);
+        }
+
+        Map<String, String> afterSelections = tenantGroupSelectionRepository.findByTenantId(tenantId).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        selection -> normalizeUpper(selection.getGroupCode()),
+                        selection -> normalizeUpper(selection.getSelectedReconView()),
+                        (left, right) -> right,
+                        LinkedHashMap::new
+                ));
+
+        recordAudit(tenantId,
+                "TENANT_RECON_GROUP_SELECTION_UPDATED",
+                "Tenant reconciliation lane selections updated",
+                tenantId,
+                actor,
+                beforeSelections,
+                afterSelections);
+
+        return reconModuleService.getTenantReconGroups(tenantId);
+    }
+
+    @Transactional
+    public List<SystemEndpointProfileDto> saveTenantSystemEndpointProfiles(String tenantId,
+                                                                           SaveTenantSystemEndpointProfilesRequest request,
+                                                                           String actor) {
+        List<SystemEndpointProfileDto> beforeProfiles = systemEndpointProfileService.getTenantProfiles(tenantId);
+        List<SystemEndpointProfileDto> afterProfiles = systemEndpointProfileService.saveTenantProfiles(
+                tenantId,
+                request != null ? request.getSelections() : List.of(),
+                actor
+        );
+        recordAudit(tenantId,
+                "TENANT_SYSTEM_ENDPOINT_PROFILE_UPDATED",
+                "Tenant system endpoint profiles updated",
+                tenantId,
+                actor,
+                beforeProfiles,
+                afterProfiles);
+        return afterProfiles;
     }
 
     @Transactional
@@ -457,6 +607,11 @@ public class TenantAccessAdministrationService {
     }
 
     private String normalizeType(String value) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeUpper(String value) {
         String trimmed = trimToNull(value);
         return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
     }

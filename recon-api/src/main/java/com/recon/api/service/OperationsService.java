@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recon.api.domain.ExceptionCase;
+import com.recon.api.domain.OperationModuleCatalogEntry;
 import com.recon.api.domain.OperationActionResponseDto;
+import com.recon.api.domain.ReconModuleDto;
 import com.recon.api.domain.ReconJobActionCatalogDto;
 import com.recon.api.domain.OperationModuleStatusDto;
 import com.recon.api.domain.OperationsHealthSummaryDto;
@@ -53,6 +55,8 @@ public class OperationsService {
     private final ExceptionSlaService exceptionSlaService;
     private final TenantService tenantService;
     private final AuditLedgerService auditLedgerService;
+    private final ReconModuleService reconModuleService;
+    private final SystemEndpointProfileService systemEndpointProfileService;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -68,6 +72,9 @@ public class OperationsService {
     @Value("${app.operations.sim-base-url}")
     private String simBaseUrl;
 
+    @Value("${app.operations.rms-base-url:http://localhost:8186}")
+    private String rmsBaseUrl;
+
     @Value("${app.operations.siocs-cloud-base-url}")
     private String siocsCloudBaseUrl;
 
@@ -78,8 +85,17 @@ public class OperationsService {
     private String xocsCloudBaseUrl;
 
     @Transactional(readOnly = true)
-    public OperationsResponse getOperations(String tenantId) {
+    public OperationsResponse getOperations(String tenantId, java.util.Collection<String> allowedReconViews) {
+        return getOperations(tenantId, allowedReconViews, null);
+    }
+
+    @Transactional(readOnly = true)
+    public OperationsResponse getOperations(String tenantId,
+                                           java.util.Collection<String> allowedReconViews,
+                                           String reconView) {
         TenantConfig tenant = tenantService.getTenant(tenantId);
+        java.util.Set<String> normalizedAllowedViews = normalizeAllowedReconViews(allowedReconViews);
+        java.util.Set<String> scopedAllowedViews = scopeReconViews(normalizedAllowedViews, reconView);
         List<ExceptionCase> activeCases = caseRepository.findActiveCasesForAging(
                 tenantId,
                 null,
@@ -89,14 +105,14 @@ public class OperationsService {
                 .collect(Collectors.groupingBy(
                         exceptionCase -> Objects.toString(exceptionCase.getReconView(), "").toUpperCase(),
                         Collectors.toList()));
+        Map<String, List<ReconModuleDto>> impactedModulesByOperationModuleId =
+                impactedModulesByOperationModuleId(normalizedAllowedViews);
 
-        List<OperationModuleStatusDto> modules = List.of(
-                        fetchStatus("xstore-publisher", "Xstore Publisher", "XSTORE_SIM", "source", xstoreBaseUrl, "/api/xstore-publisher/status", List.of("publish", "release-stale-claims"), List.of(), true),
-                        fetchStatus("sim-poller", "SIM Poller", "XSTORE_SIM", "target", simBaseUrl, "/api/siocs-poller/status", List.of("poll", "release-lease"), List.of("reset-checkpoint"), true),
-                        fetchStatus("siocs-cloud-connector", "SIOCS Cloud Connector", "XSTORE_SIOCS", "target", siocsCloudBaseUrl, "/api/cloud-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false),
-                        fetchStatus("mfcs-rds-connector", "MFCS RDS Connector", "SIOCS_MFCS", "target", mfcsRdsBaseUrl, "/api/mfcs-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false),
-                        fetchStatus("xocs-cloud-connector", "XOCS Cloud Connector", "XSTORE_XOCS", "target", xocsCloudBaseUrl, "/api/xocs-connector/status", List.of("download", "publish", "release-stale-claims", "requeue-failed"), List.of("reset-checkpoint", "replay-window"), false)
-                ).stream()
+        List<OperationModuleStatusDto> modules = reconModuleService.getAllowedOperationModules(scopedAllowedViews).stream()
+                .map(operationModule -> fetchStatus(
+                        tenantId,
+                        operationModule,
+                        impactedModulesByOperationModuleId.getOrDefault(normalizeModuleId(operationModule.getModuleId()), List.of())))
                 .map(module -> enrichStatus(module, casesByReconView.getOrDefault(module.getReconView(), List.of()), tenant))
                 .toList();
 
@@ -107,6 +123,10 @@ public class OperationsService {
     }
 
     public ActionSupportDescriptor describeAction(String moduleId, String actionKey) {
+        return describeAction(moduleId, actionKey, null);
+    }
+
+    public ActionSupportDescriptor describeAction(String moduleId, String actionKey, String reconView) {
         String resolvedModuleId = trimToNull(moduleId);
         String resolvedActionKey = trimToNull(actionKey);
         if (resolvedModuleId == null || resolvedActionKey == null) {
@@ -114,7 +134,7 @@ public class OperationsService {
         }
 
         try {
-            ModuleDef module = module(resolvedModuleId);
+            ModuleDef module = module(resolvedModuleId, reconView);
             if (module.safeActions.contains(resolvedActionKey)) {
                 return new ActionSupportDescriptor(true, true, "SAFE", "Ready to run from the exception workbench");
             }
@@ -130,14 +150,21 @@ public class OperationsService {
     }
 
     @Transactional(readOnly = true)
-    public List<ReconJobActionCatalogDto> getReconJobActionCatalog() {
-        return List.of(
-                catalogEntry("xstore-publisher", "Xstore Publisher", "XSTORE_SIM"),
-                catalogEntry("sim-poller", "SIM Poller", "XSTORE_SIM"),
-                catalogEntry("siocs-cloud-connector", "SIOCS Cloud Connector", "XSTORE_SIOCS"),
-                catalogEntry("mfcs-rds-connector", "MFCS RDS Connector", "SIOCS_MFCS"),
-                catalogEntry("xocs-cloud-connector", "XOCS Cloud Connector", "XSTORE_XOCS")
-        );
+    public List<ReconJobActionCatalogDto> getReconJobActionCatalog(java.util.Collection<String> allowedReconViews) {
+        java.util.Set<String> normalizedAllowedViews = allowedReconViews == null
+                ? java.util.Set.of()
+                : allowedReconViews.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(java.util.Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        return reconModuleService.getAllowedOperationModules(normalizedAllowedViews).stream()
+                .map(this::catalogEntry)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public String getReconViewForModuleId(String moduleId) {
+        return reconModuleService.findReconViewByOperationsModuleId(moduleId).orElse(null);
     }
 
     @Transactional
@@ -145,7 +172,16 @@ public class OperationsService {
                                                         String moduleId,
                                                         String actionKey,
                                                         String username) {
-        return executeSafeAction(tenantId, moduleId, actionKey, username, null);
+        return executeSafeAction(tenantId, moduleId, actionKey, username, null, null);
+    }
+
+    @Transactional
+    public OperationActionResponseDto executeSafeAction(String tenantId,
+                                                        String moduleId,
+                                                        String actionKey,
+                                                        String username,
+                                                        String reconView) {
+        return executeSafeAction(tenantId, moduleId, actionKey, username, reconView, null);
     }
 
     @Transactional
@@ -163,6 +199,7 @@ public class OperationsService {
                 moduleId,
                 actionKey,
                 username,
+                reconView,
                 new AuditContext(transactionKey, reconView, playbookId, playbookStepId, trimToNull(playbookStepTitle))
         );
     }
@@ -171,20 +208,14 @@ public class OperationsService {
                                                          String moduleId,
                                                          String actionKey,
                                                          String username,
+                                                         String reconView,
                                                          AuditContext auditContext) {
-        ModuleDef def = module(moduleId);
+        ModuleDef def = module(moduleId, reconView);
         if (!def.safeActions.contains(actionKey)) {
             throw new IllegalArgumentException("Unsupported safe action: " + actionKey);
         }
 
-        String path = switch (moduleId) {
-            case "xstore-publisher" -> "/api/xstore-publisher/actions/" + actionKey;
-            case "sim-poller" -> "/api/siocs-poller/actions/" + actionKey;
-            case "siocs-cloud-connector" -> "/api/cloud-connector/actions/" + actionKey;
-            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/" + actionKey;
-            case "xocs-cloud-connector" -> "/api/xocs-connector/actions/" + actionKey;
-            default -> throw new IllegalArgumentException("Unsupported module: " + moduleId);
-        };
+        String path = def.actionPathPrefix() + "/" + actionKey;
 
         try {
             Map<String, Object> response = post(def.baseUrl + path, null, def.basicAuth);
@@ -195,11 +226,11 @@ public class OperationsService {
                     .message(stringValue(response.getOrDefault("message", "Action completed")))
                     .rawResponse(response)
                     .build();
-            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, null, dto, auditContext);
+            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, reconView, null, dto, auditContext);
             return dto;
         } catch (RuntimeException ex) {
             OperationActionResponseDto failure = failureResponse(moduleId, actionKey, ex);
-            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, null, failure, auditContext);
+            saveAudit(tenantId, moduleId, actionKey, "SAFE", username, reconView, null, failure, auditContext);
             throw ex;
         }
     }
@@ -209,33 +240,31 @@ public class OperationsService {
                                                       String moduleId,
                                                       String username,
                                                       ResetCheckpointOperationRequest request) {
-        ModuleDef def = module(moduleId);
+        return resetCheckpoint(tenantId, moduleId, username, null, request);
+    }
+
+    @Transactional
+    public OperationActionResponseDto resetCheckpoint(String tenantId,
+                                                      String moduleId,
+                                                      String username,
+                                                      String reconView,
+                                                      ResetCheckpointOperationRequest request) {
+        ModuleDef def = module(moduleId, reconView);
         if (!def.advancedActions.contains("reset-checkpoint")) {
             throw new IllegalArgumentException("Reset checkpoint is not supported for module: " + moduleId);
         }
 
-        String path = switch (moduleId) {
-            case "sim-poller" -> "/api/siocs-poller/actions/reset-checkpoint";
-            case "siocs-cloud-connector" -> "/api/cloud-connector/actions/reset-checkpoint";
-            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/reset-checkpoint";
-            case "xocs-cloud-connector" -> "/api/xocs-connector/actions/reset-checkpoint";
-            default -> throw new IllegalArgumentException("Reset checkpoint is not supported for module: " + moduleId);
-        };
-
-        Map<String, Object> payload = switch (moduleId) {
-            case "sim-poller" -> buildSimResetPayload(request);
-            case "siocs-cloud-connector", "mfcs-rds-connector", "xocs-cloud-connector" -> buildCloudResetPayload(request);
-            default -> Map.of();
-        };
+        String path = def.actionPathPrefix() + "/reset-checkpoint";
+        Map<String, Object> payload = buildResetPayload(def, request);
 
         try {
             Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
             OperationActionResponseDto dto = toActionResponse(moduleId, "reset-checkpoint", response, "Checkpoint reset");
-            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, payload, dto, null);
+            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, reconView, payload, dto, null);
             return dto;
         } catch (RuntimeException ex) {
             OperationActionResponseDto failure = failureResponse(moduleId, "reset-checkpoint", ex);
-            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, payload, failure, null);
+            saveAudit(tenantId, moduleId, "reset-checkpoint", "CHECKPOINT_RESET", username, reconView, payload, failure, null);
             throw ex;
         }
     }
@@ -245,62 +274,87 @@ public class OperationsService {
                                                    String moduleId,
                                                    String username,
                                                    ReplayWindowOperationRequest request) {
-        ModuleDef def = module(moduleId);
+        return replayWindow(tenantId, moduleId, username, null, request);
+    }
+
+    @Transactional
+    public OperationActionResponseDto replayWindow(String tenantId,
+                                                   String moduleId,
+                                                   String username,
+                                                   String reconView,
+                                                   ReplayWindowOperationRequest request) {
+        ModuleDef def = module(moduleId, reconView);
         if (!def.advancedActions.contains("replay-window")) {
             throw new IllegalArgumentException("Replay window is not supported for module: " + moduleId);
         }
 
-        String path = switch (moduleId) {
-            case "siocs-cloud-connector" -> "/api/cloud-connector/actions/replay-window";
-            case "mfcs-rds-connector" -> "/api/mfcs-connector/actions/replay-window";
-            case "xocs-cloud-connector" -> "/api/xocs-connector/actions/replay-window";
-            default -> throw new IllegalArgumentException("Replay window is not supported for module: " + moduleId);
-        };
+        String path = def.actionPathPrefix() + "/replay-window";
 
         Map<String, Object> payload = buildReplayPayload(request);
         try {
             Map<String, Object> response = post(def.baseUrl + path, payload, def.basicAuth);
             OperationActionResponseDto dto = toActionResponse(moduleId, "replay-window", response, "Replay window queued");
-            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, payload, dto, null);
+            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, reconView, payload, dto, null);
             return dto;
         } catch (RuntimeException ex) {
             OperationActionResponseDto failure = failureResponse(moduleId, "replay-window", ex);
-            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, payload, failure, null);
+            saveAudit(tenantId, moduleId, "replay-window", "ADVANCED", username, reconView, payload, failure, null);
             throw ex;
         }
     }
 
-    private OperationModuleStatusDto fetchStatus(String moduleId,
-                                                 String moduleLabel,
-                                                 String reconView,
-                                                 String category,
-                                                 String baseUrl,
-                                                 String path,
-                                                 List<String> actions,
-                                                 List<String> advancedActions,
-                                                 boolean basicAuth) {
+    private OperationModuleStatusDto fetchStatus(String tenantId,
+                                                OperationModuleCatalogEntry operationModule,
+                                                List<ReconModuleDto> affectedModules) {
+        ModuleDef module = module(operationModule.getModuleId(), operationModule.getReconView());
+        List<ReconModuleDto> dedupedAffectedModules = dedupeModules(affectedModules);
+        List<String> affectedReconViews = dedupedAffectedModules.stream()
+                .map(ReconModuleDto::getReconView)
+                .toList();
+        List<String> affectedReconLabels = dedupedAffectedModules.stream()
+                .map(ReconModuleDto::getLabel)
+                .filter(Objects::nonNull)
+                .toList();
+        String reconLabel = reconModuleService.resolveModuleLabel(module.reconView(), module.reconView());
+        String endpointMode = resolveEndpointMode(tenantId, module.systemName(), module.baseUrlKey());
         try {
-            Map<String, Object> status = get(baseUrl + path, basicAuth);
+            Map<String, Object> status = get(module.baseUrl() + module.statusPath(), module.basicAuth());
             return OperationModuleStatusDto.builder()
-                    .moduleId(moduleId)
-                    .moduleLabel(moduleLabel)
-                    .reconView(reconView)
-                    .category(category)
+                    .moduleId(module.moduleId())
+                    .moduleLabel(module.moduleLabel())
+                    .reconView(module.reconView())
+                    .reconLabel(reconLabel)
+                    .category(module.category())
+                    .systemName(module.systemName())
+                    .endpointMode(endpointMode)
+                    .sharedAsset(affectedReconViews.size() > 1)
+                    .affectedReconViews(affectedReconViews)
+                    .affectedReconLabels(affectedReconLabels)
                     .reachable(true)
-                    .availableActions(actions)
-                    .advancedActions(advancedActions)
+                    .availableActions(module.safeActions())
+                    .advancedActions(module.advancedActions())
                     .status(status)
+                    .resetPayloadMode(module.resetPayloadMode())
+                    .supportsRegisterFilter(module.supportsRegisterFilter())
                     .build();
         } catch (Exception ex) {
             return OperationModuleStatusDto.builder()
-                    .moduleId(moduleId)
-                    .moduleLabel(moduleLabel)
-                    .reconView(reconView)
-                    .category(category)
+                    .moduleId(module.moduleId())
+                    .moduleLabel(module.moduleLabel())
+                    .reconView(module.reconView())
+                    .reconLabel(reconLabel)
+                    .category(module.category())
+                    .systemName(module.systemName())
+                    .endpointMode(endpointMode)
+                    .sharedAsset(affectedReconViews.size() > 1)
+                    .affectedReconViews(affectedReconViews)
+                    .affectedReconLabels(affectedReconLabels)
                     .reachable(false)
-                    .availableActions(actions)
-                    .advancedActions(advancedActions)
+                    .availableActions(module.safeActions())
+                    .advancedActions(module.advancedActions())
                     .status(Map.of("error", ex.getMessage()))
+                    .resetPayloadMode(module.resetPayloadMode())
+                    .supportsRegisterFilter(module.supportsRegisterFilter())
                     .build();
         }
     }
@@ -316,7 +370,8 @@ public class OperationsService {
         long breachedCaseCount = activeCases.stream()
                 .filter(exceptionCase -> "BREACHED".equalsIgnoreCase(exceptionSlaService.evaluateSlaStatus(exceptionCase)))
                 .count();
-        String freshnessStatus = resolveFreshnessStatus(module.getModuleId(), module.isReachable(), freshnessLagMinutes);
+        ModuleDef moduleDef = module(module.getModuleId(), module.getReconView());
+        String freshnessStatus = resolveFreshnessStatus(moduleDef, module.isReachable(), freshnessLagMinutes);
         String healthStatus = resolveHealthStatus(module.isReachable(), freshnessStatus, backlogCount, breachedCaseCount);
         int healthScore = resolveHealthScore(module.isReachable(), freshnessLagMinutes, backlogCount, breachedCaseCount);
         List<String> highlights = buildStatusHighlights(status, freshnessLagMinutes, backlogCount, activeCaseCount, breachedCaseCount);
@@ -325,7 +380,13 @@ public class OperationsService {
                 .moduleId(module.getModuleId())
                 .moduleLabel(module.getModuleLabel())
                 .reconView(module.getReconView())
+                .reconLabel(module.getReconLabel())
                 .category(module.getCategory())
+                .systemName(module.getSystemName())
+                .endpointMode(module.getEndpointMode())
+                .sharedAsset(module.isSharedAsset())
+                .affectedReconViews(module.getAffectedReconViews())
+                .affectedReconLabels(module.getAffectedReconLabels())
                 .reachable(module.isReachable())
                 .availableActions(module.getAvailableActions())
                 .advancedActions(module.getAdvancedActions())
@@ -342,6 +403,8 @@ public class OperationsService {
                         : null)
                 .statusHighlights(highlights)
                 .recommendedAction(recommendedAction(healthStatus, freshnessStatus, backlogCount, breachedCaseCount))
+                .resetPayloadMode(module.getResetPayloadMode())
+                .supportsRegisterFilter(module.isSupportsRegisterFilter())
                 .build();
     }
 
@@ -373,13 +436,45 @@ public class OperationsService {
     }
 
     private ModuleDef module(String moduleId) {
-        return switch (moduleId) {
-            case "xstore-publisher" -> new ModuleDef(xstoreBaseUrl, List.of("publish", "release-stale-claims"), List.of(), true);
-            case "sim-poller" -> new ModuleDef(simBaseUrl, List.of("poll", "release-lease"), List.of("reset-checkpoint"), true);
-            case "siocs-cloud-connector" -> new ModuleDef(siocsCloudBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false);
-            case "mfcs-rds-connector" -> new ModuleDef(mfcsRdsBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed", "requeue-dlq"), List.of("reset-checkpoint", "replay-window"), false);
-            case "xocs-cloud-connector" -> new ModuleDef(xocsCloudBaseUrl, List.of("download", "publish", "release-stale-claims", "requeue-failed"), List.of("reset-checkpoint", "replay-window"), false);
-            default -> throw new IllegalArgumentException("Unsupported module: " + moduleId);
+        return module(moduleId, null);
+    }
+
+    private ModuleDef module(String moduleId, String reconView) {
+        OperationModuleCatalogEntry entry = reconModuleService.findOperationModule(moduleId, reconView)
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported module: " + moduleId));
+        String normalizedBaseUrlKey = normalizeBaseUrlKey(entry.getBaseUrlKey());
+        return new ModuleDef(
+                entry.getModuleId(),
+                entry.getModuleLabel(),
+                entry.getReconView(),
+                entry.getCategory(),
+                normalizedBaseUrlKey,
+                resolveSystemName(normalizedBaseUrlKey),
+                resolveBaseUrl(normalizedBaseUrlKey),
+                entry.getStatusPath(),
+                entry.getActionPathPrefix(),
+                entry.getSafeActions(),
+                entry.getAdvancedActions(),
+                entry.isBasicAuth(),
+                defaultIfBlank(entry.getResetPayloadMode(), "NONE"),
+                entry.getFreshnessThresholdMinutes() == null ? 60 : entry.getFreshnessThresholdMinutes(),
+                entry.isSupportsRegisterFilter()
+        );
+    }
+
+    private String resolveBaseUrl(String baseUrlKey) {
+        String normalized = normalizeBaseUrlKey(baseUrlKey);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Base URL key is missing for operations module");
+        }
+        return switch (normalized) {
+            case "XSTORE" -> xstoreBaseUrl;
+            case "SIM" -> simBaseUrl;
+            case "RMS" -> rmsBaseUrl;
+            case "SIOCS_CLOUD" -> siocsCloudBaseUrl;
+            case "MFCS_RDS" -> mfcsRdsBaseUrl;
+            case "XOCS_CLOUD" -> xocsCloudBaseUrl;
+            default -> throw new IllegalArgumentException("Unsupported operations base URL key: " + baseUrlKey);
         };
     }
 
@@ -397,6 +492,14 @@ public class OperationsService {
                 "lastSuccessTimestamp", resolveTimestamp(request),
                 "lastCursorId", request.getCursorId() == null ? 0L : request.getCursorId()
         );
+    }
+
+    private Map<String, Object> buildResetPayload(ModuleDef module, ResetCheckpointOperationRequest request) {
+        return switch (defaultIfBlank(module.resetPayloadMode(), "NONE")) {
+            case "DB_POLLING" -> buildSimResetPayload(request);
+            case "CLOUD_CURSOR" -> buildCloudResetPayload(request);
+            default -> Map.of();
+        };
     }
 
     private Map<String, Object> buildReplayPayload(ReplayWindowOperationRequest request) {
@@ -450,9 +553,14 @@ public class OperationsService {
                            String actionKey,
                            String scope,
                            String username,
+                           String reconView,
                            Map<String, Object> payload,
                            OperationActionResponseDto dto,
                            AuditContext auditContext) {
+        String resolvedReconView = defaultIfBlank(
+                auditContext != null ? auditContext.reconView() : null,
+                trimToNull(reconView)
+        );
         auditRepository.save(OperationsActionAudit.builder()
                 .tenantId(tenantId)
                 .moduleId(moduleId)
@@ -460,7 +568,7 @@ public class OperationsService {
                 .actionScope(scope)
                 .requestedBy(username)
                 .transactionKey(auditContext != null ? auditContext.transactionKey() : null)
-                .reconView(auditContext != null ? auditContext.reconView() : null)
+                .reconView(resolvedReconView)
                 .playbookId(auditContext != null ? auditContext.playbookId() : null)
                 .playbookStepId(auditContext != null ? auditContext.playbookStepId() : null)
                 .playbookStepTitle(auditContext != null ? auditContext.playbookStepTitle() : null)
@@ -477,7 +585,7 @@ public class OperationsService {
         auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
                 .tenantId(tenantId)
                 .sourceType("OPERATIONS")
-                .moduleKey(defaultIfBlank(auditContext != null ? auditContext.reconView() : null, mapOperationsModule(moduleId)))
+                .moduleKey(defaultIfBlank(resolvedReconView, mapOperationsModule(moduleId)))
                 .entityType("OPERATIONS_ACTION")
                 .entityKey(defaultIfBlank(auditContext != null ? auditContext.transactionKey() : null, moduleId))
                 .actionType(defaultIfBlank(actionKey, "ACTION"))
@@ -496,14 +604,12 @@ public class OperationsService {
                 .build());
     }
 
-    private ReconJobActionCatalogDto catalogEntry(String moduleId,
-                                                  String moduleLabel,
-                                                  String reconView) {
-        ModuleDef module = module(moduleId);
+    private ReconJobActionCatalogDto catalogEntry(OperationModuleCatalogEntry operationModule) {
+        ModuleDef module = module(operationModule.getModuleId(), operationModule.getReconView());
         return ReconJobActionCatalogDto.builder()
-                .moduleId(moduleId)
-                .moduleLabel(moduleLabel)
-                .reconView(reconView)
+                .moduleId(module.moduleId())
+                .moduleLabel(module.moduleLabel())
+                .reconView(module.reconView())
                 .availableActions(module.safeActions())
                 .build();
     }
@@ -647,15 +753,11 @@ public class OperationsService {
         return total;
     }
 
-    private String resolveFreshnessStatus(String moduleId, boolean reachable, long freshnessLagMinutes) {
+    private String resolveFreshnessStatus(ModuleDef module, boolean reachable, long freshnessLagMinutes) {
         if (!reachable) {
             return "STALE";
         }
-        long staleThreshold = switch (Objects.toString(moduleId, "")) {
-            case "xstore-publisher" -> 30L;
-            case "sim-poller" -> 45L;
-            default -> 60L;
-        };
+        long staleThreshold = module.freshnessThresholdMinutes() <= 0 ? 60L : module.freshnessThresholdMinutes();
         long warningThreshold = Math.max(15L, staleThreshold / 2L);
         if (freshnessLagMinutes == Long.MAX_VALUE || freshnessLagMinutes > staleThreshold) {
             return "STALE";
@@ -747,6 +849,100 @@ public class OperationsService {
         return "Healthy. No immediate action required";
     }
 
+    private Map<String, List<ReconModuleDto>> impactedModulesByOperationModuleId(java.util.Collection<String> allowedReconViews) {
+        return reconModuleService.getModulesForReconViews(allowedReconViews).stream()
+                .flatMap(module -> module.getOperationModules().stream()
+                        .map(entry -> Map.entry(normalizeModuleId(entry.getModuleId()), module)))
+                .filter(entry -> entry.getKey() != null)
+                .collect(Collectors.groupingBy(
+                        Map.Entry::getKey,
+                        LinkedHashMap::new,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())
+                ));
+    }
+
+    private List<ReconModuleDto> dedupeModules(List<ReconModuleDto> modules) {
+        if (modules == null || modules.isEmpty()) {
+            return List.of();
+        }
+        return modules.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(
+                        ReconModuleDto::getReconView,
+                        module -> module,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ))
+                .values()
+                .stream()
+                .toList();
+    }
+
+    private java.util.Set<String> normalizeAllowedReconViews(java.util.Collection<String> allowedReconViews) {
+        return allowedReconViews == null
+                ? java.util.Set.of()
+                : allowedReconViews.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(java.util.Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    private java.util.Set<String> scopeReconViews(java.util.Set<String> allowedReconViews, String reconView) {
+        String normalizedReconView = trimToNull(reconView);
+        if (normalizedReconView == null) {
+            return allowedReconViews;
+        }
+        String resolved = normalizedReconView.toUpperCase(java.util.Locale.ROOT);
+        return allowedReconViews.contains(resolved)
+                ? java.util.Set.of(resolved)
+                : java.util.Set.of();
+    }
+
+    private String normalizeBaseUrlKey(String baseUrlKey) {
+        String normalized = trimToNull(baseUrlKey);
+        return normalized == null ? null : normalized.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private String normalizeModuleId(String moduleId) {
+        String normalized = trimToNull(moduleId);
+        return normalized == null ? null : normalized.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private String resolveSystemName(String baseUrlKey) {
+        String normalized = normalizeBaseUrlKey(baseUrlKey);
+        if (normalized == null) {
+            return "UNKNOWN";
+        }
+        return switch (normalized) {
+            case "XSTORE" -> "XSTORE";
+            case "SIM" -> "SIM";
+            case "RMS" -> "RMS";
+            case "SIOCS_CLOUD" -> "SIOCS";
+            case "MFCS_RDS" -> "MFCS";
+            case "XOCS_CLOUD" -> "XOCS";
+            default -> "UNKNOWN";
+        };
+    }
+
+    private String resolveEndpointMode(String tenantId, String systemName, String baseUrlKey) {
+        String resolvedSystemName = trimToNull(systemName);
+        if (resolvedSystemName != null) {
+            return systemEndpointProfileService.findSelectedProfile(tenantId, resolvedSystemName)
+                    .map(profile -> defaultIfBlank(profile.getEndpointMode(), fallbackEndpointMode(baseUrlKey)))
+                    .orElse(fallbackEndpointMode(baseUrlKey));
+        }
+        return fallbackEndpointMode(baseUrlKey);
+    }
+
+    private String fallbackEndpointMode(String baseUrlKey) {
+        return switch (normalizeBaseUrlKey(baseUrlKey)) {
+            case "XSTORE", "SIM", "RMS" -> "DB";
+            case "SIOCS_CLOUD", "XOCS_CLOUD" -> "REST";
+            case "MFCS_RDS" -> "RDS";
+            default -> "UNKNOWN";
+        };
+    }
+
     private String trimToNull(String value) {
         if (value == null) {
             return null;
@@ -761,13 +957,8 @@ public class OperationsService {
     }
 
     private String mapOperationsModule(String moduleId) {
-        return switch (moduleId) {
-            case "xstore-publisher", "sim-poller" -> "XSTORE_SIM";
-            case "siocs-cloud-connector" -> "XSTORE_SIOCS";
-            case "mfcs-rds-connector" -> "SIOCS_MFCS";
-            case "xocs-cloud-connector" -> "XSTORE_XOCS";
-            default -> "OPERATIONS";
-        };
+        return reconModuleService.findReconViewByOperationsModuleId(moduleId)
+                .orElse("OPERATIONS");
     }
 
     public record ActionSupportDescriptor(boolean actionConfigured,
@@ -783,6 +974,20 @@ public class OperationsService {
                                 String playbookStepTitle) {
     }
 
-    private record ModuleDef(String baseUrl, List<String> safeActions, List<String> advancedActions, boolean basicAuth) {
+    private record ModuleDef(String moduleId,
+                             String moduleLabel,
+                             String reconView,
+                             String category,
+                             String baseUrlKey,
+                             String systemName,
+                             String baseUrl,
+                             String statusPath,
+                             String actionPathPrefix,
+                             List<String> safeActions,
+                             List<String> advancedActions,
+                             boolean basicAuth,
+                             String resetPayloadMode,
+                             int freshnessThresholdMinutes,
+                             boolean supportsRegisterFilter) {
     }
 }

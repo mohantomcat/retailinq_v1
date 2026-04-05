@@ -13,12 +13,15 @@ import com.recon.api.util.TimezoneConverter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,12 +84,14 @@ public class ExceptionEscalationService {
     public ExceptionEscalationPolicyDto savePolicy(String tenantId,
                                                    UUID policyId,
                                                    SaveExceptionEscalationPolicyRequest request,
-                                                   String actorUsername) {
+                                                   String actorUsername,
+                                                   Collection<String> allowedReconViews) {
         if (request == null) {
             throw new IllegalArgumentException("request is required");
         }
         String policyName = trimToNull(request != null ? request.getPolicyName() : null);
         String reconView = normalizeRequired(request != null ? request.getReconView() : null, "reconView");
+        requireAllowedReconView(reconView, allowedReconViews);
         if (policyName == null) {
             throw new IllegalArgumentException("policyName is required");
         }
@@ -110,6 +115,10 @@ public class ExceptionEscalationService {
                 .createdBy(actorUsername)
                 .build()
                 : policyRepository.findByIdAndTenantId(policyId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Escalation policy not found"));
 
         policy.setPolicyName(policyName);
@@ -148,9 +157,18 @@ public class ExceptionEscalationService {
     }
 
     @Transactional
-    public void deletePolicy(String tenantId, UUID policyId) {
+    public ExceptionEscalationPolicyDto savePolicy(String tenantId,
+                                                   UUID policyId,
+                                                   SaveExceptionEscalationPolicyRequest request,
+                                                   String actorUsername) {
+        return savePolicy(tenantId, policyId, request, actorUsername, null);
+    }
+
+    @Transactional
+    public void deletePolicy(String tenantId, UUID policyId, Collection<String> allowedReconViews) {
         ExceptionEscalationPolicy policy = policyRepository.findByIdAndTenantId(policyId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Escalation policy not found"));
+        requireAllowedReconView(policy.getReconView(), allowedReconViews);
         policyRepository.delete(policy);
         auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
                 .tenantId(tenantId)
@@ -167,6 +185,11 @@ public class ExceptionEscalationService {
                 .evidenceTags(java.util.List.of("EXCEPTION", "ESCALATION_POLICY"))
                 .beforeState(policy)
                 .build());
+    }
+
+    @Transactional
+    public void deletePolicy(String tenantId, UUID policyId) {
+        deletePolicy(tenantId, policyId, null);
     }
 
     @Scheduled(fixedDelayString = "${app.exceptions.escalation-interval-ms:300000}")
@@ -452,6 +475,20 @@ public class ExceptionEscalationService {
             throw new IllegalArgumentException(fieldName + " is required");
         }
         return normalized;
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalizeRequired(reconView, "reconView");
+        Set<String> normalizedAllowedViews = allowedReconViews.stream()
+                .map(this::normalizeNullable)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private String normalizeNullable(String value) {

@@ -27,15 +27,13 @@ import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
 import ExceptionWorkbenchPanel from '../components/ExceptionWorkbenchPanel'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
+import {useReconModules} from '../hooks/useReconModules'
 import {
     EXCEPTION_QUEUE_PREFILL_EVENT,
     EXCEPTION_QUEUE_PREFILL_KEY,
 } from '../constants/uiStateKeys'
 
 const CLEAR_FIELD_TOKEN = '__CLEAR__'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
 
 const QUEUE_OPTIONS = [
     {value: 'ALL', label: 'All Open'},
@@ -179,6 +177,7 @@ function buildPrefillFilters(prefill) {
 
 export default function ExceptionQueues({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
     const canEdit = hasPermission('EXCEPTION_EDIT')
     const [loading, setLoading] = useState(true)

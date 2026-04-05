@@ -1,18 +1,20 @@
-import {lazy, Suspense, useEffect, useMemo, useState} from 'react'
+import {Suspense, useEffect, useMemo, useState} from 'react'
 import {Navigate, Route, Routes} from 'react-router-dom'
 import {Box, CircularProgress, createTheme, CssBaseline, ThemeProvider} from '@mui/material'
 import {useAuth} from './context/AuthContext'
 import {BrandingProvider, useBranding} from './context/BrandingContext'
 import {I18nProvider, useI18n} from './context/I18nContext'
 import ProtectedRoute from './components/ProtectedRoute'
-import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, RECONCILIATION_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS, getTabLabel} from './constants/navigation'
+import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS, getTabLabel} from './constants/navigation'
 import {getBrandTokens} from './branding/brandingUtils'
+import {useReconModules} from './hooks/useReconModules'
+import {lazyImportWithRetry} from './utils/lazyImportWithRetry'
 
-const DashboardWrapper = lazy(() => import('./pages/DashboardWrapper'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const KpiMockup = lazy(() => import('./pages/KpiMockup'))
-const Login = lazy(() => import('./pages/Login'))
-const Unauthorized = lazy(() => import('./pages/Unauthorized'))
+const DashboardWrapper = lazyImportWithRetry(() => import('./pages/DashboardWrapper'), 'pages/DashboardWrapper')
+const Dashboard = lazyImportWithRetry(() => import('./pages/Dashboard'), 'pages/Dashboard')
+const KpiMockup = lazyImportWithRetry(() => import('./pages/KpiMockup'), 'pages/KpiMockup')
+const Login = lazyImportWithRetry(() => import('./pages/Login'), 'pages/Login')
+const Unauthorized = lazyImportWithRetry(() => import('./pages/Unauthorized'), 'pages/Unauthorized')
 
 const THEME_KEY = 'recon_ui_theme'
 
@@ -328,11 +330,12 @@ function AppRoutes() {
 
     const {isAuthenticated, user} = useAuth()
     const {t} = useI18n()
+    const {modules: accessibleModules} = useReconModules()
     const drawerWidth = sidebarCollapsed ? 64 : 240
 
-    const reconciliationPairs = RECONCILIATION_TAB_IDS.map((id) => ({
-        id,
-        label: getTabLabel(t, id),
+    const reconciliationPairs = accessibleModules.map((module) => ({
+        id: module.tabId,
+        label: t(module.label),
     }))
     const alertPairs = ALERT_TAB_IDS.map((id) => ({
         id,

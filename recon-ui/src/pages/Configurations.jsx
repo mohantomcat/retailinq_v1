@@ -196,7 +196,7 @@ export default function Configurations({tabId, palette, t}) {
     const [catalog, setCatalog] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
-    const [selectedModuleId, setSelectedModuleId] = useState('xstore-sim')
+    const [selectedModuleId, setSelectedModuleId] = useState('')
     const [draftValues, setDraftValues] = useState({})
     const [savingKey, setSavingKey] = useState('')
     const [feedback, setFeedback] = useState('')

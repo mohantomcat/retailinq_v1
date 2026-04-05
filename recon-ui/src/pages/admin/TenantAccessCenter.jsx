@@ -62,6 +62,8 @@ export default function TenantAccessCenter() {
         samlEntityId: '',
         samlSsoUrl: '',
     })
+    const [reconGroupForm, setReconGroupForm] = useState({})
+    const [endpointProfileForm, setEndpointProfileForm] = useState({})
     const [keyForm, setKeyForm] = useState(EMPTY_KEY_FORM)
     const [createdKey, setCreatedKey] = useState('')
     const [loading, setLoading] = useState(true)
@@ -94,6 +96,24 @@ export default function TenantAccessCenter() {
     useEffect(() => {
         loadData()
     }, [])
+
+    useEffect(() => {
+        const groups = Array.isArray(center?.reconGroups) ? center.reconGroups : []
+        setReconGroupForm(
+            Object.fromEntries(
+                groups.map((group) => [group.groupCode, group.selectedReconView || ''])
+            )
+        )
+    }, [center?.reconGroups])
+
+    useEffect(() => {
+        const profiles = Array.isArray(center?.systemEndpointProfiles) ? center.systemEndpointProfiles : []
+        setEndpointProfileForm(
+            Object.fromEntries(
+                profiles.map((profile) => [profile.systemName, profile.selectedEndpointMode || ''])
+            )
+        )
+    }, [center?.systemEndpointProfiles])
 
     const orgUnitNameById = useMemo(
         () =>
@@ -163,6 +183,52 @@ export default function TenantAccessCenter() {
         }
     }
 
+    const saveReconGroups = async () => {
+        const missingRequiredGroups = (center?.reconGroups || [])
+            .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
+            .map((group) => group.groupLabel || group.groupCode)
+        const hasAnySelection = Object.values(reconGroupForm).some(Boolean)
+        if (hasAnySelection && missingRequiredGroups.length) {
+            setError(`${t('Select an active lane for required groups')}: ${missingRequiredGroups.join(', ')}`)
+            return
+        }
+        setSaving(true)
+        try {
+            const reconGroups = await adminApi.saveTenantReconGroupSelections({
+                selections: Object.entries(reconGroupForm).map(([groupCode, selectedReconView]) => ({
+                    groupCode,
+                    selectedReconView: selectedReconView || null,
+                })),
+            })
+            setCenter((current) => ({...current, reconGroups}))
+            setSuccess(t('Tenant reconciliation lane selections updated. Users may need to sign in again to see the new module set.'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to save reconciliation lane selections')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const saveSystemEndpointProfiles = async () => {
+        setSaving(true)
+        try {
+            const systemEndpointProfiles = await adminApi.saveTenantSystemEndpointProfiles({
+                selections: Object.entries(endpointProfileForm).map(([systemName, endpointMode]) => ({
+                    systemName,
+                    endpointMode: endpointMode || null,
+                })),
+            })
+            setCenter((current) => ({...current, systemEndpointProfiles}))
+            setSuccess(t('Tenant system endpoint profiles updated. Future lane-first operations and integration views will use these profiles.'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to save system endpoint profiles')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const createApiKey = async () => {
         if (!keyForm.keyName.trim()) {
             setError(t('Key name is required'))
@@ -205,6 +271,12 @@ export default function TenantAccessCenter() {
 
     const storeCatalog = center?.storeCatalog || []
     const apiKeys = center?.apiKeys || []
+    const reconGroups = center?.reconGroups || []
+    const systemEndpointProfiles = center?.systemEndpointProfiles || []
+    const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
+    const missingRequiredReconGroups = reconGroups
+        .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
+        .map((group) => group.groupLabel || group.groupCode)
 
     return (
         <Box sx={{px: 4, py: 3, maxWidth: 1480}}>
@@ -311,6 +383,209 @@ export default function TenantAccessCenter() {
                             )}
                             <Button variant="contained" onClick={saveUserScope} disabled={!selectedUserId || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                                 {saving ? t('Saving...') : t('Save User Scope')}
+                            </Button>
+                        </Stack>
+                    </Paper>
+
+                    <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
+                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                            {t('Reconciliation Lane Groups')}
+                        </Typography>
+                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.5}}>
+                            {t('Choose the active lane for each exclusive application-stack group. Untouched tenants stay on legacy visibility. After you save any lane selection, only the selected lane in each group remains visible and blank groups are hidden.')}
+                        </Typography>
+                        {hasAnyReconGroupSelection ? (
+                            <Alert severity="warning" sx={{mb: 1.5, borderRadius: 3}}>
+                                {missingRequiredReconGroups.length
+                                    ? `${t('Strict tenant lane mode will be applied on save. Required groups still missing')}: ${missingRequiredReconGroups.join(', ')}`
+                                    : t('Strict tenant lane mode will be applied on save. Users may need to sign in again to pick up the narrowed module set.')}
+                            </Alert>
+                        ) : null}
+                        <Stack spacing={1.5}>
+                            {reconGroups.map((group) => (
+                                <Box
+                                    key={group.groupCode}
+                                    sx={{
+                                        p: 1.5,
+                                        borderRadius: '18px',
+                                        backgroundColor: palette.paperBgAlt,
+                                        border: `1px solid ${palette.borderSoft}`,
+                                    }}
+                                >
+                                    <Stack spacing={1}>
+                                        <Box>
+                                            <Typography sx={{fontSize: '0.9rem', fontWeight: 700, color: palette.text}}>
+                                                {group.groupLabel}
+                                            </Typography>
+                                            <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                {group.groupDescription}
+                                            </Typography>
+                                        </Box>
+                                        <TextField
+                                            select
+                                            size="small"
+                                            label={t('Active Lane')}
+                                            value={reconGroupForm[group.groupCode] || ''}
+                                            onChange={(event) =>
+                                                setReconGroupForm((current) => ({
+                                                    ...current,
+                                                    [group.groupCode]: event.target.value,
+                                                }))
+                                            }
+                                        >
+                                            <MenuItem value="">{t('No tenant selection')}</MenuItem>
+                                            {(group.modules || []).map((module) => (
+                                                <MenuItem key={module.reconView} value={module.reconView}>
+                                                    {module.label}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                            <Chip
+                                                size="small"
+                                                label={group.selectionRequired ? t('Required') : t('Optional')}
+                                                sx={{
+                                                    backgroundColor: palette.chipBlueBg,
+                                                    color: palette.chipBlueText,
+                                                    fontWeight: 700,
+                                                }}
+                                            />
+                                            {group.selectionRequired && !reconGroupForm[group.groupCode] ? (
+                                                <Chip
+                                                    size="small"
+                                                    label={t('No lane selected')}
+                                                    sx={{
+                                                        backgroundColor: '#FFF7ED',
+                                                        color: '#C2410C',
+                                                        fontWeight: 700,
+                                                    }}
+                                                />
+                                            ) : null}
+                                            {group.selectedReconView && (
+                                                <Chip
+                                                    size="small"
+                                                    label={group.selectedReconView}
+                                                    sx={{
+                                                        backgroundColor: palette.paperBg,
+                                                        color: palette.text,
+                                                        border: `1px solid ${palette.borderSoft}`,
+                                                    }}
+                                                />
+                                            )}
+                                        </Stack>
+                                    </Stack>
+                                </Box>
+                            ))}
+                            <Button
+                                variant="contained"
+                                onClick={saveReconGroups}
+                                disabled={loading || saving || reconGroups.length === 0}
+                                sx={{textTransform: 'none', borderRadius: 2.5}}
+                            >
+                                {saving ? t('Saving...') : t('Save Lane Selections')}
+                            </Button>
+                        </Stack>
+                    </Paper>
+
+                    <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
+                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                            {t('System Endpoint Profiles')}
+                        </Typography>
+                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.5}}>
+                            {t('Define how each source system is accessed for this tenant. The selected mode stays at the system level so future cloud REST, RDS, or DAS changes do not require new sidebar modules.')}
+                        </Typography>
+                        <Stack spacing={1.5}>
+                            {systemEndpointProfiles.map((profile) => {
+                                const selectedOption = (profile.options || []).find(
+                                    (option) => option.endpointMode === (endpointProfileForm[profile.systemName] || profile.selectedEndpointMode)
+                                )
+                                return (
+                                    <Box
+                                        key={profile.systemName}
+                                        sx={{
+                                            p: 1.5,
+                                            borderRadius: '18px',
+                                            backgroundColor: palette.paperBgAlt,
+                                            border: `1px solid ${palette.borderSoft}`,
+                                        }}
+                                    >
+                                        <Stack spacing={1}>
+                                            <Box>
+                                                <Typography sx={{fontSize: '0.9rem', fontWeight: 700, color: palette.text}}>
+                                                    {profile.systemLabel}
+                                                </Typography>
+                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                    {selectedOption?.notes || t('Select the active endpoint mode and runtime for this system.')}
+                                                </Typography>
+                                            </Box>
+                                            <TextField
+                                                select
+                                                size="small"
+                                                label={t('Endpoint Mode')}
+                                                value={endpointProfileForm[profile.systemName] || ''}
+                                                onChange={(event) =>
+                                                    setEndpointProfileForm((current) => ({
+                                                        ...current,
+                                                        [profile.systemName]: event.target.value,
+                                                    }))
+                                                }
+                                            >
+                                                {(profile.options || []).map((option) => (
+                                                    <MenuItem
+                                                        key={`${profile.systemName}-${option.endpointMode}`}
+                                                        value={option.endpointMode}
+                                                        disabled={!option.implemented}
+                                                    >
+                                                        {option.endpointMode}
+                                                        {!option.implemented ? ` - ${t('Planned')}` : ''}
+                                                    </MenuItem>
+                                                ))}
+                                            </TextField>
+                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                                {selectedOption?.connectorLabel ? (
+                                                    <Chip
+                                                        size="small"
+                                                        label={selectedOption.connectorLabel}
+                                                        sx={{
+                                                            backgroundColor: palette.chipBlueBg,
+                                                            color: palette.chipBlueText,
+                                                            fontWeight: 700,
+                                                        }}
+                                                    />
+                                                ) : null}
+                                                <Chip
+                                                    size="small"
+                                                    label={selectedOption?.implemented ? t('Implemented') : t('Planned')}
+                                                    sx={{
+                                                        backgroundColor: selectedOption?.implemented ? palette.tealChipBg : palette.cardBg,
+                                                        color: selectedOption?.implemented ? palette.tealChipText : palette.textMuted,
+                                                        fontWeight: 700,
+                                                        border: selectedOption?.implemented ? 'none' : `1px solid ${palette.borderSoft}`,
+                                                    }}
+                                                />
+                                                {selectedOption?.integrationConnectorKey ? (
+                                                    <Chip
+                                                        size="small"
+                                                        label={selectedOption.integrationConnectorKey}
+                                                        sx={{
+                                                            backgroundColor: palette.paperBg,
+                                                            color: palette.text,
+                                                            border: `1px solid ${palette.borderSoft}`,
+                                                        }}
+                                                    />
+                                                ) : null}
+                                            </Stack>
+                                        </Stack>
+                                    </Box>
+                                )
+                            })}
+                            <Button
+                                variant="contained"
+                                onClick={saveSystemEndpointProfiles}
+                                disabled={loading || saving || systemEndpointProfiles.length === 0}
+                                sx={{textTransform: 'none', borderRadius: 2.5}}
+                            >
+                                {saving ? t('Saving...') : t('Save Endpoint Profiles')}
                             </Button>
                         </Stack>
                     </Paper>

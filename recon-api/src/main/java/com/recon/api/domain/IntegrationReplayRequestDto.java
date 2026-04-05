@@ -8,13 +8,17 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class IntegrationReplayRequestDto {
     private UUID id;
     private String connectorKey;
     private String flowKey;
+    private String endpointMode;
+    private boolean sharedAsset;
+    private java.util.List<String> affectedReconViews;
+    private java.util.List<String> affectedReconLabels;
     private String businessKey;
     private String documentId;
     private String requestedBy;

@@ -25,6 +25,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuditLedgerService auditLedgerService;
     private final AccessScopeService accessScopeService;
+    private final ReconModuleService reconModuleService;
 
     public List<UserDto> getAllUsers(String tenantId) {
         return userRepository.findByTenantId(tenantId)
@@ -238,22 +239,26 @@ public class UserService {
     }
 
     private UserDto toDto(User user) {
-        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
+        reconModuleService.getAllActiveModules();
+        User currentUser = userRepository.findById(user.getId()).orElse(user);
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(currentUser);
+        Set<String> permissions = currentUser.getAllPermissions();
         return UserDto.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .fullName(user.getFullName())
-                .tenantId(user.getTenantId())
-                .active(user.isActive())
-                .createdAt(user.getCreatedAt())
-                .lastLogin(user.getLastLogin())
-                .storeIds(user.getStoreIds())
+                .id(currentUser.getId())
+                .username(currentUser.getUsername())
+                .email(currentUser.getEmail())
+                .fullName(currentUser.getFullName())
+                .tenantId(currentUser.getTenantId())
+                .active(currentUser.isActive())
+                .createdAt(currentUser.getCreatedAt())
+                .lastLogin(currentUser.getLastLogin())
+                .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new HashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
                 .accessScope(scopeSummary)
-                .permissions(user.getAllPermissions())
-                .roles(user.getRoles().stream()
+                .permissions(permissions)
+                .accessibleModules(reconModuleService.getAccessibleModules(currentUser.getTenantId(), permissions))
+                .roles(currentUser.getRoles().stream()
                         .map(r -> RoleDto.builder()
                                 .id(r.getId())
                                 .name(r.getName())

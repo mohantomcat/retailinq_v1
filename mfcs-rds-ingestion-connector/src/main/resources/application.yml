@@ -72,7 +72,7 @@ mfcs:
 
 kafka:
   topic:
-    mfcs-transactions: ${KAFKA_MFCS_TOPIC:mfcs.transactions.raw}
+    mfcs-inventory-transactions: ${KAFKA_MFCS_INVENTORY_TOPIC:mfcs.inventory.transactions.raw}
     integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
 
 management:

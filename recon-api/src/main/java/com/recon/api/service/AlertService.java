@@ -74,7 +74,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AlertService {
 
-    private static final Set<String> VALID_RECON_VIEWS = Set.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS", "SIOCS_MFCS");
     private static final Set<String> VALID_METRICS = Set.of(
             "TOTAL_TRANSACTIONS",
             "MATCH_RATE",
@@ -111,6 +110,7 @@ public class AlertService {
     private final AlertSmsDeliveryRepository alertSmsDeliveryRepository;
     private final UserRepository userRepository;
     private final AuditLedgerService auditLedgerService;
+    private final ReconModuleService reconModuleService;
 
     @Transactional(readOnly = true)
     public AlertsResponse getAlerts(String tenantId, String userId, String username, String reconView, Set<String> allowedReconViews) {
@@ -299,16 +299,16 @@ public class AlertService {
                                    String username,
                                    Set<String> allowedReconViews) {
         validateRequest(request);
-        String reconView = request.getReconView().toUpperCase();
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage alerts for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertRule rule = ruleId == null
                 ? AlertRule.builder().tenantId(tenantId).createdBy(username).build()
                 : alertRuleRepository.findById(ruleId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert rule not found"));
+        if (ruleId != null) {
+            requireAllowedReconView(rule.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotRule(ruleId == null ? null : rule);
 
         rule.setTenantId(tenantId);
@@ -355,6 +355,7 @@ public class AlertService {
         AlertRule rule = alertRuleRepository.findById(ruleId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert rule not found"));
+        requireAllowedReconView(rule.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotRule(rule);
         alertRuleRepository.delete(rule);
         recordAlertAudit(rule.getTenantId(),
@@ -381,16 +382,16 @@ public class AlertService {
                                            String username,
                                            Set<String> allowedReconViews) {
         validateSubscriptionRequest(request);
-        String reconView = request.getReconView().toUpperCase();
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage notifications for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertEmailSubscription subscription = subscriptionId == null
                 ? AlertEmailSubscription.builder().tenantId(tenantId).createdBy(username).build()
                 : alertEmailSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert email subscription not found"));
+        if (subscriptionId != null) {
+            requireAllowedReconView(subscription.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotEmailSubscription(subscriptionId == null ? null : subscription);
 
         subscription.setTenantId(tenantId);
@@ -435,6 +436,7 @@ public class AlertService {
         AlertEmailSubscription subscription = alertEmailSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert email subscription not found"));
+        requireAllowedReconView(subscription.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotEmailSubscription(subscription);
         alertEmailSubscriptionRepository.delete(subscription);
         recordAlertAudit(subscription.getTenantId(),
@@ -461,16 +463,16 @@ public class AlertService {
                                                   String username,
                                                   Set<String> allowedReconViews) {
         validateWebhookSubscriptionRequest(request);
-        String reconView = request.getReconView().toUpperCase();
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage notifications for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertWebhookSubscription subscription = subscriptionId == null
                 ? AlertWebhookSubscription.builder().tenantId(tenantId).createdBy(username).build()
                 : alertWebhookSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert webhook subscription not found"));
+        if (subscriptionId != null) {
+            requireAllowedReconView(subscription.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotWebhookSubscription(subscriptionId == null ? null : subscription);
 
         subscription.setTenantId(tenantId);
@@ -515,6 +517,7 @@ public class AlertService {
         AlertWebhookSubscription subscription = alertWebhookSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert webhook subscription not found"));
+        requireAllowedReconView(subscription.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotWebhookSubscription(subscription);
         alertWebhookSubscriptionRepository.delete(subscription);
         recordAlertAudit(subscription.getTenantId(),
@@ -541,16 +544,16 @@ public class AlertService {
                                                SaveAlertEscalationPolicyRequest request,
                                                Set<String> allowedReconViews) {
         validateEscalationPolicyRequest(request);
-        String reconView = request.getReconView().toUpperCase(Locale.ROOT);
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage escalation policies for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertEscalationPolicy policy = policyId == null
                 ? AlertEscalationPolicy.builder().tenantId(tenantId).createdBy(username).build()
                 : alertEscalationPolicyRepository.findById(policyId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert escalation policy not found"));
+        if (policyId != null) {
+            requireAllowedReconView(policy.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotEscalationPolicy(policyId == null ? null : policy);
 
         policy.setTenantId(tenantId);
@@ -596,6 +599,7 @@ public class AlertService {
         AlertEscalationPolicy policy = alertEscalationPolicyRepository.findById(policyId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert escalation policy not found"));
+        requireAllowedReconView(policy.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotEscalationPolicy(policy);
         alertEscalationPolicyRepository.delete(policy);
         recordAlertAudit(policy.getTenantId(),
@@ -622,10 +626,7 @@ public class AlertService {
                                                    SaveAlertUserSubscriptionRequest request,
                                                    Set<String> allowedReconViews) {
         validatePersonalSubscriptionRequest(request);
-        String reconView = request.getReconView().toUpperCase(Locale.ROOT);
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage personal subscriptions for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
         UUID principalUserId = UUID.fromString(userId);
         User user = userRepository.findById(principalUserId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
@@ -637,6 +638,9 @@ public class AlertService {
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .filter(existing -> principalUserId.equals(existing.getUserId()))
                 .orElseThrow(() -> new EntityNotFoundException("Personal alert subscription not found"));
+        if (subscriptionId != null) {
+            requireAllowedReconView(subscription.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotPersonalSubscription(subscriptionId == null ? null : subscription);
 
         subscription.setTenantId(tenantId);
@@ -680,6 +684,7 @@ public class AlertService {
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .filter(existing -> principalUserId.equals(existing.getUserId()))
                 .orElseThrow(() -> new EntityNotFoundException("Personal alert subscription not found"));
+        requireAllowedReconView(subscription.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotPersonalSubscription(subscription);
         alertUserSubscriptionRepository.delete(subscription);
         recordAlertAudit(subscription.getTenantId(),
@@ -706,16 +711,16 @@ public class AlertService {
                                                  String username,
                                                  Set<String> allowedReconViews) {
         validateDigestSubscriptionRequest(request);
-        String reconView = request.getReconView().toUpperCase(Locale.ROOT);
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage digests for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertDigestSubscription subscription = subscriptionId == null
                 ? AlertDigestSubscription.builder().tenantId(tenantId).createdBy(username).build()
                 : alertDigestSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert digest subscription not found"));
+        if (subscriptionId != null) {
+            requireAllowedReconView(subscription.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotDigestSubscription(subscriptionId == null ? null : subscription);
 
         subscription.setTenantId(tenantId);
@@ -759,6 +764,7 @@ public class AlertService {
         AlertDigestSubscription subscription = alertDigestSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert digest subscription not found"));
+        requireAllowedReconView(subscription.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotDigestSubscription(subscription);
         alertDigestSubscriptionRepository.delete(subscription);
         recordAlertAudit(subscription.getTenantId(),
@@ -785,16 +791,16 @@ public class AlertService {
                                           String username,
                                           Set<String> allowedReconViews) {
         validateAnomalyRuleRequest(request);
-        String reconView = request.getReconView().toUpperCase(Locale.ROOT);
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage anomaly rules for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertAnomalyRule rule = ruleId == null
                 ? AlertAnomalyRule.builder().tenantId(tenantId).createdBy(username).build()
                 : alertAnomalyRuleRepository.findById(ruleId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert anomaly rule not found"));
+        if (ruleId != null) {
+            requireAllowedReconView(rule.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotAnomalyRule(ruleId == null ? null : rule);
 
         rule.setTenantId(tenantId);
@@ -841,6 +847,7 @@ public class AlertService {
         AlertAnomalyRule rule = alertAnomalyRuleRepository.findById(ruleId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert anomaly rule not found"));
+        requireAllowedReconView(rule.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotAnomalyRule(rule);
         alertAnomalyRuleRepository.delete(rule);
         recordAlertAudit(rule.getTenantId(),
@@ -867,16 +874,16 @@ public class AlertService {
                                               String username,
                                               Set<String> allowedReconViews) {
         validateSmsSubscriptionRequest(request);
-        String reconView = request.getReconView().toUpperCase(Locale.ROOT);
-        if (!allowedReconViews.contains(reconView)) {
-            throw new IllegalArgumentException("Not allowed to manage SMS subscriptions for recon view: " + reconView);
-        }
+        String reconView = requireAllowedReconView(request.getReconView(), allowedReconViews);
 
         AlertSmsSubscription subscription = subscriptionId == null
                 ? AlertSmsSubscription.builder().tenantId(tenantId).createdBy(username).build()
                 : alertSmsSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert SMS subscription not found"));
+        if (subscriptionId != null) {
+            requireAllowedReconView(subscription.getReconView(), allowedReconViews);
+        }
         Map<String, Object> beforeState = snapshotSmsSubscription(subscriptionId == null ? null : subscription);
 
         subscription.setTenantId(tenantId);
@@ -920,6 +927,7 @@ public class AlertService {
         AlertSmsSubscription subscription = alertSmsSubscriptionRepository.findById(subscriptionId)
                 .filter(existing -> tenantId.equals(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Alert SMS subscription not found"));
+        requireAllowedReconView(subscription.getReconView(), allowedReconViews);
         Map<String, Object> beforeState = snapshotSmsSubscription(subscription);
         alertSmsSubscriptionRepository.delete(subscription);
         recordAlertAudit(subscription.getTenantId(),
@@ -958,9 +966,7 @@ public class AlertService {
                 .orElseThrow(() -> new EntityNotFoundException("Alert event not found"));
         Map<String, Object> beforeState = snapshotEvent(event);
 
-        if (!allowedReconViews.contains(event.getReconView())) {
-            throw new IllegalArgumentException("Not allowed to update alerts for recon view: " + event.getReconView());
-        }
+        requireAllowedReconView(event.getReconView(), allowedReconViews);
 
         event.setAlertStatus(status);
         if ("ACKNOWLEDGED".equals(status)) {
@@ -1261,7 +1267,7 @@ public class AlertService {
         if (request.getRuleName() == null || request.getRuleName().isBlank()) {
             throw new IllegalArgumentException("Rule name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase())) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() == null || !VALID_METRICS.contains(request.getMetricKey().toUpperCase())) {
@@ -1285,7 +1291,7 @@ public class AlertService {
         if (request.getSubscriptionName() == null || request.getSubscriptionName().isBlank()) {
             throw new IllegalArgumentException("Subscription name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase())) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() != null && !request.getMetricKey().isBlank()
@@ -1314,7 +1320,7 @@ public class AlertService {
         if (request.getSubscriptionName() == null || request.getSubscriptionName().isBlank()) {
             throw new IllegalArgumentException("Subscription name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase())) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() != null && !request.getMetricKey().isBlank()
@@ -1344,7 +1350,7 @@ public class AlertService {
         if (request.getPolicyName() == null || request.getPolicyName().isBlank()) {
             throw new IllegalArgumentException("Policy name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase(Locale.ROOT))) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() != null && !request.getMetricKey().isBlank()
@@ -1370,7 +1376,7 @@ public class AlertService {
         if (request == null) {
             throw new IllegalArgumentException("Personal alert subscription request is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase(Locale.ROOT))) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() != null && !request.getMetricKey().isBlank()
@@ -1402,7 +1408,7 @@ public class AlertService {
         if (request.getDigestName() == null || request.getDigestName().isBlank()) {
             throw new IllegalArgumentException("Digest name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase(Locale.ROOT))) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getScopeType() == null || !VALID_DIGEST_SCOPE_TYPES.contains(request.getScopeType().toUpperCase(Locale.ROOT))) {
@@ -1430,7 +1436,7 @@ public class AlertService {
         if (request.getRuleName() == null || request.getRuleName().isBlank()) {
             throw new IllegalArgumentException("Rule name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase(Locale.ROOT))) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() == null || !VALID_METRICS.contains(request.getMetricKey().toUpperCase(Locale.ROOT))) {
@@ -1457,7 +1463,7 @@ public class AlertService {
         if (request.getSubscriptionName() == null || request.getSubscriptionName().isBlank()) {
             throw new IllegalArgumentException("Subscription name is required");
         }
-        if (request.getReconView() == null || !VALID_RECON_VIEWS.contains(request.getReconView().toUpperCase(Locale.ROOT))) {
+        if (!isValidReconView(request.getReconView())) {
             throw new IllegalArgumentException("Valid reconView is required");
         }
         if (request.getMetricKey() != null && !request.getMetricKey().isBlank()
@@ -1749,6 +1755,22 @@ public class AlertService {
                 .lastAttemptAt(delivery.getLastAttemptAt())
                 .deliveredAt(delivery.getDeliveredAt())
                 .build();
+    }
+
+    private boolean isValidReconView(String reconView) {
+        String normalized = trimToNull(reconView);
+        return normalized != null && reconModuleService.isValidReconView(normalized);
+    }
+
+    private String requireAllowedReconView(String reconView, Set<String> allowedReconViews) {
+        String normalizedReconView = upperOrNull(trimToNull(reconView));
+        if (normalizedReconView == null) {
+            throw new IllegalArgumentException("A reconciliation module is required for this action");
+        }
+        if (allowedReconViews == null || !allowedReconViews.contains(normalizedReconView)) {
+            throw new IllegalArgumentException("Not allowed to manage alerts for recon view: " + normalizedReconView);
+        }
+        return normalizedReconView;
     }
 
     private String trimToNull(String value) {

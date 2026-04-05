@@ -29,9 +29,7 @@ import {
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const REQUEST_STATUS_OPTIONS = [
     {value: 'ALL', label: 'All'},
@@ -95,6 +93,7 @@ function SummaryCard({label, value, palette, tone = 'blue'}) {
 
 export default function ApprovalCenter({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_APPROVAL_VIEW')
     const canApprove = hasPermission('EXCEPTION_APPROVAL_EDIT')
     const canEditPolicies = hasPermission('EXCEPTION_POLICY_EDIT')

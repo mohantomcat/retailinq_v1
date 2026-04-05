@@ -1,8 +1,4 @@
-import {RECON_TAB_IDS, RECON_TAB_LABEL_BY_ID} from './reconViews'
-
-export const RECONCILIATION_TAB_IDS = [
-    ...RECON_TAB_IDS,
-]
+export const RECONCILIATION_TAB_IDS = []
 
 export const SECURITY_TAB_IDS = [
     'manage-users',
@@ -58,9 +54,28 @@ export const CONFIGURATION_TAB_IDS = [
     'system-configs',
 ]
 
+function getSessionReconTabLabel(id) {
+    if (typeof window === 'undefined') {
+        return null
+    }
+    try {
+        const storedUser = window.sessionStorage.getItem('recon_user')
+        const user = storedUser ? JSON.parse(storedUser) : null
+        const modules = Array.isArray(user?.accessibleModules)
+            ? user.accessibleModules
+            : []
+        return (
+            modules.find((module) => module?.tabId === id)?.label || null
+        )
+    } catch {
+        return null
+    }
+}
+
 export function getTabLabel(t, id) {
-    if (RECON_TAB_LABEL_BY_ID[id]) {
-        return t(RECON_TAB_LABEL_BY_ID[id])
+    const reconTabLabel = getSessionReconTabLabel(id)
+    if (reconTabLabel) {
+        return t(reconTabLabel)
     }
 
     switch (id) {

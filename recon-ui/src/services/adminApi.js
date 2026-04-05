@@ -187,6 +187,22 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    saveTenantReconGroupSelections: async (data) => {
+        const res = await apiFetch(`${BASE}/recon-group-selections`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
+    saveTenantSystemEndpointProfiles: async (data) => {
+        const res = await apiFetch(`${BASE}/system-endpoint-profiles`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
     createTenantApiKey: async (data) => {
         const res = await apiFetch(`${BASE}/api-keys`, {
             method: 'POST',

@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -27,4 +29,10 @@ public class DashboardStats {
     private String asOf;
     private Map<String, Long> byStore;
     private Map<String, Long> byStatus;
+    private Map<String, Long> byTransactionFamily;
+    private List<TransactionFamilyVolumeDto> transactionFamilyVolumes;
+    private BigDecimal sourceQuantityTotal;
+    private BigDecimal targetQuantityTotal;
+    private BigDecimal quantityVarianceTotal;
+    private long quantityMetricsTransactionCount;
 }

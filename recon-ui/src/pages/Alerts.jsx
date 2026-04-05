@@ -26,9 +26,7 @@ import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import SettingsEthernetRoundedIcon from '@mui/icons-material/SettingsEthernetRounded'
 import {alertApi} from '../services/alertApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS
+import {useReconModules} from '../hooks/useReconModules'
 
 const METRIC_OPTIONS = [
     {value: 'MISSING_IN_TARGET', label: 'Missing in Target'},
@@ -43,7 +41,7 @@ const METRIC_OPTIONS = [
 
 const EMPTY_RULE = {
     ruleName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: 'MISSING_IN_TARGET',
     operator: '>=',
     thresholdValue: '',
@@ -58,7 +56,7 @@ const EMPTY_RULE = {
 
 const EMPTY_SUBSCRIPTION = {
     subscriptionName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: '',
     severityThreshold: 'HIGH',
     recipientType: 'ROLE',
@@ -71,7 +69,7 @@ const EMPTY_SUBSCRIPTION = {
 
 const EMPTY_WEBHOOK_SUBSCRIPTION = {
     subscriptionName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: '',
     severityThreshold: 'HIGH',
     channelType: 'GENERIC_WEBHOOK',
@@ -101,7 +99,7 @@ const PERSONAL_CHANNEL_OPTIONS = [
 
 const EMPTY_ESCALATION_POLICY = {
     policyName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: '',
     severityThreshold: 'HIGH',
     storeId: '',
@@ -114,7 +112,7 @@ const EMPTY_ESCALATION_POLICY = {
 }
 
 const EMPTY_PERSONAL_SUBSCRIPTION = {
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: '',
     severityThreshold: 'HIGH',
     channelType: 'EMAIL',
@@ -127,7 +125,7 @@ const EMPTY_PERSONAL_SUBSCRIPTION = {
 
 const EMPTY_DIGEST_SUBSCRIPTION = {
     digestName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     scopeType: 'STORE',
     scopeKey: '',
     severityThreshold: 'HIGH',
@@ -139,7 +137,7 @@ const EMPTY_DIGEST_SUBSCRIPTION = {
 
 const EMPTY_ANOMALY_RULE = {
     ruleName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: 'TOTAL_TRANSACTIONS',
     anomalyType: 'BOTH',
     percentChangeThreshold: 30,
@@ -154,7 +152,7 @@ const EMPTY_ANOMALY_RULE = {
 
 const EMPTY_SMS_SUBSCRIPTION = {
     subscriptionName: '',
-    reconView: 'XSTORE_SIM',
+    reconView: '',
     metricKey: '',
     severityThreshold: 'HIGH',
     phoneNumber: '',
@@ -771,6 +769,7 @@ function SectionHeader({icon, title, subtitle, palette, tone = 'blue'}) {
 
 export default function Alerts({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions: MODULE_OPTIONS} = useReconModules()
     const canEdit = hasPermission('ALERT_EDIT')
     const canManagePersonalSubscriptions = hasPermission('ALERT_VIEW')
     const [data, setData] = useState(null)

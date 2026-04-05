@@ -18,11 +18,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -35,23 +38,35 @@ public class ExceptionNoiseSuppressionService {
     private final TenantService tenantService;
 
     @Transactional(readOnly = true)
-    public List<ExceptionSuppressionRuleDto> getRules(String tenantId, String reconView) {
+    public List<ExceptionSuppressionRuleDto> getRules(String tenantId,
+                                                      String reconView,
+                                                      Collection<String> allowedReconViews) {
         String normalizedReconView = normalizeNullable(reconView);
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
         return ruleRepository.findForAutomationCenter(tenantId, normalizedReconView).stream()
+                .filter(rule -> matchesAllowedReconView(rule.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                 .map(this::toRuleDto)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExceptionSuppressionRuleDto> getRules(String tenantId, String reconView) {
+        return getRules(tenantId, reconView, null);
     }
 
     @Transactional
     public ExceptionSuppressionRuleDto saveRule(String tenantId,
                                                 UUID ruleId,
                                                 SaveExceptionSuppressionRuleRequest request,
-                                                String actorUsername) {
+                                                String actorUsername,
+                                                Collection<String> allowedReconViews) {
         String ruleName = trimToNull(request != null ? request.getRuleName() : null);
         if (ruleName == null) {
             throw new IllegalArgumentException("ruleName is required");
         }
         String reconView = normalizeRequired(request != null ? request.getReconView() : null, "reconView");
+        requireAllowedReconView(reconView, allowedReconViews);
         String actionType = normalizeActionType(request != null ? request.getActionType() : null);
         String maxSeverity = normalizeSeverity(request != null ? request.getMaxSeverity() : null);
 
@@ -61,6 +76,10 @@ public class ExceptionNoiseSuppressionService {
                 .createdBy(actorUsername)
                 .build()
                 : ruleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Suppression rule not found"));
 
         rule.setRuleName(ruleName);
@@ -81,35 +100,76 @@ public class ExceptionNoiseSuppressionService {
     }
 
     @Transactional
-    public void deleteRule(String tenantId, UUID ruleId) {
+    public ExceptionSuppressionRuleDto saveRule(String tenantId,
+                                                UUID ruleId,
+                                                SaveExceptionSuppressionRuleRequest request,
+                                                String actorUsername) {
+        return saveRule(tenantId, ruleId, request, actorUsername, null);
+    }
+
+    @Transactional
+    public void deleteRule(String tenantId, UUID ruleId, Collection<String> allowedReconViews) {
         ExceptionSuppressionRule rule = ruleRepository.findByIdAndTenantId(ruleId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Suppression rule not found"));
+        requireAllowedReconView(rule.getReconView(), allowedReconViews);
         ruleRepository.delete(rule);
     }
 
+    @Transactional
+    public void deleteRule(String tenantId, UUID ruleId) {
+        deleteRule(tenantId, ruleId, null);
+    }
+
     @Transactional(readOnly = true)
-    public ExceptionSuppressionSummaryDto getSummary(String tenantId) {
+    public ExceptionSuppressionSummaryDto getSummary(String tenantId,
+                                                     String reconView,
+                                                     Collection<String> allowedReconViews) {
+        String normalizedReconView = normalizeNullable(reconView);
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
         List<ExceptionSuppressionRule> rules = ruleRepository.findForAutomationCenter(tenantId, null);
         List<ExceptionSuppressionAudit> recent = auditRepository.findRecentByTenantId(
                 tenantId,
                 LocalDateTime.now().minusDays(7));
+        List<ExceptionSuppressionRule> scopedRules = rules.stream()
+                .filter(rule -> matchesAllowedReconView(rule.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
+                .toList();
+        List<ExceptionSuppressionAudit> scopedRecent = recent.stream()
+                .filter(audit -> matchesAllowedReconView(audit.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
+                .toList();
         return ExceptionSuppressionSummaryDto.builder()
-                .ruleCount(rules.size())
-                .activeRuleCount(rules.stream().filter(ExceptionSuppressionRule::isActive).count())
-                .autoResolvedLast7Days(recent.stream()
+                .ruleCount(scopedRules.size())
+                .activeRuleCount(scopedRules.stream().filter(ExceptionSuppressionRule::isActive).count())
+                .autoResolvedLast7Days(scopedRecent.stream()
                         .filter(audit -> "AUTO_RESOLVE".equalsIgnoreCase(audit.getActionType()))
                         .count())
-                .suppressedLast7Days(recent.stream()
+                .suppressedLast7Days(scopedRecent.stream()
                         .filter(audit -> "SUPPRESS_QUEUE".equalsIgnoreCase(audit.getActionType()))
                         .count())
                 .build();
     }
 
     @Transactional(readOnly = true)
-    public List<ExceptionSuppressionAuditDto> getRecentActivity(String tenantId) {
+    public ExceptionSuppressionSummaryDto getSummary(String tenantId) {
+        return getSummary(tenantId, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExceptionSuppressionAuditDto> getRecentActivity(String tenantId,
+                                                                String reconView,
+                                                                Collection<String> allowedReconViews) {
+        String normalizedReconView = normalizeNullable(reconView);
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
         return auditRepository.findTop25ByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(audit -> matchesAllowedReconView(audit.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                 .map(this::toAuditDto)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExceptionSuppressionAuditDto> getRecentActivity(String tenantId) {
+        return getRecentActivity(tenantId, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -320,6 +380,41 @@ public class ExceptionNoiseSuppressionService {
     private String normalizeNullable(String value) {
         String trimmed = trimToNull(value);
         return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean matchesAllowedReconView(String value,
+                                            String requestedReconView,
+                                            Set<String> allowedReconViews,
+                                            boolean enforceAllowedScope) {
+        String normalizedValue = normalizeNullable(value);
+        if (requestedReconView != null) {
+            return Objects.equals(requestedReconView, normalizedValue);
+        }
+        if (!enforceAllowedScope) {
+            return true;
+        }
+        return normalizedValue != null && allowedReconViews.contains(normalizedValue);
+    }
+
+    private Set<String> normalizeReconViews(Collection<String> reconViews) {
+        if (reconViews == null) {
+            return Set.of();
+        }
+        return reconViews.stream()
+                .map(this::normalizeNullable)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalizeRequired(reconView, "reconView");
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new org.springframework.security.access.AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private String trimToNull(String value) {

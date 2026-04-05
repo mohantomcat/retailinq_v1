@@ -96,7 +96,9 @@ class SiocsKafkaPollerTest {
         lenient().when(runtimeConfigService.getInt("SIOCS_POLLER_PAGE_SIZE", 2)).thenReturn(2);
         lenient().when(integrationRunJournalRepository.startRun(anyString(), any(), anyString())).thenReturn(UUID.randomUUID());
         lenient().when(integrationRunJournalRepository.startStep(any(), anyString(), anyString(), anyInt())).thenReturn(UUID.randomUUID());
-        ReflectionTestUtils.setField(poller, "topic", "sim.transactions.raw");
+        ReflectionTestUtils.setField(poller, "posTopic", "sim.pos.transactions.raw");
+        ReflectionTestUtils.setField(poller, "inventoryTopic", "sim.inventory.transactions.raw");
+        ReflectionTestUtils.setField(poller, "unknownTopic", "sim.unknown.transactions.raw");
         ReflectionTestUtils.setField(poller, "integrationCanonicalTopic", "integration.canonical.transactions");
         ReflectionTestUtils.setField(poller, "dlqTopic", "recon.dlq");
     }
@@ -252,12 +254,12 @@ class SiocsKafkaPollerTest {
             @SuppressWarnings("unchecked")
             var callback = (org.springframework.kafka.core.KafkaOperations.OperationsCallback<String, String, Object>) invocation.getArgument(0);
             RecordMetadata metadata = new RecordMetadata(
-                    new TopicPartition("sim.transactions.raw", 0),
+                    new TopicPartition("sim.pos.transactions.raw", 0),
                     0L, 10L, System.currentTimeMillis(), 0L, 0, 0);
             CompletableFuture<SendResult<String, String>> future =
                     CompletableFuture.completedFuture(new SendResult<>(null, metadata));
             when(kafkaOperations.send(
-                    ArgumentMatchers.eq("sim.transactions.raw"),
+                    ArgumentMatchers.eq("sim.pos.transactions.raw"),
                     ArgumentMatchers.eq("1|0100700100008620251128"),
                     anyString())).thenReturn(future);
             return callback.doInOperations(kafkaOperations);

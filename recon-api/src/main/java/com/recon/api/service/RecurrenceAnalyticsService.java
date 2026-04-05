@@ -43,6 +43,7 @@ public class RecurrenceAnalyticsService {
     private final KnownIssueService knownIssueService;
     private final RootCauseTaxonomyService taxonomyService;
     private final TenantService tenantService;
+    private final ReconModuleService reconModuleService;
 
     public RecurrenceAnalyticsResponse getAnalytics(String tenantId,
                                                     String reconView,
@@ -626,13 +627,7 @@ public class RecurrenceAnalyticsService {
     }
 
     private String moduleLabel(String reconView) {
-        return switch (Objects.toString(reconView, "").toUpperCase(Locale.ROOT)) {
-            case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
-            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
-            case "XSTORE_XOCS" -> "Xstore vs XOCS";
-            case "XSTORE_SIM" -> "Xstore vs SIM";
-            default -> taxonomyService.labelForGenericKey(reconView);
-        };
+        return reconModuleService.resolveModuleLabel(reconView, taxonomyService.labelForGenericKey(reconView));
     }
 
     private String shortMonth(int monthValue) {

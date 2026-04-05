@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -60,8 +61,14 @@ public class AlertAnomalyDetectionService {
 
     @Transactional
     public void runAnomalyDetectionForTenant(String tenantId) {
+        runAnomalyDetectionForTenant(tenantId, null);
+    }
+
+    @Transactional
+    public void runAnomalyDetectionForTenant(String tenantId, Collection<String> allowedReconViews) {
         anomalyRuleRepository.findByActiveTrueOrderByUpdatedAtDesc().stream()
                 .filter(rule -> tenantId.equals(rule.getTenantId()))
+                .filter(rule -> isAllowedReconView(rule.getReconView(), allowedReconViews))
                 .forEach(rule -> {
                     try {
                         evaluateRule(rule);
@@ -399,6 +406,14 @@ public class AlertAnomalyDetectionService {
     private String trimToNull(String value) {
         String trimmed = Objects.toString(value, "").trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean isAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null || allowedReconViews.isEmpty()) {
+            return true;
+        }
+        String normalizedReconView = Objects.toString(reconView, "").trim().toUpperCase(Locale.ROOT);
+        return !normalizedReconView.isBlank() && allowedReconViews.contains(normalizedReconView);
     }
 
     private String valueOrNull(Object value) {

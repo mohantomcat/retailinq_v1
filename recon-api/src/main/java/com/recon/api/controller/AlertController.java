@@ -15,6 +15,7 @@ import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.AlertAnomalyDetectionService;
 import com.recon.api.service.AlertDigestService;
 import com.recon.api.service.AlertService;
+import com.recon.api.service.ReconModuleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -41,6 +42,7 @@ public class AlertController {
     private final AlertService alertService;
     private final AlertDigestService alertDigestService;
     private final AlertAnomalyDetectionService alertAnomalyDetectionService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<AlertsResponse>> getAlerts(
@@ -325,7 +327,10 @@ public class AlertController {
             @RequestParam(name = "subscriptionId", required = false) UUID subscriptionId,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireEditAccess(principal);
-        alertDigestService.runDigestsForTenant(principal.getTenantId(), subscriptionId);
+        alertDigestService.runDigestsForTenant(
+                principal.getTenantId(),
+                subscriptionId,
+                allowedReconViews(principal));
         return ResponseEntity.ok(ApiResponse.ok(
                 alertService.getAlerts(principal.getTenantId(), principal.getUserId(), principal.getUsername(), null, allowedReconViews(principal))));
     }
@@ -379,7 +384,9 @@ public class AlertController {
     public ResponseEntity<ApiResponse<AlertsResponse>> runAnomalyDetectionNow(
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireEditAccess(principal);
-        alertAnomalyDetectionService.runAnomalyDetectionForTenant(principal.getTenantId());
+        alertAnomalyDetectionService.runAnomalyDetectionForTenant(
+                principal.getTenantId(),
+                allowedReconViews(principal));
         return ResponseEntity.ok(ApiResponse.ok(
                 alertService.getAlerts(principal.getTenantId(), principal.getUserId(), principal.getUsername(), null, allowedReconViews(principal))));
     }
@@ -443,20 +450,7 @@ public class AlertController {
     }
 
     private Set<String> allowedReconViews(ReconUserPrincipal principal) {
-        Set<String> allowed = new LinkedHashSet<>();
-        if (principal.hasPermission("RECON_XSTORE_SIM")) {
-            allowed.add("XSTORE_SIM");
-        }
-        if (principal.hasPermission("RECON_XSTORE_SIOCS")) {
-            allowed.add("XSTORE_SIOCS");
-        }
-        if (principal.hasPermission("RECON_XSTORE_XOCS")) {
-            allowed.add("XSTORE_XOCS");
-        }
-        if (principal.hasPermission("RECON_SIOCS_MFCS")) {
-            allowed.add("SIOCS_MFCS");
-        }
-        return allowed;
+        return new LinkedHashSet<>(reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()));
     }
 
     private String normalizeReconView(String reconView) {

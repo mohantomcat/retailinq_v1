@@ -51,7 +51,7 @@ publisher:
 
 kafka:
   topic:
-    pos-transactions: ${KAFKA_POS_TOPIC:pos.transactions.raw}
+    xstore-pos-transactions: ${KAFKA_XSTORE_POS_TOPIC:xstore.pos.transactions.raw}
     integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
     dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
 

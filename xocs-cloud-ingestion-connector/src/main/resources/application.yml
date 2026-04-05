@@ -69,7 +69,7 @@ xocs:
 
 kafka:
   topic:
-    xocs-transactions: ${KAFKA_XOCS_TOPIC:xocs.transactions.raw}
+    xocs-pos-transactions: ${KAFKA_XOCS_POS_TOPIC:xocs.pos.transactions.raw}
     integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
 
 management:

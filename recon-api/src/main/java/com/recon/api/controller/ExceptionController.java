@@ -55,6 +55,7 @@ import com.recon.api.service.ExceptionScopeResolver;
 import com.recon.api.service.KnownIssueService;
 import com.recon.api.service.ExceptionNoiseSuppressionService;
 import com.recon.api.service.OperationsCommandCenterService;
+import com.recon.api.service.ReconModuleService;
 import com.recon.api.service.RecurrenceAnalyticsService;
 import com.recon.api.service.RegionalIncidentBoardService;
 import com.recon.api.service.RootCauseAnalyticsService;
@@ -97,6 +98,7 @@ public class ExceptionController {
     private final OperationsCommandCenterService operationsCommandCenterService;
     private final AccessScopeService accessScopeService;
     private final ExceptionScopeResolver exceptionScopeResolver;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping("/cases/{transactionKey}")
     public ResponseEntity<ApiResponse<ExceptionCaseDto>> getCase(
@@ -255,6 +257,7 @@ public class ExceptionController {
                             principal.getTenantId(),
                             principal.getUsername(),
                             storeScope.storeIds(),
+                            allowedReconViews(principal),
                             reconView,
                             queueType,
                             caseStatus,
@@ -404,6 +407,7 @@ public class ExceptionController {
                             principal.getTenantId(),
                             principal.getUsername(),
                             new java.util.LinkedHashSet<>(storeScope.storeIds()),
+                            allowedReconViews(principal),
                             reconView,
                             storeId,
                             search
@@ -423,7 +427,8 @@ public class ExceptionController {
             return ResponseEntity.ok(ApiResponse.ok(
                     exceptionCollaborationService.getCenter(
                             principal.getTenantId(),
-                            reconView
+                            reconView,
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Get ticketing center error: {}", e.getMessage(), e);
@@ -442,7 +447,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create integration channel error: {}", e.getMessage(), e);
@@ -462,7 +468,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             channelId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update integration channel error: {}", e.getMessage(), e);
@@ -595,7 +602,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             reconView,
                             activeOnly,
-                            search
+                            search,
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Get known issues error: {}", e.getMessage(), e);
@@ -614,7 +622,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create known issue error: {}", e.getMessage(), e);
@@ -634,7 +643,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             knownIssueId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update known issue error: {}", e.getMessage(), e);
@@ -654,7 +664,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             knownIssueId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Submit known issue feedback error: {}", e.getMessage(), e);
@@ -669,7 +680,10 @@ public class ExceptionController {
         try {
             requireAutomationView(principal, reconView);
             return ResponseEntity.ok(ApiResponse.ok(
-                    automationService.getAutomationCenter(principal.getTenantId(), reconView)));
+                    automationService.getAutomationCenter(
+                            principal.getTenantId(),
+                            reconView,
+                            allowedReconViews(principal))));
         } catch (Exception e) {
             log.error("Get exception automation center error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
@@ -687,7 +701,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create suppression rule error: {}", e.getMessage(), e);
@@ -707,7 +722,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             ruleId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update suppression rule error: {}", e.getMessage(), e);
@@ -722,7 +738,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireAutomationEdit(principal, reconView);
-            exceptionNoiseSuppressionService.deleteRule(principal.getTenantId(), ruleId);
+            exceptionNoiseSuppressionService.deleteRule(principal.getTenantId(), ruleId, allowedReconViews(principal));
             return ResponseEntity.ok(ApiResponse.ok(null));
         } catch (Exception e) {
             log.error("Delete suppression rule error: {}", e.getMessage(), e);
@@ -741,7 +757,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create exception routing rule error: {}", e.getMessage(), e);
@@ -761,7 +778,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             ruleId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update exception routing rule error: {}", e.getMessage(), e);
@@ -776,7 +794,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireAutomationEdit(principal, reconView);
-            automationService.deleteRoutingRule(principal.getTenantId(), ruleId);
+            automationService.deleteRoutingRule(principal.getTenantId(), ruleId, allowedReconViews(principal));
             return ResponseEntity.ok(ApiResponse.ok(null));
         } catch (Exception e) {
             log.error("Delete exception routing rule error: {}", e.getMessage(), e);
@@ -795,7 +813,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create exception playbook error: {}", e.getMessage(), e);
@@ -815,7 +834,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             playbookId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update exception playbook error: {}", e.getMessage(), e);
@@ -830,7 +850,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requireAutomationEdit(principal, reconView);
-            automationService.deletePlaybook(principal.getTenantId(), playbookId);
+            automationService.deletePlaybook(principal.getTenantId(), playbookId, allowedReconViews(principal));
             return ResponseEntity.ok(ApiResponse.ok(null));
         } catch (Exception e) {
             log.error("Delete exception playbook error: {}", e.getMessage(), e);
@@ -890,7 +910,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create exception closure policy error: {}", e.getMessage(), e);
@@ -910,7 +931,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             policyId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update exception closure policy error: {}", e.getMessage(), e);
@@ -929,7 +951,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             null,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Create exception escalation policy error: {}", e.getMessage(), e);
@@ -949,7 +972,8 @@ public class ExceptionController {
                             principal.getTenantId(),
                             policyId,
                             request,
-                            principal.getUsername()
+                            principal.getUsername(),
+                            allowedReconViews(principal)
                     )));
         } catch (Exception e) {
             log.error("Update exception escalation policy error: {}", e.getMessage(), e);
@@ -985,7 +1009,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requirePolicyEdit(principal, reconView);
-            workflowService.deletePolicy(principal.getTenantId(), policyId);
+            workflowService.deletePolicy(principal.getTenantId(), policyId, allowedReconViews(principal));
             return ResponseEntity.ok(ApiResponse.ok(null));
         } catch (Exception e) {
             log.error("Delete exception closure policy error: {}", e.getMessage(), e);
@@ -1000,7 +1024,7 @@ public class ExceptionController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         try {
             requirePolicyEdit(principal, reconView);
-            exceptionEscalationService.deletePolicy(principal.getTenantId(), policyId);
+            exceptionEscalationService.deletePolicy(principal.getTenantId(), policyId, allowedReconViews(principal));
             return ResponseEntity.ok(ApiResponse.ok(null));
         } catch (Exception e) {
             log.error("Delete exception escalation policy error: {}", e.getMessage(), e);
@@ -1021,16 +1045,7 @@ public class ExceptionController {
         if (reconView == null || reconView.isBlank()) {
             throw new AccessDeniedException("reconView is required");
         }
-        String requiredPermission = switch (reconView.toUpperCase()) {
-            case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
-            case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
-            case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
-            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
-            default -> null;
-        };
-        if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
-            throw new AccessDeniedException("Missing permission: " + requiredPermission);
-        }
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
     }
 
     private void requireQueueAccess(ReconUserPrincipal principal, String reconView) {
@@ -1067,33 +1082,11 @@ public class ExceptionController {
         if (reconView == null || reconView.isBlank()) {
             return;
         }
-        String requiredPermission = switch (reconView.toUpperCase()) {
-            case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
-            case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
-            case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
-            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
-            default -> null;
-        };
-        if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
-            throw new AccessDeniedException("Missing permission: " + requiredPermission);
-        }
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
     }
 
     private java.util.List<String> allowedReconViews(ReconUserPrincipal principal) {
-        java.util.ArrayList<String> allowed = new java.util.ArrayList<>();
-        if (principal.hasPermission("RECON_XSTORE_SIM")) {
-            allowed.add("XSTORE_SIM");
-        }
-        if (principal.hasPermission("RECON_XSTORE_SIOCS")) {
-            allowed.add("XSTORE_SIOCS");
-        }
-        if (principal.hasPermission("RECON_XSTORE_XOCS")) {
-            allowed.add("XSTORE_XOCS");
-        }
-        if (principal.hasPermission("RECON_SIOCS_MFCS")) {
-            allowed.add("SIOCS_MFCS");
-        }
-        return allowed;
+        return new java.util.ArrayList<>(reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()));
     }
 
     private void requirePermission(ReconUserPrincipal principal, String permission) {

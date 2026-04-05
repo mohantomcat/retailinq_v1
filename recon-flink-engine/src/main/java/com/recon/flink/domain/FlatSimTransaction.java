@@ -9,6 +9,7 @@ public class FlatSimTransaction implements Serializable {
     // Identity
     private String transactionKey;
     private String externalId;
+    private String tenantId;
     private String source;
     private String storeId;
     private String wkstnId;
@@ -55,6 +56,14 @@ public class FlatSimTransaction implements Serializable {
 
     public void setExternalId(String externalId) {
         this.externalId = externalId;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getSource() {

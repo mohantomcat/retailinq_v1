@@ -23,9 +23,7 @@ import {
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 function SummaryCard({label, value, supporting, tone, palette}) {
     return (
@@ -100,6 +98,7 @@ function targetTabLabel(targetTab, t) {
 
 export default function OperationsCommandCenter({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('REPORTS_VIEW')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')

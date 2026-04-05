@@ -15,9 +15,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -29,36 +32,52 @@ public class DashboardAnalyticsService {
     private final ReconElasticsearchRepository esRepository;
     private final ExceptionCaseRepository exceptionCaseRepository;
     private final ExceptionSlaService exceptionSlaService;
+    private final ReconModuleService reconModuleService;
 
     public DashboardAnalyticsResponse getAnalytics(String tenantId,
                                                    List<String> storeIds,
                                                    List<String> wkstnIds,
                                                    List<String> transactionTypes,
+                                                   List<String> transactionFamilies,
                                                    String reconView) {
+        return getAnalytics(tenantId, storeIds, wkstnIds, transactionTypes, transactionFamilies, reconView, null);
+    }
+
+    public DashboardAnalyticsResponse getAnalytics(String tenantId,
+                                                   List<String> storeIds,
+                                                   List<String> wkstnIds,
+                                                   List<String> transactionTypes,
+                                                   List<String> transactionFamilies,
+                                                   String reconView,
+                                                   Collection<String> allowedReconViews) {
         String today = LocalDate.now().toString();
         String last7 = LocalDate.now().minusDays(6).toString();
         String last30 = LocalDate.now().minusDays(29).toString();
+        List<String> scopedReconViews = resolveScopedReconViews(reconView, allowedReconViews);
         SlaSummaryDto slaSummary = exceptionSlaService.getSlaSummary(
-                tenantId, reconView, storeIds, wkstnIds);
-        boolean transactionTypeScoped = "SIOCS_MFCS".equalsIgnoreCase(reconView);
+                tenantId, reconView, storeIds, wkstnIds, scopedReconViews);
+        boolean transactionFamilyScoped = reconModuleService.isTransactionFamilyScoped(reconView);
 
         return DashboardAnalyticsResponse.builder()
-                .last7Days(buildTrend(last7, today, storeIds, wkstnIds, transactionTypes, reconView))
-                .last30Days(buildTrend(last30, today, storeIds, wkstnIds, transactionTypes, reconView))
+                .last7Days(buildTrend(last7, today, storeIds, wkstnIds, transactionTypes, transactionFamilies, reconView, scopedReconViews))
+                .last30Days(buildTrend(last30, today, storeIds, wkstnIds, transactionTypes, transactionFamilies, reconView, scopedReconViews))
                 .topFailingStores(buildRankedStats(
-                        esRepository.aggregateByFieldAndStatus(
-                                "storeId", 20, storeIds, wkstnIds, transactionTypes, last30, today, reconView)))
+                        mergeNestedStatusCounts(scopedReconViews,
+                                scopedReconView -> esRepository.aggregateByFieldAndStatus(
+                                        "storeId", 20, storeIds, wkstnIds, transactionTypes, transactionFamilies, last30, today, scopedReconView))))
                 .topFailingRegisters(buildRankedStats(
-                        esRepository.aggregateByFieldAndStatus(
-                                transactionTypeScoped ? "transactionType" : "wkstnId",
-                                20,
-                                storeIds,
-                                wkstnIds,
-                                transactionTypes,
-                                last30,
-                                today,
-                                reconView)))
-                .exceptionAging(buildExceptionAging(tenantId, reconView))
+                        mergeNestedStatusCounts(scopedReconViews,
+                                scopedReconView -> esRepository.aggregateByFieldAndStatus(
+                                        transactionFamilyScoped ? "transactionFamily" : "wkstnId",
+                                        20,
+                                        storeIds,
+                                        wkstnIds,
+                                        transactionTypes,
+                                        transactionFamilies,
+                                        last30,
+                                        today,
+                                        scopedReconView))))
+                .exceptionAging(buildExceptionAging(tenantId, reconView, scopedReconViews))
                 .slaSummary(slaSummary)
                 .build();
     }
@@ -68,9 +87,13 @@ public class DashboardAnalyticsService {
                                         List<String> storeIds,
                                         List<String> wkstnIds,
                                         List<String> transactionTypes,
-                                        String reconView) {
-        Map<String, Map<String, Long>> raw = esRepository.aggregateByBusinessDateAndStatus(
-                storeIds, wkstnIds, transactionTypes, fromBusinessDate, toBusinessDate, reconView);
+                                        List<String> transactionFamilies,
+                                        String reconView,
+                                        List<String> scopedReconViews) {
+        Map<String, Map<String, Long>> raw = mergeNestedStatusCounts(
+                scopedReconViews,
+                scopedReconView -> esRepository.aggregateByBusinessDateAndStatus(
+                        storeIds, wkstnIds, transactionTypes, transactionFamilies, fromBusinessDate, toBusinessDate, scopedReconView));
 
         List<TrendPoint> points = new ArrayList<>();
         LocalDate start = LocalDate.parse(fromBusinessDate);
@@ -143,13 +166,20 @@ public class DashboardAnalyticsService {
                 .collect(Collectors.toList());
     }
 
-    private List<ExceptionAgingBucket> buildExceptionAging(String tenantId, String reconView) {
-        String normalizedReconView = Objects.requireNonNullElse(reconView, "XSTORE_SIM").toUpperCase();
+    private List<ExceptionAgingBucket> buildExceptionAging(String tenantId,
+                                                           String reconView,
+                                                           List<String> scopedReconViews) {
+        String normalizedReconView = reconView == null || reconView.isBlank()
+                ? null
+                : reconView.toUpperCase();
         List<ExceptionCase> cases = exceptionCaseRepository.findActiveCasesForAging(
                 tenantId,
                 normalizedReconView,
                 LocalDateTime.now().minusDays(30)
-        );
+        ).stream()
+                .filter(exceptionCase -> normalizedReconView != null
+                        || scopedReconViews.contains(normalizeReconView(exceptionCase.getReconView())))
+                .toList();
 
         Map<String, Long> buckets = new LinkedHashMap<>();
         buckets.put("0-1 day", 0L);
@@ -180,7 +210,10 @@ public class DashboardAnalyticsService {
     }
 
     private long countTargetStatus(Map<String, Long> byStatus, String reconView, String prefix) {
-        String target = targetSystem(reconView);
+        if (reconView == null || reconView.isBlank()) {
+            return countPrefix(byStatus, prefix);
+        }
+        String target = reconModuleService.resolveTargetSystem(reconView, "SIM");
         return byStatus.getOrDefault(prefix + target, 0L);
     }
 
@@ -191,16 +224,41 @@ public class DashboardAnalyticsService {
                 .sum();
     }
 
-    private String targetSystem(String reconView) {
-        if ("XSTORE_SIOCS".equalsIgnoreCase(reconView)) {
-            return "SIOCS";
+    private List<String> resolveScopedReconViews(String reconView, Collection<String> allowedReconViews) {
+        if (reconView != null && !reconView.isBlank()) {
+            return List.of(normalizeReconView(reconView));
         }
-        if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
-            return "MFCS";
+        if (allowedReconViews == null) {
+            return List.of();
         }
-        if ("XSTORE_XOCS".equalsIgnoreCase(reconView)) {
-            return "XOCS";
+        return allowedReconViews.stream()
+                .map(this::normalizeReconView)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .toList();
+    }
+
+    private String normalizeReconView(String reconView) {
+        if (reconView == null || reconView.isBlank()) {
+            return null;
         }
-        return "SIM";
+        return reconView.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private Map<String, Map<String, Long>> mergeNestedStatusCounts(
+            List<String> scopedReconViews,
+            java.util.function.Function<String, Map<String, Map<String, Long>>> loader) {
+        if (scopedReconViews.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Map<String, Long>> merged = new LinkedHashMap<>();
+        for (String reconView : scopedReconViews) {
+            loader.apply(reconView).forEach((key, statusCounts) -> {
+                Map<String, Long> target = merged.computeIfAbsent(key, ignored -> new LinkedHashMap<>());
+                statusCounts.forEach((status, count) -> target.merge(status, count, Long::sum));
+            });
+        }
+        return merged;
     }
 }

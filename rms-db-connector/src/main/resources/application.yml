@@ -1,0 +1,86 @@
+spring:
+  application:
+    name: rms-db-connector
+  main:
+    banner-mode: console
+  datasource:
+    url: jdbc:oracle:thin:@${RMS_DB_HOST:localhost}:1521:${RMS_DB_SID:JCR}
+    username: ${RMS_DB_USER:rms}
+    password: ${RMS_DB_PASSWORD:}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 30000
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      acks: all
+      retries: 10
+      enable-idempotence: true
+      compression-type: snappy
+      linger-ms: 5
+      batch-size: 65536
+  flyway:
+    enabled: false
+
+checkpoint:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
+    username: ${PG_USER:recon}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 3
+      connection-timeout: 30000
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+rms:
+  poller:
+    org-id: ${ORG_ID:1}
+    poller-id: ${RMS_POLLER_ID:rms-main}
+    tenant-id: ${TENANT_ID:tenant-india}
+    tenant-timezone: ${TENANT_TIMEZONE:Asia/Kolkata}
+    poll-interval-ms: ${RMS_POLLER_INTERVAL_MS:300000}
+    safety-margin-min: ${RMS_POLLER_SAFETY_MARGIN_MIN:10}
+    page-size: ${RMS_POLLER_PAGE_SIZE:500}
+    max-retries: ${RMS_POLLER_MAX_RETRIES:5}
+    lease-timeout-seconds: ${RMS_POLLER_LEASE_TIMEOUT_SECONDS:900}
+    scheduler-enabled: ${RMS_POLLER_SCHEDULER_ENABLED:true}
+    transaction-view: ${RMS_TRANSACTION_VIEW:RMS_TRANSACTION_V}
+
+kafka:
+  topic:
+    rms-inventory-transactions: ${KAFKA_RMS_INVENTORY_TOPIC:rms.inventory.transactions.raw}
+    integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
+    dlq: ${KAFKA_DLQ_TOPIC:recon.dlq}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+connector:
+  security:
+    username: ${CONNECTOR_ADMIN_USER:connector-admin}
+    password: ${CONNECTOR_ADMIN_PASSWORD:}
+
+logging:
+  level:
+    com.recon: DEBUG
+    org.springframework.kafka: INFO
+
+server:
+  port: ${SERVER_PORT:8186}

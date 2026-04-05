@@ -9,6 +9,7 @@ import com.recon.api.domain.ResolveIntegrationErrorRequest;
 import com.recon.api.domain.SaveIntegrationReplayRequest;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.IntegrationHubService;
+import com.recon.api.service.ReconModuleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -30,16 +31,24 @@ import java.util.UUID;
 public class IntegrationHubController {
 
     private final IntegrationHubService integrationHubService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<IntegrationHubResponse>> getHub(
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
-        return ResponseEntity.ok(ApiResponse.ok(integrationHubService.getHub(principal.getTenantId())));
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
+        return ResponseEntity.ok(ApiResponse.ok(
+                integrationHubService.getHub(
+                        principal.getTenantId(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView)));
     }
 
     @GetMapping("/messages")
     public ResponseEntity<ApiResponse<List<IntegrationMessageTraceItemDto>>> getMessages(
+            @RequestParam(name = "reconView", required = false) String reconView,
             @RequestParam(required = false) String connectorKey,
             @RequestParam(required = false) String flowKey,
             @RequestParam(required = false) String businessKey,
@@ -48,9 +57,12 @@ public class IntegrationHubController {
             @RequestParam(defaultValue = "25") int limit,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
                 integrationHubService.getMessages(
                         principal.getTenantId(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView,
                         connectorKey,
                         flowKey,
                         businessKey,
@@ -64,28 +76,49 @@ public class IntegrationHubController {
     @GetMapping("/messages/{id}")
     public ResponseEntity<ApiResponse<IntegrationMessageTraceDetailDto>> getMessageDetail(
             @PathVariable UUID id,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
-        return ResponseEntity.ok(ApiResponse.ok(integrationHubService.getMessageDetail(principal.getTenantId(), id)));
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
+        return ResponseEntity.ok(ApiResponse.ok(
+                integrationHubService.getMessageDetail(
+                        principal.getTenantId(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView,
+                        id)));
     }
 
     @PostMapping("/replay-requests")
     public ResponseEntity<ApiResponse<IntegrationReplayRequestDto>> createReplayRequest(
             @RequestBody SaveIntegrationReplayRequest request,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireReplay(principal);
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
-                integrationHubService.createReplayRequest(principal.getTenantId(), principal.getUsername(), request)
+                integrationHubService.createReplayRequest(
+                        principal.getTenantId(),
+                        principal.getUsername(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView,
+                        request)
         ));
     }
 
     @PostMapping("/replay-requests/{id}/execute")
     public ResponseEntity<ApiResponse<IntegrationReplayRequestDto>> executeReplayRequest(
             @PathVariable UUID id,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireReplay(principal);
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
-                integrationHubService.executeReplayRequest(principal.getTenantId(), principal.getUsername(), id)
+                integrationHubService.executeReplayRequest(
+                        principal.getTenantId(),
+                        principal.getUsername(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView,
+                        id)
         ));
     }
 
@@ -93,10 +126,18 @@ public class IntegrationHubController {
     public ResponseEntity<ApiResponse<com.recon.api.domain.IntegrationErrorQueueItemDto>> resolveError(
             @PathVariable UUID id,
             @RequestBody(required = false) ResolveIntegrationErrorRequest request,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireReplay(principal);
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
-                integrationHubService.resolveError(principal.getTenantId(), principal.getUsername(), id, request)
+                integrationHubService.resolveError(
+                        principal.getTenantId(),
+                        principal.getUsername(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView,
+                        id,
+                        request)
         ));
     }
 

@@ -35,18 +35,43 @@ export function AuthProvider({children}) {
 
     useEffect(() => {
         const token = sessionStorage.getItem(TOKEN_KEY)
+        const refreshToken = sessionStorage.getItem(REFRESH_KEY)
         const stored = sessionStorage.getItem(USER_KEY)
 
-        if (token && stored) {
-            try {
-                setAccessToken(token)
-                setUser(sanitizeUserPreferences(JSON.parse(stored)))
-            } catch {
-                sessionStorage.clear()
+        const bootstrap = async () => {
+            if (token && stored) {
+                try {
+                    setAccessToken(token)
+                    const parsedUser = sanitizeUserPreferences(JSON.parse(stored))
+                    setUser(parsedUser)
+
+                    if (refreshToken && !Array.isArray(parsedUser?.accessibleModules)) {
+                        const data = await authApi.refresh(refreshToken)
+                        const updatedUser = sanitizeUserPreferences({
+                            ...parsedUser,
+                            accessToken: data.accessToken ?? token,
+                            permissions: data.permissions ?? parsedUser.permissions,
+                            accessibleModules: data.accessibleModules ?? [],
+                            storeIds: data.storeIds ?? parsedUser.storeIds,
+                            effectiveStoreIds: data.effectiveStoreIds ?? parsedUser.effectiveStoreIds,
+                            allStoreAccess: data.allStoreAccess ?? parsedUser.allStoreAccess,
+                            accessScope: data.accessScope ?? parsedUser.accessScope,
+                            authMode: data.authMode ?? parsedUser.authMode,
+                        })
+                        sessionStorage.setItem(TOKEN_KEY, data.accessToken ?? token)
+                        sessionStorage.setItem(USER_KEY, JSON.stringify(updatedUser))
+                        setAccessToken(data.accessToken ?? token)
+                        setUser(updatedUser)
+                    }
+                } catch {
+                    sessionStorage.clear()
+                }
             }
+
+            setLoading(false)
         }
 
-        setLoading(false)
+        bootstrap()
     }, [])
 
     const persistUser = useCallback((nextUser) => {
@@ -99,6 +124,8 @@ export function AuthProvider({children}) {
                 ...(JSON.parse(sessionStorage.getItem(USER_KEY) || '{}')),
                 accessToken: data.accessToken,
                 permissions: data.permissions,
+                accessibleModules:
+                    data.accessibleModules ?? user?.accessibleModules,
                 storeIds: data.storeIds ?? user?.storeIds,
                 effectiveStoreIds:
                     data.effectiveStoreIds ?? user?.effectiveStoreIds,
@@ -127,6 +154,9 @@ export function AuthProvider({children}) {
             roles: updatedUserDto.roles ?? currentUser.roles,
             permissions:
                 updatedUserDto.permissions ?? currentUser.permissions,
+            accessibleModules:
+                updatedUserDto.accessibleModules ??
+                currentUser.accessibleModules,
             storeIds: updatedUserDto.storeIds ?? currentUser.storeIds,
             effectiveStoreIds:
                 updatedUserDto.effectiveStoreIds ??

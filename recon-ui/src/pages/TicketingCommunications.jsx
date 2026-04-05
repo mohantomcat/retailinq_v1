@@ -18,9 +18,7 @@ import {
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const CHANNEL_GROUP_OPTIONS = [
     {value: 'TICKETING', label: 'Ticketing'},
@@ -89,6 +87,7 @@ function formatChannelSubtitle(channel, t) {
 
 export default function TicketingCommunications({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
     const canEdit = hasPermission('EXCEPTION_EDIT')
     const [loading, setLoading] = useState(true)

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -46,6 +47,7 @@ public class StoreManagerLiteService {
     public StoreManagerLiteResponse getView(String tenantId,
                                             String username,
                                             Set<String> accessibleStores,
+                                            Collection<String> allowedReconViews,
                                             String reconView,
                                             String storeId,
                                             String search) {
@@ -53,6 +55,7 @@ public class StoreManagerLiteService {
                 tenantId,
                 username,
                 accessibleStores,
+                allowedReconViews,
                 reconView,
                 "ALL",
                 null,
@@ -133,8 +136,8 @@ public class StoreManagerLiteService {
                 .asOfBusinessDate(currentBusinessDate.toString())
                 .operatingModel(tenantOperatingModelService.toDto(tenant))
                 .storeOptions(storeOptions)
-                .ticketChannels(exceptionCollaborationService.getActiveChannels(tenantId, reconView, "TICKETING"))
-                .communicationChannels(exceptionCollaborationService.getActiveChannels(tenantId, reconView, "COMMUNICATION"))
+                .ticketChannels(exceptionCollaborationService.getActiveChannels(tenantId, reconView, "TICKETING", allowedReconViews))
+                .communicationChannels(exceptionCollaborationService.getActiveChannels(tenantId, reconView, "COMMUNICATION", allowedReconViews))
                 .summary(StoreManagerLiteSummaryDto.builder()
                         .storesInView(storeOptions.size())
                         .activeIncidents(incidents.size())
@@ -157,6 +160,16 @@ public class StoreManagerLiteService {
                 .actionItems(actionItems)
                 .incidents(incidentCards)
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public StoreManagerLiteResponse getView(String tenantId,
+                                            String username,
+                                            Set<String> accessibleStores,
+                                            String reconView,
+                                            String storeId,
+                                            String search) {
+        return getView(tenantId, username, accessibleStores, null, reconView, storeId, search);
     }
 
     private StoreManagerLiteIncidentDto toIncidentCard(ExceptionStoreIncidentDto incident,

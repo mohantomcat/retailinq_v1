@@ -13,6 +13,7 @@ function getPalette(themeMode) {
     return {
         isDark,
         cardBg: isDark ? '#0F172A' : '#FFFFFF',
+        cardBgAlt: isDark ? '#111827' : '#F8FAFC',
         border: isDark ? '#1E293B' : '#E5E7EB',
         text: isDark ? '#E2E8F0' : '#111827',
         textMuted: isDark ? '#94A3B8' : '#6B7280',
@@ -26,7 +27,56 @@ function getPalette(themeMode) {
     }
 }
 
-export default function KPI({title, value, onClick, selected, testId}) {
+function getToneStyles(tone, palette) {
+    switch (tone) {
+        case 'neutral':
+            return {
+                accent: palette.isDark ? '#94A3B8' : '#64748B',
+                valueColor: palette.text,
+            }
+        case 'success':
+            return {
+                accent: palette.isDark ? '#34D399' : '#15803D',
+                valueColor: palette.isDark ? '#86EFAC' : '#15803D',
+            }
+        case 'warning':
+            return {
+                accent: palette.isDark ? '#FBBF24' : '#B45309',
+                valueColor: palette.isDark ? '#FCD34D' : '#B45309',
+            }
+        case 'error':
+            return {
+                accent: palette.isDark ? '#F87171' : '#B91C1C',
+                valueColor: palette.isDark ? '#FCA5A5' : '#B91C1C',
+            }
+        case 'info':
+        default:
+            return {
+                accent: '#2563EB',
+                valueColor: '#2563EB',
+            }
+    }
+}
+
+function formatValue(value) {
+    if (value === null || value === undefined || value === '') {
+        return '0'
+    }
+    if (typeof value === 'number') {
+        return value.toLocaleString()
+    }
+    return String(value)
+}
+
+export default function KPI({
+    title,
+    value,
+    onClick,
+    selected,
+    testId,
+    supportingText,
+    tone = 'info',
+}) {
     const [themeMode, setThemeMode] = useState(getThemeMode())
 
     useEffect(() => {
@@ -43,6 +93,10 @@ export default function KPI({title, value, onClick, selected, testId}) {
     }, [])
 
     const palette = useMemo(() => getPalette(themeMode), [themeMode])
+    const toneStyles = useMemo(() => getToneStyles(tone, palette), [tone, palette])
+    const interactive = typeof onClick === 'function'
+    const displayValue = formatValue(value)
+    const isStringValue = typeof value === 'string'
 
     return (
         <Card
@@ -50,18 +104,20 @@ export default function KPI({title, value, onClick, selected, testId}) {
             data-testid={testId}
             sx={{
                 position: 'relative',
-                cursor: 'pointer',
+                cursor: interactive ? 'pointer' : 'default',
+                minHeight: 108,
                 height: '100%',
                 borderRadius: 3,
                 border: `1px solid ${selected ? '#2563EB' : palette.border}`,
                 bgcolor: selected ? palette.selectedBg : palette.cardBg,
                 transition: 'all 0.2s ease',
                 boxShadow: selected ? palette.selectedShadow : 'none',
-
-                '&:hover': {
-                    boxShadow: palette.hoverShadow,
-                    transform: 'translateY(-2px)',
-                },
+                '&:hover': interactive
+                    ? {
+                        boxShadow: palette.hoverShadow,
+                        transform: 'translateY(-2px)',
+                    }
+                    : undefined,
             }}
         >
             <Box
@@ -70,22 +126,20 @@ export default function KPI({title, value, onClick, selected, testId}) {
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: 4,
+                    width: 5,
                     borderTopLeftRadius: 12,
                     borderBottomLeftRadius: 12,
-                    bgcolor: selected ? '#2563EB' : 'transparent',
+                    bgcolor: selected ? '#2563EB' : toneStyles.accent,
                 }}
             />
 
-            <CardContent sx={{pl: 3}}>
+            <CardContent sx={{pl: 2.4, pr: 2, py: 1.55}}>
                 <Typography
-                    variant="subtitle2"
                     sx={{
                         color: palette.textMuted,
                         fontWeight: 600,
-                        letterSpacing: '0.4px',
-                        textTransform: 'uppercase',
-                        fontSize: '0.75rem',
+                        fontSize: '0.78rem',
+                        lineHeight: 1.35,
                     }}
                     gutterBottom
                 >
@@ -93,14 +147,33 @@ export default function KPI({title, value, onClick, selected, testId}) {
                 </Typography>
 
                 <Typography
-                    variant="h4"
                     sx={{
-                        fontWeight: 700,
-                        color: palette.text,
+                        fontWeight: 800,
+                        color: selected ? '#2563EB' : toneStyles.valueColor,
+                        fontSize: isStringValue ? '1.45rem' : '2rem',
+                        lineHeight: 1.15,
+                        letterSpacing: isStringValue ? '-0.02em' : '-0.03em',
                     }}
                 >
-                    {value ? value.toLocaleString() : 0}
+                    {displayValue}
                 </Typography>
+
+                {supportingText ? (
+                    <Typography
+                        sx={{
+                            mt: 0.45,
+                            fontSize: '0.74rem',
+                            color: palette.textMuted,
+                            lineHeight: 1.45,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {supportingText}
+                    </Typography>
+                ) : null}
             </CardContent>
         </Card>
     )

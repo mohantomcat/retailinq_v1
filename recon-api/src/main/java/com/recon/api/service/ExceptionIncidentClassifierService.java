@@ -9,6 +9,12 @@ import java.util.Objects;
 @Service
 public class ExceptionIncidentClassifierService {
 
+    private final ReconModuleService reconModuleService;
+
+    public ExceptionIncidentClassifierService(ReconModuleService reconModuleService) {
+        this.reconModuleService = reconModuleService;
+    }
+
     public IncidentClassification classify(ExceptionCase exceptionCase) {
         String reasonCode = Objects.toString(exceptionCase.getReasonCode(), "").toUpperCase(Locale.ROOT);
         String rootCauseCategory = Objects.toString(exceptionCase.getRootCauseCategory(), "").toUpperCase(Locale.ROOT);
@@ -49,13 +55,7 @@ public class ExceptionIncidentClassifierService {
     }
 
     public String connectedSystemName(String reconView) {
-        return switch (Objects.toString(reconView, "").toUpperCase(Locale.ROOT)) {
-            case "XSTORE_SIM" -> "SIM";
-            case "XSTORE_SIOCS" -> "SIOCS";
-            case "XSTORE_XOCS" -> "XOCS";
-            case "SIOCS_MFCS" -> "MFCS";
-            default -> "Connector";
-        };
+        return reconModuleService.resolveTargetSystem(reconView, "Connector");
     }
 
     public record IncidentClassification(String code, String title) {

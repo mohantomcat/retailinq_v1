@@ -7,9 +7,14 @@ import com.recon.flink.domain.ItemDiscrepancy;
 import com.recon.flink.domain.MatchEvaluation;
 import com.recon.flink.domain.MatchToleranceProfile;
 import com.recon.flink.domain.ReconEvent;
+import com.recon.flink.util.InventoryBusinessContextFactory;
+import com.recon.flink.util.InventoryDirectionProfile;
+import com.recon.flink.util.InventoryDirectionResolver;
 import com.recon.flink.util.ItemDiffEngine;
 import com.recon.flink.util.MatchScoringEngine;
 import com.recon.flink.util.MatchToleranceResolver;
+import com.recon.integration.recon.TransactionFamily;
+import com.recon.integration.recon.TransactionFamilyConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
@@ -39,10 +44,9 @@ public class InventoryToInventoryReconciliationProcessor
     private ValueState<FlatSimTransaction> sourceState;
     private ValueState<FlatSimTransaction> counterState;
     private ValueState<Boolean> finalizedFlag;
-    private ValueState<Long> sourceSeenAt;
-    private ValueState<Integer> lastCounterStatus;
     private ValueState<String> finalizedStatus;
     private ValueState<String> originalChecksum;
+    private ValueState<String> finalizedCounterpartySystem;
 
     public InventoryToInventoryReconciliationProcessor(String reconView,
                                                        String sourceLabel,
@@ -61,12 +65,6 @@ public class InventoryToInventoryReconciliationProcessor
                 .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
                 .build();
 
-        StateTtlConfig dedupTtl = StateTtlConfig
-                .newBuilder(Time.hours(32))
-                .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
-                .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
-                .build();
-
         StateTtlConfig correctionTtl = StateTtlConfig
                 .newBuilder(Time.hours(56))
                 .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
@@ -76,81 +74,23 @@ public class InventoryToInventoryReconciliationProcessor
         sourceState = registerState("inventory-source", FlatSimTransaction.class, opTtl);
         counterState = registerState("inventory-counter", FlatSimTransaction.class, opTtl);
         finalizedFlag = registerState("inventory-finalized", Boolean.class, opTtl);
-        sourceSeenAt = registerState("inventory-source-seen", Long.class, dedupTtl);
-        lastCounterStatus = registerState("inventory-counter-status", Integer.class, dedupTtl);
         finalizedStatus = registerState("inventory-finalized-status", String.class, correctionTtl);
         originalChecksum = registerState("inventory-orig-checksum", String.class, correctionTtl);
+        finalizedCounterpartySystem = registerState("inventory-finalized-counterparty", String.class, correctionTtl);
     }
 
     @Override
     public void processElement1(FlatSimTransaction source,
                                 Context ctx,
                                 Collector<ReconEvent> out) throws Exception {
-        if (sourceSeenAt.value() != null) {
-            log.debug("Duplicate {} source dropped: {}", sourceLabel, source.getTransactionKey());
-            return;
-        }
-        sourceSeenAt.update(ctx.timerService().currentProcessingTime());
-
-        FlatSimTransaction counter = counterState.value();
-        if (isReconciliableCounter(counter)) {
-            reconcile(source, counter, out);
-            counterState.clear();
-            return;
-        }
-
-        sourceState.update(source);
-        long eventTime = ctx.timestamp();
-        ctx.timerService().registerEventTimeTimer(eventTime + SOFT_TTL_MS);
-        ctx.timerService().registerEventTimeTimer(eventTime + HARD_TTL_MS);
-
-        if (counter == null) {
-            out.collect(ReconEvent.awaitingInventory(source, reconView, counterSourceLabel));
-        }
+        handleIncoming(source, true, ctx, out);
     }
 
     @Override
     public void processElement2(FlatSimTransaction counter,
                                 Context ctx,
                                 Collector<ReconEvent> out) throws Exception {
-        String prevStatus = finalizedStatus.value();
-        if (prevStatus != null) {
-            handleCorrection(counter, prevStatus, out);
-            return;
-        }
-
-        Integer lastStatus = lastCounterStatus.value();
-        if (lastStatus != null && lastStatus.equals(counter.getProcessingStatus())) {
-            log.debug("Duplicate {} target dropped key={}", counterSourceLabel, counter.getTransactionKey());
-            return;
-        }
-        lastCounterStatus.update(counter.getProcessingStatus());
-
-        if (counter.getProcessingStatus() != null && counter.getProcessingStatus() == 2) {
-            out.collect(ReconEvent.processingFailed(counter, reconView));
-            clearAllState(processingFailedStatus(), null);
-            return;
-        }
-        if (counter.getProcessingStatus() != null && counter.getProcessingStatus() == 4) {
-            out.collect(ReconEvent.reverted(counter, reconView));
-            clearAllState(revertedStatus(), null);
-            return;
-        }
-        if (counter.getProcessingStatus() != null
-                && (counter.getProcessingStatus() == 0 || counter.getProcessingStatus() == 3)) {
-            counterState.update(counter);
-            out.collect(ReconEvent.processingPending(counter, reconView));
-            return;
-        }
-
-        FlatSimTransaction source = sourceState.value();
-        if (source == null) {
-            counterState.update(counter);
-            return;
-        }
-
-        reconcile(source, counter, out);
-        sourceState.clear();
+        handleIncoming(counter, false, ctx, out);
     }
 
     @Override
@@ -162,60 +102,144 @@ public class InventoryToInventoryReconciliationProcessor
         }
 
         FlatSimTransaction source = sourceState.value();
-        if (source == null) {
+        FlatSimTransaction counter = counterState.value();
+        InventoryDirectionProfile direction = direction(source, counter);
+        FlatSimTransaction origin = direction.originTransaction(source, counter);
+        FlatSimTransaction receiving = direction.counterpartyTransaction(source, counter);
+
+        if (origin == null || receiving != null) {
             return;
         }
 
         long softFireTime = ctx.timestamp() - HARD_TTL_MS + SOFT_TTL_MS;
         if (timestamp <= softFireTime + 1000L) {
-            log.warn("Soft TTL exceeded key={} reconView={}", source.getTransactionKey(), reconView);
-            out.collect(ReconEvent.awaitingInventory(source, reconView, counterSourceLabel));
+            log.warn("Soft TTL exceeded key={} reconView={} origin={} counterparty={}",
+                    origin.getTransactionKey(), reconView, direction.originSystem(), direction.counterpartySystem());
+            out.collect(ReconEvent.awaitingInventory(origin, reconView, direction.counterpartySystem()));
         } else {
-            log.warn("Hard TTL exceeded - {} key={}", missingStatus(), source.getTransactionKey());
-            out.collect(ReconEvent.missingInventory(source, reconView, counterSourceLabel));
-            clearAllState(missingStatus(), null);
+            log.warn("Hard TTL exceeded - {} key={}", direction.missingStatus(), origin.getTransactionKey());
+            out.collect(ReconEvent.missingInventory(origin, reconView, direction.counterpartySystem()));
+            clearAllState(direction.missingStatus(), null, direction.counterpartySystem());
         }
     }
 
-    private void reconcile(FlatSimTransaction source,
-                           FlatSimTransaction counter,
-                           Collector<ReconEvent> out) throws Exception {
-        int totalLines = lineItemCount(source);
+    private void handleIncoming(FlatSimTransaction incoming,
+                                boolean fromSourceSide,
+                                Context ctx,
+                                Collector<ReconEvent> out) throws Exception {
+        TransactionFamilyConfig familyConfig = InventoryBusinessContextFactory.resolveFamily(incoming);
+        if (familyConfig.transactionFamily() == TransactionFamily.UNKNOWN) {
+            log.debug("Unmapped inventory transaction family key={} type={} typeDesc={}",
+                    incoming.getTransactionKey(), incoming.getTransactionType(), incoming.getTransactionTypeDesc());
+        }
 
-        if (hasDuplicateItemsInTargetComparedToSource(source, counter)) {
-            out.collect(ReconEvent.duplicate(
-                    counter,
+        String previousStatus = finalizedStatus.value();
+        if (previousStatus != null) {
+            String correctionCounterparty = finalizedCounterpartySystem.value();
+            if (correctionCounterparty != null
+                    && correctionCounterparty.equalsIgnoreCase(incoming.getSource())) {
+                handleCorrection(incoming, previousStatus, correctionCounterparty, out);
+            } else {
+                log.debug("Late {} update ignored after finalization key={}",
+                        incoming.getSource(), incoming.getTransactionKey());
+            }
+            return;
+        }
+
+        FlatSimTransaction existing = fromSourceSide ? sourceState.value() : counterState.value();
+        if (sameSnapshot(existing, incoming)) {
+            log.debug("Duplicate {} update dropped key={} status={}",
+                    incoming.getSource(), incoming.getTransactionKey(), incoming.getProcessingStatus());
+            return;
+        }
+
+        if (fromSourceSide) {
+            sourceState.update(incoming);
+        } else {
+            counterState.update(incoming);
+        }
+
+        evaluate(ctx, out);
+    }
+
+    private void evaluate(Context ctx,
+                          Collector<ReconEvent> out) throws Exception {
+        FlatSimTransaction left = sourceState.value();
+        FlatSimTransaction right = counterState.value();
+        InventoryDirectionProfile direction = direction(left, right);
+        FlatSimTransaction origin = direction.originTransaction(left, right);
+        FlatSimTransaction counterparty = direction.counterpartyTransaction(left, right);
+
+        if (origin != null && counterparty != null) {
+            Integer processingStatus = counterparty.getProcessingStatus();
+            if (processingStatus != null && processingStatus == 2) {
+                out.collect(ReconEvent.processingFailedInventory(origin, counterparty, reconView));
+                clearAllState(direction.processingFailedStatus(), null, direction.counterpartySystem());
+                return;
+            }
+            if (processingStatus != null && processingStatus == 4) {
+                out.collect(ReconEvent.revertedInventory(origin, counterparty, reconView));
+                clearAllState(direction.revertedStatus(), null, direction.counterpartySystem());
+                return;
+            }
+            if (processingStatus != null && (processingStatus == 0 || processingStatus == 3)) {
+                out.collect(ReconEvent.processingPendingInventory(origin, counterparty, reconView));
+                return;
+            }
+
+            reconcile(origin, counterparty, direction, out);
+            return;
+        }
+
+        if (origin != null) {
+            registerTimers(ctx, origin);
+            out.collect(ReconEvent.awaitingInventory(origin, reconView, direction.counterpartySystem()));
+        }
+    }
+
+    private void reconcile(FlatSimTransaction origin,
+                           FlatSimTransaction counterparty,
+                           InventoryDirectionProfile direction,
+                           Collector<ReconEvent> out) throws Exception {
+        TransactionFamilyConfig familyConfig = InventoryBusinessContextFactory.resolveFamily(origin);
+        int totalLines = lineItemCount(origin);
+
+        if (hasDuplicateItemsInTargetComparedToSource(origin, counterparty)) {
+            out.collect(ReconEvent.duplicateInventory(
+                    origin,
+                    counterparty,
                     reconView,
                     MatchScoringEngine.outcome(
                             toleranceProfile,
                             18,
                             "MISMATCH",
                             "DUPLICATE",
-                            "Duplicate target posting detected during reconciliation",
+                            "Duplicate counterparty posting detected during reconciliation for "
+                                    + familyConfig.transactionFamily().name(),
                             totalLines
                     )
             ));
-            clearAllState(duplicateStatus(), source.getChecksum());
+            clearAllState(direction.duplicateStatus(), origin.getChecksum(), direction.counterpartySystem());
             return;
         }
 
-        if (source.getChecksum() != null && source.getChecksum().equals(counter.getChecksum())) {
+        if (origin.getChecksum() != null && origin.getChecksum().equals(counterparty.getChecksum())) {
             out.collect(ReconEvent.matchedInventory(
-                    source,
-                    counter,
+                    origin,
+                    counterparty,
                     reconView,
                     List.of(),
                     MatchScoringEngine.exactChecksumMatch(toleranceProfile, totalLines)
             ));
-            clearAllState("MATCHED", source.getChecksum());
+            clearAllState("MATCHED", origin.getChecksum(), direction.counterpartySystem());
             return;
         }
 
         List<ItemDiscrepancy> discrepancies = ItemDiffEngine.diff(
-                source.getLineItems(),
-                counter.getLineItems(),
-                sourceLabel,
-                counterSourceLabel,
+                origin.getLineItems(),
+                counterparty.getLineItems(),
+                direction.originSystem(),
+                direction.counterpartySystem(),
                 toleranceProfile
         );
         MatchEvaluation evaluation = MatchScoringEngine.evaluate(
@@ -227,27 +251,19 @@ public class InventoryToInventoryReconciliationProcessor
         );
 
         if (evaluation.materialDiscrepancyCount() == 0) {
-            out.collect(ReconEvent.matchedInventory(source, counter, reconView, discrepancies, evaluation));
-            clearAllState("MATCHED", source.getChecksum());
+            out.collect(ReconEvent.matchedInventory(origin, counterparty, reconView, discrepancies, evaluation));
+            clearAllState("MATCHED", origin.getChecksum(), direction.counterpartySystem());
             return;
         }
 
         boolean hasItemMissing = hasMaterialType(discrepancies, DiscrepancyType.ITEM_MISSING, DiscrepancyType.ITEM_EXTRA);
         if (hasItemMissing) {
-            out.collect(ReconEvent.itemMissingInventory(source, counter, discrepancies, reconView, evaluation));
-            clearAllState("ITEM_MISSING", source.getChecksum());
+            out.collect(ReconEvent.itemMissingInventory(origin, counterparty, discrepancies, reconView, evaluation));
+            clearAllState("ITEM_MISSING", origin.getChecksum(), direction.counterpartySystem());
         } else {
-            out.collect(ReconEvent.quantityMismatchInventory(source, counter, discrepancies, reconView, evaluation));
-            clearAllState("QUANTITY_MISMATCH", source.getChecksum());
+            out.collect(ReconEvent.quantityMismatchInventory(origin, counterparty, discrepancies, reconView, evaluation));
+            clearAllState("QUANTITY_MISMATCH", origin.getChecksum(), direction.counterpartySystem());
         }
-    }
-
-    private boolean isReconciliableCounter(FlatSimTransaction counter) {
-        if (counter == null) {
-            return false;
-        }
-        Integer status = counter.getProcessingStatus();
-        return status == null || (status != 0 && status != 3);
     }
 
     private boolean hasDuplicateItemsInTargetComparedToSource(FlatSimTransaction source,
@@ -292,24 +308,33 @@ public class InventoryToInventoryReconciliationProcessor
         return transaction != null && transaction.getLineItems() != null ? transaction.getLineItems().length : 0;
     }
 
-    private void handleCorrection(FlatSimTransaction counter,
-                                  String prevStatus,
+    private void handleCorrection(FlatSimTransaction counterparty,
+                                  String previousStatus,
+                                  String counterpartySystem,
                                   Collector<ReconEvent> out) throws Exception {
-        String prevChecksum = originalChecksum.value();
-        boolean checksumChanged = prevChecksum != null && !prevChecksum.equals(counter.getChecksum());
+        String previousChecksum = originalChecksum.value();
+        boolean checksumChanged = previousChecksum != null && !previousChecksum.equals(counterparty.getChecksum());
 
-        if ("MATCHED".equals(prevStatus) && checksumChanged) {
-            out.collect(ReconEvent.correctionMismatch(counter, prevStatus, prevChecksum, reconView));
-        } else if (missingStatus().equals(prevStatus)) {
-            out.collect(ReconEvent.lateCorrection(counter, prevStatus, reconView));
+        if ("MATCHED".equals(previousStatus) && checksumChanged) {
+            out.collect(ReconEvent.correctionMismatch(
+                    counterparty,
+                    previousStatus,
+                    previousChecksum,
+                    reconView,
+                    counterpartySystem
+            ));
+        } else if (Objects.equals(previousStatus, "MISSING_IN_" + counterpartySystem)) {
+            out.collect(ReconEvent.lateCorrection(counterparty, previousStatus, reconView, counterpartySystem));
         } else {
-            log.debug("Idempotent {} re-post ignored key={}", counterSourceLabel, counter.getTransactionKey());
+            log.debug("Idempotent {} re-post ignored key={}", counterpartySystem, counterparty.getTransactionKey());
         }
 
-        finalizedStatus.update(correctedStatus());
+        finalizedStatus.update("CORRECTED_IN_" + counterpartySystem);
     }
 
-    private void clearAllState(String status, String checksum) throws Exception {
+    private void clearAllState(String status,
+                               String checksum,
+                               String counterpartySystem) throws Exception {
         sourceState.clear();
         counterState.clear();
         finalizedFlag.update(true);
@@ -319,35 +344,38 @@ public class InventoryToInventoryReconciliationProcessor
         if (checksum != null) {
             originalChecksum.update(checksum);
         }
+        if (counterpartySystem != null) {
+            finalizedCounterpartySystem.update(counterpartySystem);
+        }
     }
 
-    private String normalize(String value, String fallback) {
+    private void registerTimers(Context ctx,
+                                FlatSimTransaction origin) {
+        long eventTime = ctx.timestamp() != null ? ctx.timestamp() : ctx.timerService().currentProcessingTime();
+        ctx.timerService().registerEventTimeTimer(eventTime + SOFT_TTL_MS);
+        ctx.timerService().registerEventTimeTimer(eventTime + HARD_TTL_MS);
+    }
+
+    private InventoryDirectionProfile direction(FlatSimTransaction source,
+                                                FlatSimTransaction counter) {
+        return InventoryDirectionResolver.resolve(reconView, source, counter);
+    }
+
+    private boolean sameSnapshot(FlatSimTransaction existing,
+                                 FlatSimTransaction incoming) {
+        if (existing == null || incoming == null) {
+            return false;
+        }
+        return Objects.equals(existing.getChecksum(), incoming.getChecksum())
+                && Objects.equals(existing.getProcessingStatus(), incoming.getProcessingStatus())
+                && existing.getDuplicatePostingCount() == incoming.getDuplicatePostingCount()
+                && Objects.equals(existing.getTotalQuantity(), incoming.getTotalQuantity());
+    }
+
+    private String normalize(String value,
+                             String fallback) {
         String normalized = Objects.toString(value, "").trim();
         return normalized.isEmpty() ? fallback : normalized;
-    }
-
-    private String missingStatus() {
-        return "MISSING_IN_" + targetSystem();
-    }
-
-    private String processingFailedStatus() {
-        return "PROCESSING_FAILED_IN_" + targetSystem();
-    }
-
-    private String revertedStatus() {
-        return "REVERTED_IN_" + targetSystem();
-    }
-
-    private String duplicateStatus() {
-        return "DUPLICATE_IN_" + targetSystem();
-    }
-
-    private String correctedStatus() {
-        return "CORRECTED_IN_" + targetSystem();
-    }
-
-    private String targetSystem() {
-        return "SIOCS_MFCS".equalsIgnoreCase(reconView) ? "MFCS" : "SIM";
     }
 
     private <T> ValueState<T> registerState(String name, Class<T> clazz, StateTtlConfig ttl) {

@@ -8,8 +8,9 @@ RetailINQ is a reconciliation platform for comparing Xstore transaction data wit
 - `recon-api`: Spring Boot API for dashboard, KPI, and transaction queries
 - `recon-flink-engine`: Flink reconciliation engine
 - `xstore-kafka-publisher`: Xstore database connector and Kafka publisher
-- `siocs-kafka-poller`: SIOCS/SIM database connector and Kafka publisher
-- `siocs-cloud-ingestion-connector`: SIOCS cloud API connector with local staging and Kafka publishing
+- `siocs-kafka-poller`: SIM database connector and Kafka publisher for POS and inventory domains
+- `rms-db-connector`: RMS database connector and Kafka publisher for inventory-domain transactions
+- `siocs-cloud-ingestion-connector`: SIOCS cloud connector with local staging and domain-scoped Kafka publishing
 
 ## Main Reconciliation Views
 
@@ -19,13 +20,15 @@ RetailINQ is a reconciliation platform for comparing Xstore transaction data wit
 ## Architecture
 
 ```text
-Xstore DB --------------------> xstore-kafka-publisher -----------+
+Xstore DB --------------------> xstore-kafka-publisher -----------> xstore.pos.transactions.raw
+SIM DB -----------------------> siocs-kafka-poller ---------------> sim.pos.transactions.raw
+                                                                 -> sim.inventory.transactions.raw
+SIOCS Cloud REST API --------> siocs-cloud-ingestion-connector ---> siocs.pos.transactions.raw
+                                                                 -> siocs.inventory.transactions.raw
+MFCS Cloud / RDS -----------> mfcs-rds-ingestion-connector ------> mfcs.inventory.transactions.raw
+XOCS Cloud -----------------> xocs-cloud-ingestion-connector ----> xocs.pos.transactions.raw
+RMS DB -----------------------------------------------------------> rms.inventory.transactions.raw
                                                                   |
-SIM/SIOCS DB ----------------> siocs-kafka-poller ---------------+|
-                                                                 ||
-SIOCS Cloud REST API --------> siocs-cloud-ingestion-connector --+|
-                                                                  v
-                                                        Kafka topics
                                                                   v
                                                      recon-flink-engine
                                                                   v
@@ -57,6 +60,16 @@ Common variables used across the services:
 - `PG_USER`
 - `PG_PASSWORD`
 - `KAFKA_BROKERS`
+- `KAFKA_XSTORE_POS_TOPIC`
+- `KAFKA_SIM_POS_TOPIC`
+- `KAFKA_SIM_INVENTORY_TOPIC`
+- `KAFKA_SIM_UNKNOWN_TOPIC`
+- `KAFKA_SIOCS_POS_TOPIC`
+- `KAFKA_SIOCS_INVENTORY_TOPIC`
+- `KAFKA_SIOCS_UNKNOWN_TOPIC`
+- `KAFKA_MFCS_INVENTORY_TOPIC`
+- `KAFKA_XOCS_POS_TOPIC`
+- `KAFKA_RMS_INVENTORY_TOPIC`
 - `CONNECTOR_ADMIN_USER`
 - `CONNECTOR_ADMIN_PASSWORD`
 - `DB_PASSWORD`
@@ -90,6 +103,11 @@ mvn -pl siocs-kafka-poller spring-boot:run
 
 ```powershell
 cd D:\Projects\recon-platform
+mvn -pl rms-db-connector spring-boot:run
+```
+
+```powershell
+cd D:\Projects\recon-platform
 mvn -pl siocs-cloud-ingestion-connector spring-boot:run
 ```
 
@@ -107,6 +125,7 @@ Default local URLs:
 - API: `http://localhost:8090`
 - Xstore publisher: `http://localhost:8181`
 - SIOCS poller: `http://localhost:8182`
+- RMS connector: `http://localhost:8186`
 
 ## Notes
 

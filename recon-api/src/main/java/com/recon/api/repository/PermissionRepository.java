@@ -12,5 +12,7 @@ public interface PermissionRepository
 
     Optional<Permission> findByCode(String code);
 
+    Optional<Permission> findByCodeIgnoreCase(String code);
+
     List<Permission> findByModule(String module);
 }

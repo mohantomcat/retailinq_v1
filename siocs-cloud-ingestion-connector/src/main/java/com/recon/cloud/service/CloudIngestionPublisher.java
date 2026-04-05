@@ -8,7 +8,10 @@ import com.recon.cloud.domain.CloudStagedTransaction;
 import com.recon.cloud.domain.CloudTransactionEvent;
 import com.recon.cloud.repository.CloudTransactionRepository;
 import com.recon.cloud.repository.IntegrationRunJournalRepository;
+import com.recon.integration.kafka.KafkaTopicCatalog;
 import com.recon.integration.model.CanonicalIntegrationEnvelope;
+import com.recon.integration.recon.TransactionDomain;
+import com.recon.integration.recon.TransactionDomainResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,8 +44,14 @@ public class CloudIngestionPublisher {
     private final ObjectMapper objectMapper;
     private final CloudRuntimeConfigService runtimeConfigService;
 
-    @Value("${kafka.topic.sim-transactions}")
-    private String topic;
+    @Value("${kafka.topic.siocs-pos-transactions:}")
+    private String posTopic;
+
+    @Value("${kafka.topic.siocs-inventory-transactions:}")
+    private String inventoryTopic;
+
+    @Value("${kafka.topic.siocs-unknown-transactions:}")
+    private String unknownTopic;
 
     @Value("${kafka.topic.integration-canonical}")
     private String integrationCanonicalTopic;
@@ -114,8 +123,10 @@ public class CloudIngestionPublisher {
                     log.warn("Publishing staged cloud transaction without externalId using fallback key={} sourceRecordKey={} firstRowId={}",
                             event.getTransactionKey(), stagedTransaction.getSourceRecordKey(), stagedTransaction.getFirstRowId());
                 }
+                TransactionDomain domain = TransactionDomainResolver.resolve(event.getTransactionType());
+                String rawTopic = rawTopic(domain);
                 String payload = objectMapper.writeValueAsString(event);
-                kafkaTemplate.send(topic, event.getTransactionKey(), payload)
+                kafkaTemplate.send(rawTopic, event.getTransactionKey(), payload)
                         .get(10, TimeUnit.SECONDS);
                 boolean canonicalPublished = publishCanonicalEnvelope(runId, envelope);
                 transactionRepository.markPublished(ids);
@@ -124,7 +135,7 @@ public class CloudIngestionPublisher {
                 } else {
                     errorCount++;
                 }
-                log.debug("Published staged cloud transaction key={}", event.getTransactionKey());
+                log.debug("Published staged cloud transaction key={} domain={} topic={}", event.getTransactionKey(), domain, rawTopic);
             } catch (Exception e) {
                 transactionRepository.markFailed(ids, e.getMessage(), maxRetries);
                 recordCanonicalFailure(runId, entry.getKey(), transactionRows, e);
@@ -149,6 +160,22 @@ public class CloudIngestionPublisher {
                 "Legacy recon publish kept active while canonical integration events were journaled in parallel",
                 errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
         );
+    }
+
+    private String rawTopic(TransactionDomain domain) {
+        return switch (domain) {
+            case POS -> configuredTopic(posTopic, TransactionDomain.POS);
+            case INVENTORY -> configuredTopic(inventoryTopic, TransactionDomain.INVENTORY);
+            case UNKNOWN -> configuredTopic(unknownTopic, TransactionDomain.UNKNOWN);
+        };
+    }
+
+    private String configuredTopic(String configuredTopic,
+                                   TransactionDomain domain) {
+        if (configuredTopic != null && !configuredTopic.isBlank()) {
+            return configuredTopic.trim();
+        }
+        return KafkaTopicCatalog.rawTransactionTopic(properties.getSourceName(), domain);
     }
 
     private CloudStagedTransaction aggregate(List<CloudIngestionTransactionRow> rows) {

@@ -44,7 +44,7 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String flowLabel() {
-        return "SIOCS canonical transaction feed";
+        return "SIOCS transaction feed";
     }
 
     public String connectorType() {
@@ -60,7 +60,7 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String businessObject() {
-        return "INVENTORY_TRANSACTION";
+        return "RETAIL_TRANSACTION";
     }
 
     public String mappingName() {
@@ -76,6 +76,6 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String mappingNotes() {
-        return "Pilot canonical mapping for SIOCS ingestion";
+        return "SIOCS connector ingests mixed retail transaction domains and publishes POS and inventory flows onto dedicated raw topics";
     }
 }

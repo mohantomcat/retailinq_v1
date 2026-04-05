@@ -11,4 +11,6 @@ public class TenantAccessCenterResponse {
     private TenantAuthConfigDto authConfig;
     private List<TenantApiKeyDto> apiKeys;
     private List<String> storeCatalog;
+    private List<ReconGroupSelectionDto> reconGroups;
+    private List<SystemEndpointProfileDto> systemEndpointProfiles;
 }

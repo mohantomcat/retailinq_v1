@@ -18,9 +18,7 @@ import {
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const ROOT_CAUSE_CATEGORY_OPTIONS = [
     '',
@@ -76,6 +74,7 @@ function issueToForm(issue) {
 
 export default function KnownIssues({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
     const canEdit = hasPermission('EXCEPTION_EDIT')
     const [loading, setLoading] = useState(true)

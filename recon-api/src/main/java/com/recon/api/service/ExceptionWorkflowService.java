@@ -25,7 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -260,8 +262,10 @@ public class ExceptionWorkflowService {
     public ExceptionClosurePolicyDto savePolicy(String tenantId,
                                                 UUID policyId,
                                                 SaveExceptionClosurePolicyRequest request,
-                                                String actorUsername) {
+                                                String actorUsername,
+                                                Collection<String> allowedReconViews) {
         String reconView = normalizeRequired(request.getReconView(), "reconView");
+        requireAllowedReconView(reconView, allowedReconViews);
         String targetStatus = normalizeRequired(request.getTargetStatus(), "targetStatus");
         String minSeverity = normalizeRequired(request.getMinSeverity(), "minSeverity");
         String policyName = trimToNull(request.getPolicyName());
@@ -279,6 +283,10 @@ public class ExceptionWorkflowService {
                 .createdBy(actorUsername)
                 .build()
                 : policyRepository.findByIdAndTenantId(policyId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Closure policy not found"));
 
         policy.setPolicyName(policyName);
@@ -316,9 +324,18 @@ public class ExceptionWorkflowService {
     }
 
     @Transactional
-    public void deletePolicy(String tenantId, UUID policyId) {
+    public ExceptionClosurePolicyDto savePolicy(String tenantId,
+                                                UUID policyId,
+                                                SaveExceptionClosurePolicyRequest request,
+                                                String actorUsername) {
+        return savePolicy(tenantId, policyId, request, actorUsername, null);
+    }
+
+    @Transactional
+    public void deletePolicy(String tenantId, UUID policyId, Collection<String> allowedReconViews) {
         ExceptionClosurePolicy policy = policyRepository.findByIdAndTenantId(policyId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Closure policy not found"));
+        requireAllowedReconView(policy.getReconView(), allowedReconViews);
         policyRepository.delete(policy);
         auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
                 .tenantId(tenantId)
@@ -335,6 +352,11 @@ public class ExceptionWorkflowService {
                 .evidenceTags(java.util.List.of("EXCEPTION", "POLICY"))
                 .beforeState(policy)
                 .build());
+    }
+
+    @Transactional
+    public void deletePolicy(String tenantId, UUID policyId) {
+        deletePolicy(tenantId, policyId, null);
     }
 
     @Transactional
@@ -590,6 +612,20 @@ public class ExceptionWorkflowService {
 
     private boolean isBlank(String value) {
         return trimToNull(value) == null;
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalizeRequired(reconView, "reconView");
+        Set<String> normalizedAllowedViews = allowedReconViews.stream()
+                .map(this::normalizeNullable)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private boolean equalsIgnoreCase(String left, String right) {

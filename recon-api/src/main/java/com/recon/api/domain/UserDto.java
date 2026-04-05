@@ -25,4 +25,5 @@ public class UserDto {
     private AccessScopeSummaryDto accessScope;
     private List<RoleDto> roles;
     private Set<String> permissions;
+    private List<ReconModuleDto> accessibleModules;
 }

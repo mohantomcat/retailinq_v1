@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -80,13 +81,26 @@ public class AlertDigestService {
 
     @Transactional
     public void runDigestsForTenant(String tenantId, UUID subscriptionId) {
+        runDigestsForTenant(tenantId, subscriptionId, null);
+    }
+
+    @Transactional
+    public void runDigestsForTenant(String tenantId,
+                                    UUID subscriptionId,
+                                    Collection<String> allowedReconViews) {
         if (subscriptionId != null) {
-            digestSubscriptionRepository.findById(subscriptionId)
+            AlertDigestSubscription subscription = digestSubscriptionRepository.findById(subscriptionId)
                     .filter(item -> tenantId.equals(item.getTenantId()))
-                    .ifPresent(this::runSingleDigestSafely);
+                    .orElseThrow(() -> new IllegalArgumentException("Alert digest subscription not found"));
+            if (!isAllowedReconView(subscription.getReconView(), allowedReconViews)) {
+                throw new IllegalArgumentException("Alert digest subscription not found");
+            }
+            runSingleDigestSafely(subscription);
             return;
         }
         digestSubscriptionRepository.findByTenantIdAndActiveTrueOrderByUpdatedAtDesc(tenantId)
+                .stream()
+                .filter(subscription -> isAllowedReconView(subscription.getReconView(), allowedReconViews))
                 .forEach(this::runSingleDigestSafely);
     }
 
@@ -390,5 +404,13 @@ public class AlertDigestService {
     private String defaultIfBlank(String value, String fallback) {
         String trimmed = Objects.toString(value, "").trim();
         return trimmed.isEmpty() ? fallback : trimmed;
+    }
+
+    private boolean isAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null || allowedReconViews.isEmpty()) {
+            return true;
+        }
+        String normalizedReconView = Objects.toString(reconView, "").trim().toUpperCase(Locale.ROOT);
+        return !normalizedReconView.isBlank() && allowedReconViews.contains(normalizedReconView);
     }
 }

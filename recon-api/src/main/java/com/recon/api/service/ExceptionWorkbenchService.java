@@ -478,7 +478,8 @@ public class ExceptionWorkbenchService {
 
         OperationsService.ActionSupportDescriptor actionSupport = operationsService.describeAction(
                 operationModuleId,
-                operationActionKey
+                operationActionKey,
+                exceptionCase.getReconView()
         );
         if (!actionSupport.actionExecutable()) {
             throw new IllegalArgumentException(actionSupport.actionSupportMessage());

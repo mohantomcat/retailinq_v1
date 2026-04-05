@@ -31,6 +31,7 @@
         <module>integration-core</module>
         <module>xstore-kafka-publisher</module>
         <module>siocs-kafka-poller</module>
+        <module>rms-db-connector</module>
         <module>siocs-cloud-ingestion-connector</module>
         <module>mfcs-rds-ingestion-connector</module>
         <module>xocs-cloud-ingestion-connector</module>

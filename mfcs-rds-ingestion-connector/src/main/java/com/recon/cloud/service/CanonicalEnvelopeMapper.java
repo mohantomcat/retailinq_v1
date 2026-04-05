@@ -6,6 +6,8 @@ import com.recon.cloud.domain.CloudTransactionEvent;
 import com.recon.integration.model.CanonicalIntegrationEnvelope;
 import com.recon.integration.model.CanonicalTransaction;
 import com.recon.integration.model.CanonicalTransactionLine;
+import com.recon.integration.recon.TransactionFamilyConfig;
+import com.recon.integration.recon.TransactionFamilyRegistry;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,11 +20,18 @@ public class CanonicalEnvelopeMapper {
     public CanonicalIntegrationEnvelope map(MfcsIntegrationContract contract,
                                             CloudStagedTransaction transaction,
                                             CloudTransactionEvent legacyEvent) {
+        TransactionFamilyConfig familyConfig = TransactionFamilyRegistry.resolveInventoryFamily(
+                transaction.getType(),
+                legacyEvent.getTransactionTypeDesc()
+        );
         CanonicalTransaction payload = CanonicalTransaction.builder()
                 .transactionId(legacyEvent.getTransactionKey())
                 .transactionType(resolveTransactionType(transaction.getType()))
                 .transactionSubtype(resolveTransactionSubtype(transaction.getType()))
+                .transactionFamily(familyConfig.transactionFamily().name())
+                .transactionPhase(familyConfig.transactionPhase().name())
                 .documentId(transaction.getExternalId())
+                .businessReference(resolveBusinessReference(transaction, legacyEvent))
                 .referenceDocumentId(transaction.getTransactionDateTime() != null
                         ? transaction.getTransactionDateTime().toInstant().toString()
                         : null)
@@ -36,14 +45,18 @@ public class CanonicalEnvelopeMapper {
                 .locationToType(transaction.getStoreId() != null ? "STORE" : null)
                 .storeId(transaction.getStoreId())
                 .totalQuantity(transaction.getTotalQuantity())
+                .quantityMetricsAvailable(familyConfig.quantityMetricsAvailable())
+                .valueMetricsAvailable(familyConfig.valueMetricsAvailable())
                 .lineCount(transaction.getLineItemCount())
                 .lineDetails(mapLines(transaction.getLineItems()))
                 .referenceAttributes(Map.of(
                         "externalId", valueOrBlank(transaction.getExternalId()),
+                        "sourceRecordKey", valueOrBlank(transaction.getSourceRecordKey()),
                         "requestId", transaction.getRequestId() == null ? "" : String.valueOf(transaction.getRequestId()),
                         "orgId", String.valueOf(contract.connectorKey()),
                         "duplicateFlag", String.valueOf(transaction.isDuplicateFlag()),
-                        "postingCount", String.valueOf(transaction.getPostingCount())
+                        "postingCount", String.valueOf(transaction.getPostingCount()),
+                        "transactionFamilyMappingNotes", valueOrBlank(familyConfig.mappingNotes())
                 ))
                 .build();
 
@@ -127,5 +140,16 @@ public class CanonicalEnvelopeMapper {
 
     private String valueOrBlank(String value) {
         return value == null ? "" : value;
+    }
+
+    private String resolveBusinessReference(CloudStagedTransaction transaction,
+                                            CloudTransactionEvent legacyEvent) {
+        if (transaction.getExternalId() != null && !transaction.getExternalId().isBlank()) {
+            return transaction.getExternalId();
+        }
+        if (transaction.getSourceRecordKey() != null && !transaction.getSourceRecordKey().isBlank()) {
+            return transaction.getSourceRecordKey();
+        }
+        return legacyEvent.getTransactionKey();
     }
 }

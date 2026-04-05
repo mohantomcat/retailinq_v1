@@ -1,9 +1,11 @@
 package com.recon.xocs.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.integration.kafka.KafkaTopicCatalog;
 import com.recon.publisher.domain.LineItem;
 import com.recon.publisher.domain.PosTransactionEvent;
 import com.recon.publisher.util.ChecksumUtil;
+import com.recon.integration.recon.TransactionDomain;
 import com.recon.xocs.config.XocsConnectorProperties;
 import com.recon.xocs.domain.XocsStagedLine;
 import com.recon.xocs.domain.XocsStagedTransaction;
@@ -43,7 +45,7 @@ public class XocsIngestionPublisher {
     private final ObjectMapper objectMapper;
     private final XocsRuntimeConfigService runtimeConfigService;
 
-    @Value("${kafka.topic.xocs-transactions}")
+    @Value("${kafka.topic.xocs-pos-transactions:}")
     private String topic;
 
     @Value("${kafka.topic.integration-canonical}")
@@ -103,7 +105,8 @@ public class XocsIngestionPublisher {
                 PosTransactionEvent event = mapToEvent(row);
                 CanonicalIntegrationEnvelope envelope = canonicalEnvelopeMapper.map(integrationContract, row, event);
                 String payload = objectMapper.writeValueAsString(event);
-                kafkaTemplate.send(topic, event.getTransactionKey(), payload).get(10, TimeUnit.SECONDS);
+                String rawTopic = configuredTopic();
+                kafkaTemplate.send(rawTopic, event.getTransactionKey(), payload).get(10, TimeUnit.SECONDS);
                 boolean canonicalPublished = publishCanonicalEnvelope(runId, envelope);
                 transactionRepository.markPublished(List.of(row.getId()));
                 if (canonicalPublished) {
@@ -134,6 +137,13 @@ public class XocsIngestionPublisher {
                 "Legacy raw-topic publish kept active while XOCS integration messages were journaled in parallel",
                 errorCount > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
         );
+    }
+
+    private String configuredTopic() {
+        if (topic != null && !topic.isBlank()) {
+            return topic.trim();
+        }
+        return KafkaTopicCatalog.rawTransactionTopic(properties.getSourceName(), TransactionDomain.POS);
     }
 
     private PosTransactionEvent mapToEvent(XocsStagedTransaction row) {

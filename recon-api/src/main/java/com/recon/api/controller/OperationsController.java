@@ -11,6 +11,7 @@ import com.recon.api.domain.ResetCheckpointOperationRequest;
 import com.recon.api.domain.SaveReconJobDefinitionRequest;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.OperationsService;
+import com.recon.api.service.ReconModuleService;
 import com.recon.api.service.ReconJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,19 +33,29 @@ public class OperationsController {
 
     private final OperationsService operationsService;
     private final ReconJobService reconJobService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<OperationsResponse>> getOperations(
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
-        return ResponseEntity.ok(ApiResponse.ok(operationsService.getOperations(principal.getTenantId())));
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
+        return ResponseEntity.ok(ApiResponse.ok(
+                operationsService.getOperations(
+                        principal.getTenantId(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
+                        reconView)));
     }
 
     @GetMapping("/jobs-center")
     public ResponseEntity<ApiResponse<OperationsJobCenterResponse>> getJobsCenter(
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireView(principal);
-        return ResponseEntity.ok(ApiResponse.ok(reconJobService.getJobCenter(principal.getTenantId())));
+        return ResponseEntity.ok(ApiResponse.ok(
+                reconJobService.getJobCenter(
+                        principal.getTenantId(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))));
     }
 
     @PostMapping("/jobs")
@@ -52,8 +64,13 @@ public class OperationsController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireAdvancedExecute(principal);
         request.setId(null);
+        reconModuleService.requireAccess(principal.getTenantId(), request != null ? request.getReconView() : null, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
-                reconJobService.saveJobDefinition(principal.getTenantId(), principal.getUsername(), request)
+                reconJobService.saveJobDefinition(
+                        principal.getTenantId(),
+                        principal.getUsername(),
+                        request,
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))
         ));
     }
 
@@ -64,8 +81,13 @@ public class OperationsController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireAdvancedExecute(principal);
         request.setId(jobId);
+        reconModuleService.requireAccess(principal.getTenantId(), request != null ? request.getReconView() : null, principal.getPermissions());
         return ResponseEntity.ok(ApiResponse.ok(
-                reconJobService.saveJobDefinition(principal.getTenantId(), principal.getUsername(), request)
+                reconJobService.saveJobDefinition(
+                        principal.getTenantId(),
+                        principal.getUsername(),
+                        request,
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))
         ));
     }
 
@@ -75,7 +97,11 @@ public class OperationsController {
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireAdvancedExecute(principal);
         return ResponseEntity.ok(ApiResponse.ok(
-                reconJobService.triggerManualRun(principal.getTenantId(), jobId, principal.getUsername())
+                reconJobService.triggerManualRun(
+                        principal.getTenantId(),
+                        jobId,
+                        principal.getUsername(),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))
         ));
     }
 
@@ -83,14 +109,17 @@ public class OperationsController {
     public ResponseEntity<ApiResponse<OperationActionResponseDto>> executeAction(
             @PathVariable String moduleId,
             @PathVariable String actionKey,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireSafeExecute(principal);
+        requireOperationsModuleAccess(principal, moduleId, reconView);
         return ResponseEntity.ok(ApiResponse.ok(
                 operationsService.executeSafeAction(
                         principal.getTenantId(),
                         moduleId,
                         actionKey,
-                        principal.getUsername()
+                        principal.getUsername(),
+                        reconView
                 )));
     }
 
@@ -98,13 +127,16 @@ public class OperationsController {
     public ResponseEntity<ApiResponse<OperationActionResponseDto>> resetCheckpoint(
             @PathVariable String moduleId,
             @RequestBody ResetCheckpointOperationRequest request,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireCheckpointReset(principal);
+        requireOperationsModuleAccess(principal, moduleId, reconView);
         return ResponseEntity.ok(ApiResponse.ok(
                 operationsService.resetCheckpoint(
                         principal.getTenantId(),
                         moduleId,
                         principal.getUsername(),
+                        reconView,
                         request
                 )));
     }
@@ -113,13 +145,16 @@ public class OperationsController {
     public ResponseEntity<ApiResponse<OperationActionResponseDto>> replayWindow(
             @PathVariable String moduleId,
             @RequestBody ReplayWindowOperationRequest request,
+            @RequestParam(name = "reconView", required = false) String reconView,
             @AuthenticationPrincipal ReconUserPrincipal principal) {
         requireAdvancedExecute(principal);
+        requireOperationsModuleAccess(principal, moduleId, reconView);
         return ResponseEntity.ok(ApiResponse.ok(
                 operationsService.replayWindow(
                         principal.getTenantId(),
                         moduleId,
                         principal.getUsername(),
+                        reconView,
                         request
                 )));
     }
@@ -148,6 +183,12 @@ public class OperationsController {
         requireView(principal);
         if (!principal.hasPermission("OPS_CHECKPOINT_RESET")) {
             throw new AccessDeniedException("Missing permission: OPS_CHECKPOINT_RESET");
+        }
+    }
+
+    private void requireOperationsModuleAccess(ReconUserPrincipal principal, String moduleId, String reconView) {
+        if (!reconModuleService.hasAccessToOperationsModule(principal.getTenantId(), moduleId, reconView, principal.getPermissions())) {
+            throw new AccessDeniedException("Unknown operations module: " + moduleId);
         }
     }
 }

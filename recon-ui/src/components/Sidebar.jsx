@@ -41,10 +41,6 @@ import {useI18n} from '../context/I18nContext'
 import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SECURITY_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 
 const ITEM_PERMISSIONS = {
-    'xstore-sim': 'RECON_XSTORE_SIM',
-    'xstore-siocs': 'RECON_XSTORE_SIOCS',
-    'xstore-xocs': 'RECON_XSTORE_XOCS',
-    'siocs-mfcs': 'RECON_SIOCS_MFCS',
     reports: 'REPORTS_VIEW',
     'executive-scorecards': 'REPORTS_VIEW',
     'operations-command-center': 'REPORTS_VIEW',
@@ -77,7 +73,6 @@ const ITEM_PERMISSIONS = {
 }
 
 const SECTION_PERMISSIONS = {
-    reconciliation: 'RECON_VIEW',
     reports: 'REPORTS_VIEW',
     settings: 'SETTINGS_VIEW',
     alerts: 'ALERT_VIEW',
@@ -156,6 +151,9 @@ const ITEM_ICONS = {
     'xstore-siocs': <SyncAltIcon sx={{fontSize: 17}}/>,
     'xstore-xocs': <StorefrontIcon sx={{fontSize: 17}}/>,
     'siocs-mfcs': <InventoryIcon sx={{fontSize: 17}}/>,
+    'sim-rms': <InventoryIcon sx={{fontSize: 17}}/>,
+    'sim-mfcs': <InventoryIcon sx={{fontSize: 17}}/>,
+    'siocs-rms': <InventoryIcon sx={{fontSize: 17}}/>,
     reports: <BarChartIcon sx={{fontSize: 17}}/>,
     'executive-scorecards': <AssessmentIcon sx={{fontSize: 17}}/>,
     'operations-command-center': <BuildCircleRoundedIcon sx={{fontSize: 17}}/>,
@@ -381,7 +379,7 @@ export default function Sidebar({
                         <List component="div" disablePadding sx={{pt: 0.15}}>
                             {visibleItems.map((mod) => {
                                 const isActive = isItemActive(mod.id)
-                                const icon = ITEM_ICONS[mod.id]
+                                const icon = ITEM_ICONS[mod.id] || <CompareArrowsIcon sx={{fontSize: 17}}/>
 
                                 return (
                                     <ListItemButton
@@ -470,7 +468,7 @@ export default function Sidebar({
                     <List component="div" disablePadding sx={{pt: 0.2}}>
                         {visibleItems.map((mod) => {
                             const isActive = isItemActive(mod.id)
-                            const icon = ITEM_ICONS[mod.id]
+                            const icon = ITEM_ICONS[mod.id] || <CompareArrowsIcon sx={{fontSize: 17}}/>
 
                             return (
                                 <Tooltip

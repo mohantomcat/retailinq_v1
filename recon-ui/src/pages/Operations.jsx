@@ -22,6 +22,7 @@ import {
 import BuildCircleRoundedIcon from '@mui/icons-material/BuildCircleRounded'
 import {operationsApi} from '../services/operationsApi'
 import {useAuth} from '../context/AuthContext'
+import {useReconModules} from '../hooks/useReconModules'
 
 function formatValue(value) {
     if (value == null || value === '') return '-'
@@ -90,6 +91,8 @@ function OperationCard({
     const status = module.status || {}
     const advancedActions = module.advancedActions || []
     const highlights = module.statusHighlights || []
+    const affectedLabels = module.affectedReconLabels || []
+    const isShared = module.sharedAsset && affectedLabels.length > 1
 
     return (
         <Paper
@@ -108,10 +111,24 @@ function OperationCard({
                         {module.moduleLabel}
                     </Typography>
                     <Typography sx={{fontSize: '0.8rem', color: palette.textMuted}}>
-                        {module.reconView}
+                        {module.reconLabel || module.reconView}
                     </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                    {module.endpointMode ? (
+                        <Chip
+                            size="small"
+                            label={`${module.systemName || 'System'} ${module.endpointMode}`}
+                            sx={{backgroundColor: palette.blueChipBg, color: palette.blueChipText, fontWeight: 700}}
+                        />
+                    ) : null}
+                    {isShared ? (
+                        <Chip
+                            size="small"
+                            label={t('Shared Runtime')}
+                            sx={{backgroundColor: '#FFF7ED', color: '#C2410C', fontWeight: 700}}
+                        />
+                    ) : null}
                     <Chip
                         size="small"
                         label={module.reachable ? t('Reachable') : t('Unavailable')}
@@ -125,6 +142,12 @@ function OperationCard({
                     <Chip size="small" label={module.freshnessStatus || t('Freshness')} sx={{fontWeight: 700, ...freshnessChipStyles(module.freshnessStatus, palette)}}/>
                 </Stack>
             </Box>
+
+            {isShared ? (
+                <Alert severity="warning" sx={{mb: 1.8}}>
+                    {t('This connector runtime is shared with')}: {affectedLabels.join(', ')}
+                </Alert>
+            ) : null}
 
             <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, mb: 2}}>
                 {[
@@ -170,13 +193,13 @@ function OperationCard({
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{mb: advancedActions.length ? 2 : 0}}>
                 {(module.availableActions || []).map((action) => {
-                    const busy = savingAction === `${module.moduleId}:${action}`
+                    const busy = savingAction === `${module.reconView}:${module.moduleId}:${action}`
                     return (
                         <Button
                             key={action}
                             size="small"
                             variant="contained"
-                            onClick={() => onRunSafe(module.moduleId, action)}
+                            onClick={() => onRunSafe(module, action)}
                             disabled={!canExecuteSafe || !module.reachable || busy}
                         >
                             {busy ? t('Running...') : action}
@@ -263,6 +286,11 @@ function AdvancedActionDialog({
                         ? t('This action changes the stored checkpoint and may cause already-processed data to be re-read or re-published.')
                         : t('This action re-queues staged records in the selected business-date window for replay.')}
                 </Alert>
+                {module.sharedAsset && (module.affectedReconLabels || []).length > 1 ? (
+                    <Alert severity="warning" sx={{mb: 2}}>
+                        {t('Shared runtime impact')}: {(module.affectedReconLabels || []).join(', ')}
+                    </Alert>
+                ) : null}
 
                 {isReset && (
                     <Stack spacing={1.5}>
@@ -293,7 +321,7 @@ function AdvancedActionDialog({
                                 onChange={(event) => onChange('timestamp', event.target.value)}
                             />
                         )}
-                        {module.moduleId === 'sim-poller' ? (
+                        {module.resetPayloadMode === 'DB_POLLING' ? (
                             <>
                                 <TextField
                                     label={t('Last Processed External Id')}
@@ -357,18 +385,16 @@ function AdvancedActionDialog({
                             value={form.storeId}
                             onChange={(event) => onChange('storeId', event.target.value)}
                         />
-                        {module.moduleId === 'xocs-cloud-connector' && (
+                        {module.supportsRegisterFilter && (
                             <TextField
                                 label={t('Register Id')}
                                 value={form.wkstnId}
                                 onChange={(event) => onChange('wkstnId', event.target.value)}
                             />
                         )}
-                        {(module.moduleId === 'siocs-cloud-connector' || module.moduleId === 'mfcs-rds-connector') && (
+                        {!module.supportsRegisterFilter && (
                             <Alert severity="info">
-                                {module.moduleId === 'mfcs-rds-connector'
-                                    ? t('MFCS replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')
-                                    : t('SIOCS replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')}
+                                {t('This replay window supports business-date and store filtering from staged data. Register filtering is not available for this connector.')}
                             </Alert>
                         )}
                     </Stack>
@@ -391,9 +417,11 @@ function AdvancedActionDialog({
 
 export default function Operations({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions, labelByValue} = useReconModules()
     const canExecuteSafe = hasPermission('OPS_EXECUTE_SAFE')
     const canExecuteAdvanced = hasPermission('OPS_EXECUTE_ADVANCED')
     const canResetCheckpoint = hasPermission('OPS_CHECKPOINT_RESET')
+    const [selectedReconView, setSelectedReconView] = useState('')
     const [data, setData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -423,12 +451,13 @@ export default function Operations({palette, t}) {
     const dialogActionKey = dialogState.actionKey
     const submittingAdvanced = Boolean(savingAction) && savingAction.startsWith('advanced:')
     const summary = data?.summary || {}
+    const selectedReconLabel = labelByValue[selectedReconView] || moduleOptions[0]?.label || ''
 
-    const loadOperations = async () => {
+    const loadOperations = async (reconView = selectedReconView) => {
         try {
             setLoading(true)
             setError('')
-            setData(await operationsApi.getOperations())
+            setData(await operationsApi.getOperations(reconView || null))
         } catch (err) {
             setError(err.message || 'Failed to load operations')
         } finally {
@@ -437,15 +466,29 @@ export default function Operations({palette, t}) {
     }
 
     useEffect(() => {
-        loadOperations()
-    }, [])
+        if (!moduleOptions.length) {
+            setSelectedReconView('')
+            return
+        }
+        if (!moduleOptions.some((option) => option.value === selectedReconView)) {
+            setSelectedReconView(moduleOptions[0].value)
+        }
+    }, [moduleOptions, selectedReconView])
 
-    const runSafeAction = async (moduleId, actionKey) => {
+    useEffect(() => {
+        if (moduleOptions.length && !selectedReconView) {
+            return
+        }
+        loadOperations(selectedReconView)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedReconView, moduleOptions.length])
+
+    const runSafeAction = async (module, actionKey) => {
         try {
-            setSavingAction(`${moduleId}:${actionKey}`)
+            setSavingAction(`${module.reconView}:${module.moduleId}:${actionKey}`)
             setError('')
             setFeedback('')
-            const response = await operationsApi.executeAction(moduleId, actionKey)
+            const response = await operationsApi.executeAction(module.moduleId, actionKey, module.reconView)
             setFeedback(response.message || 'Action completed.')
             await loadOperations()
         } catch (err) {
@@ -486,7 +529,7 @@ export default function Operations({palette, t}) {
     const confirmAdvancedAction = async () => {
         if (!dialogModule || !dialogActionKey) return
         try {
-            setSavingAction(`advanced:${dialogModule.moduleId}:${dialogActionKey}`)
+            setSavingAction(`advanced:${dialogModule.reconView}:${dialogModule.moduleId}:${dialogActionKey}`)
             setError('')
             setFeedback('')
             let response
@@ -498,7 +541,7 @@ export default function Operations({palette, t}) {
                     externalId: advancedForm.externalId,
                     processedId: advancedForm.processedId === '' ? null : Number(advancedForm.processedId),
                     cursorId: advancedForm.cursorId === '' ? null : Number(advancedForm.cursorId),
-                })
+                }, dialogModule.reconView)
             } else {
                 response = await operationsApi.replayWindow(dialogModule.moduleId, {
                     replayMode: advancedForm.replayMode,
@@ -506,7 +549,7 @@ export default function Operations({palette, t}) {
                     toBusinessDate: advancedForm.toBusinessDate,
                     storeId: advancedForm.storeId,
                     wkstnId: advancedForm.wkstnId,
-                })
+                }, dialogModule.reconView)
             }
             setFeedback(response.message || 'Advanced action completed.')
             closeAdvancedDialog()
@@ -531,7 +574,7 @@ export default function Operations({palette, t}) {
     return (
         <Box sx={{px: 1, py: 3}}>
             <Paper elevation={0} sx={{p: 3, mb: 3, borderRadius: '24px', border: `1px solid ${palette.border}`, background: palette.heroBg}}>
-                <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}}>
+                <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5, flexWrap: 'wrap'}}>
                     <Box sx={{mt: 0.3, width: 40, height: 40, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F3FF', color: '#7C3AED', flexShrink: 0}}>
                         <BuildCircleRoundedIcon sx={{fontSize: 20}}/>
                     </Box>
@@ -543,9 +586,31 @@ export default function Operations({palette, t}) {
                             {t('Proactively monitor connector health, data freshness, backlog risk, and the case pressure created by unhealthy integrations.')}
                         </Typography>
                     </Box>
+                    <Box sx={{minWidth: {xs: '100%', md: 260}, ml: 'auto'}}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>{t('Reconciliation Lane')}</InputLabel>
+                            <Select
+                                value={selectedReconView}
+                                label={t('Reconciliation Lane')}
+                                onChange={(event) => setSelectedReconView(event.target.value)}
+                                disabled={!moduleOptions.length}
+                            >
+                                {moduleOptions.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Box>
                 </Box>
             </Paper>
 
+            {selectedReconLabel ? (
+                <Alert severity="info" sx={{mb: 2}}>
+                    {t('Showing lane-scoped operations for')} {selectedReconLabel}. {t('Shared runtime warnings appear on modules that can affect other allowed lanes.')}
+                </Alert>
+            ) : null}
             {infoMessage ? (
                 <Alert severity="info" sx={{mb: 2}}>
                     {infoMessage}
@@ -571,7 +636,7 @@ export default function Operations({palette, t}) {
 
                     <Grid container spacing={2}>
                         {(data?.modules || []).map((module) => (
-                            <Grid item xs={12} md={6} key={module.moduleId}>
+                            <Grid item xs={12} md={6} key={`${module.reconView}:${module.moduleId}`}>
                                 <OperationCard
                                     module={module}
                                     palette={palette}

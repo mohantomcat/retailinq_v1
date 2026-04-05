@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react'
-import {Box, Button, Divider, Paper, Stack, Typography,} from '@mui/material'
+import {Box, Button, Divider, Menu, MenuItem, Paper, Stack, Typography} from '@mui/material'
 import {useI18n} from '../context/I18nContext'
 
 function getThemeMode() {
@@ -19,9 +19,12 @@ function getPalette(themeMode) {
         title: isDark ? '#E2E8F0' : '#1F2937',
         text: isDark ? '#CBD5E1' : '#111827',
         textMuted: isDark ? '#94A3B8' : '#9CA3AF',
-        headerBg: isDark ? '#111827' : '#F8FAFC',
-        headerText: isDark ? '#CBD5E1' : '#374151',
-        rowHover: isDark ? '#111827' : '#F1F5F9',
+        headerBg: isDark ? '#13213B' : '#EAF2FF',
+        headerText: isDark ? '#BFDBFE' : '#1D4ED8',
+        headerBorder: isDark ? '#1D4ED8' : '#BFDBFE',
+        rowHover: isDark ? '#162235' : '#F5F9FF',
+        selectedRowBg: isDark ? '#1A2E4A' : '#DBEAFE',
+        selectedRowBorder: isDark ? '#60A5FA' : '#3B82F6',
         buttonBorder: '#2563EB',
         buttonText: '#2563EB',
         buttonHoverBg: isDark ? '#0B1220' : '#EFF6FF',
@@ -35,7 +38,7 @@ const buildButtonStyle = (palette) => ({
     borderColor: palette.buttonBorder,
     color: palette.buttonText,
     fontWeight: 600,
-    px: 2,
+    px: 1.75,
     '&:hover': {
         backgroundColor: palette.buttonHoverBg,
         borderColor: '#1D4ED8',
@@ -43,12 +46,15 @@ const buildButtonStyle = (palette) => ({
 })
 
 const DetailTable = ({
-                         title = 'Detail Records',
-                         data = [],
-                         onRowSelect,
-                         selectedRowKey = null,
-                     }) => {
+    title = 'Detail Records',
+    subtitle = '',
+    data = [],
+    onRowSelect,
+    selectedRowKey = null,
+    renderActions,
+}) => {
     const [themeMode, setThemeMode] = useState(getThemeMode())
+    const [exportAnchorEl, setExportAnchorEl] = useState(null)
     const {t} = useI18n()
 
     useEffect(() => {
@@ -66,24 +72,32 @@ const DetailTable = ({
 
     const palette = useMemo(() => getPalette(themeMode), [themeMode])
 
-    const exportData = (data || []).map((row) =>
-        Object.fromEntries(
-            Object.entries(row).filter(([key]) => !key.startsWith('__'))
-        )
+    const exportData = useMemo(
+        () => (data || []).map((row) =>
+            Object.fromEntries(
+                Object.entries(row).filter(([key]) => !key.startsWith('__'))
+            )
+        ),
+        [data]
     )
 
+    const visibleColumns = useMemo(
+        () => (exportData.length > 0 ? Object.keys(exportData[0]) : []),
+        [exportData]
+    )
+
+    const closeExportMenu = () => setExportAnchorEl(null)
+
     const handleExportCSV = () => {
+        closeExportMenu()
         if (!exportData.length) return
 
         const headers = Object.keys(exportData[0])
-
         const csvContent =
             headers.join(',') +
             '\n' +
             exportData
-                .map((row) =>
-                    headers.map((field) => `"${row[field] ?? ''}"`).join(',')
-                )
+                .map((row) => headers.map((field) => `"${row[field] ?? ''}"`).join(','))
                 .join('\n')
 
         const blob = new Blob([csvContent], {
@@ -97,6 +111,7 @@ const DetailTable = ({
     }
 
     const handleExportExcel = () => {
+        closeExportMenu()
         if (!exportData.length) return
 
         import('xlsx').then((XLSX) => {
@@ -108,6 +123,7 @@ const DetailTable = ({
     }
 
     const handleExportPDF = () => {
+        closeExportMenu()
         if (!exportData.length) return
 
         Promise.all([
@@ -143,49 +159,63 @@ const DetailTable = ({
             <Stack
                 direction="row"
                 justifyContent="space-between"
-                alignItems="center"
-                mb={2}
+                alignItems="flex-start"
+                mb={subtitle ? 1.25 : 2}
                 flexWrap="wrap"
                 gap={1.5}
             >
-                <Typography
-                    variant="h6"
-                    sx={{
-                        fontWeight: 600,
-                        color: palette.title,
-                    }}
-                >
-                    {title || t('Detail Records')}
-                </Typography>
+                <Box>
+                    <Typography
+                        variant="h6"
+                        sx={{
+                            fontWeight: 700,
+                            color: palette.title,
+                        }}
+                    >
+                        {title || t('Detail Records')}
+                    </Typography>
+                    {subtitle ? (
+                        <Typography
+                            sx={{
+                                mt: 0.45,
+                                maxWidth: 780,
+                                fontSize: '0.84rem',
+                                color: palette.textMuted,
+                                lineHeight: 1.55,
+                            }}
+                        >
+                            {subtitle}
+                        </Typography>
+                    ) : null}
+                </Box>
 
-                <Stack direction="row" spacing={2} flexWrap="wrap">
+                <Box>
                     <Button
                         variant="outlined"
                         size="small"
-                        onClick={handleExportExcel}
+                        onClick={(event) => setExportAnchorEl(event.currentTarget)}
+                        disabled={!exportData.length}
                         sx={buildButtonStyle(palette)}
                     >
-                        {t('Excel')}
+                        {t('Export')}
                     </Button>
-
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={handleExportCSV}
-                        sx={buildButtonStyle(palette)}
+                    <Menu
+                        anchorEl={exportAnchorEl}
+                        open={Boolean(exportAnchorEl)}
+                        onClose={closeExportMenu}
+                        PaperProps={{
+                            sx: {
+                                border: `1px solid ${palette.border}`,
+                                backgroundColor: palette.paperBg,
+                                color: palette.text,
+                            },
+                        }}
                     >
-                        {t('CSV')}
-                    </Button>
-
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={handleExportPDF}
-                        sx={buildButtonStyle(palette)}
-                    >
-                        {t('PDF')}
-                    </Button>
-                </Stack>
+                        <MenuItem onClick={handleExportExcel}>{t('Export to Excel')}</MenuItem>
+                        <MenuItem onClick={handleExportCSV}>{t('Export to CSV')}</MenuItem>
+                        <MenuItem onClick={handleExportPDF}>{t('Export to PDF')}</MenuItem>
+                    </Menu>
+                </Box>
             </Stack>
 
             <Divider sx={{mb: 2, borderColor: palette.borderSoft}}/>
@@ -220,68 +250,103 @@ const DetailTable = ({
                             color: palette.headerText,
                         }}
                     >
-                        {exportData.length > 0 &&
-                            Object.keys(exportData[0]).map((key) => (
-                                <th
-                                    key={key}
-                                    style={{
-                                        padding: '12px 14px',
-                                        borderBottom: `1px solid ${palette.border}`,
-                                        fontWeight: 600,
-                                        letterSpacing: '0.3px',
-                                    }}
-                                >
-                                    {key}
-                                </th>
-                            ))}
+                        {visibleColumns.map((key) => (
+                            <th
+                                key={key}
+                                style={{
+                                    padding: '12px 14px',
+                                    borderBottom: `1px solid ${palette.headerBorder}`,
+                                    fontWeight: 600,
+                                    letterSpacing: '0.3px',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {key}
+                            </th>
+                        ))}
+                        {renderActions ? (
+                            <th
+                                style={{
+                                    padding: '12px 14px',
+                                    borderBottom: `1px solid ${palette.headerBorder}`,
+                                    fontWeight: 600,
+                                    letterSpacing: '0.3px',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {t('Actions')}
+                            </th>
+                        ) : null}
                     </tr>
                     </thead>
 
                     <tbody>
                     {(data || []).map((row, index) => (
-                        <tr
-                            key={index}
-                            style={{
-                                borderBottom: `1px solid ${palette.borderSoft}`,
-                                transition: 'background-color 0.2s ease',
-                                cursor: onRowSelect ? 'pointer' : 'default',
-                                backgroundColor:
-                                    selectedRowKey && row.__rowKey === selectedRowKey
-                                        ? palette.rowHover
-                                        : 'transparent',
-                            }}
-                            onClick={() => onRowSelect?.(row)}
-                            onMouseEnter={(e) =>
-                                (e.currentTarget.style.backgroundColor =
-                                    palette.rowHover)
-                            }
-                            onMouseLeave={(e) =>
-                                (e.currentTarget.style.backgroundColor =
-                                    selectedRowKey && row.__rowKey === selectedRowKey
-                                        ? palette.rowHover
-                                        : 'transparent')
-                            }
-                        >
-                            {Object.entries(row)
-                                .filter(([key]) => !key.startsWith('__'))
-                                .map(([, value], i) => (
-                                <td
-                                    key={i}
+                        (() => {
+                            const isSelected = selectedRowKey && row.__rowKey === selectedRowKey
+                            return (
+                                <tr
+                                    key={index}
+                                    aria-selected={Boolean(isSelected)}
                                     style={{
-                                        padding: '12px 14px',
-                                        color: palette.text,
-                                        fontWeight: 400,
+                                        borderBottom: `1px solid ${palette.borderSoft}`,
+                                        transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+                                        cursor: onRowSelect ? 'pointer' : 'default',
+                                        backgroundColor: isSelected ? palette.selectedRowBg : 'transparent',
+                                        boxShadow: isSelected ? `inset 4px 0 0 ${palette.selectedRowBorder}` : 'none',
+                                    }}
+                                    onClick={() => onRowSelect?.(row)}
+                                    onMouseEnter={(event) => {
+                                        event.currentTarget.style.backgroundColor = isSelected
+                                            ? palette.selectedRowBg
+                                            : palette.rowHover
+                                    }}
+                                    onMouseLeave={(event) => {
+                                        event.currentTarget.style.backgroundColor = isSelected
+                                            ? palette.selectedRowBg
+                                            : 'transparent'
                                     }}
                                 >
-                                    {value}
+                            {(() => {
+                                const cellRenderers = row.__cellRenderers || {}
+                                return Object.entries(row)
+                                    .filter(([key]) => !key.startsWith('__'))
+                                    .map(([key, value]) => (
+                                        <td
+                                            key={key}
+                                            style={{
+                                                padding: '12px 14px',
+                                                color: palette.text,
+                                                fontWeight: isSelected ? 600 : 400,
+                                                verticalAlign: 'top',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {cellRenderers[key] ?? value}
+                                        </td>
+                                    ))
+                            })()}
+                            {renderActions ? (
+                                <td
+                                    style={{
+                                        padding: '10px 14px',
+                                        color: palette.text,
+                                        verticalAlign: 'top',
+                                        minWidth: 220,
+                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    {renderActions(row)}
                                 </td>
-                                ))}
-                        </tr>
+                            ) : null}
+                                </tr>
+                            )
+                        })()
                     ))}
                     </tbody>
                 </table>
 
-                {exportData.length === 0 && (
+                {exportData.length === 0 ? (
                     <Typography
                         variant="body2"
                         sx={{
@@ -292,7 +357,7 @@ const DetailTable = ({
                     >
                         {t('No records available.')}
                     </Typography>
-                )}
+                ) : null}
             </Box>
         </Paper>
     )

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,25 +26,49 @@ public class IntegrationHubQueryRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public IntegrationHubSummaryDto getSummary(String tenantId) {
+    public IntegrationHubSummaryDto getSummary(String tenantId, Collection<String> connectorKeys) {
+        if (connectorKeys == null || connectorKeys.isEmpty()) {
+            return IntegrationHubSummaryDto.builder().build();
+        }
         return IntegrationHubSummaryDto.builder()
-                .activeConnectors(count("select count(*) from recon.integration_connector_definition where tenant_id = ? and enabled = true", tenantId))
-                .activeFlows(count("select count(*) from recon.integration_flow_definition where tenant_id = ? and enabled = true", tenantId))
-                .runningRuns(count("select count(*) from recon.integration_run where tenant_id = ? and run_status in ('RUNNING', 'QUEUED')", tenantId))
-                .failedRunsLast24Hours(count("""
+                .activeConnectors(count(withConnectorKeyFilter(
+                        "select count(*) from recon.integration_connector_definition where tenant_id = ? and enabled = true",
+                        connectorKeys,
+                        "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .activeFlows(count(withFlowConnectorFilter(
+                        """
+                                select count(*)
+                                from recon.integration_flow_definition fd
+                                join recon.integration_connector_definition cd
+                                  on cd.id = fd.connector_definition_id
+                                where fd.tenant_id = ?
+                                  and fd.enabled = true
+                                """,
+                        connectorKeys), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .runningRuns(count(withConnectorKeyFilter(
+                        "select count(*) from recon.integration_run where tenant_id = ? and run_status in ('RUNNING', 'QUEUED')",
+                        connectorKeys,
+                        "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .failedRunsLast24Hours(count(withConnectorKeyFilter("""
                         select count(*) from recon.integration_run
                         where tenant_id = ?
                           and run_status = 'FAILED'
                           and started_at >= now() - interval '24 hour'
-                        """, tenantId))
-                .openErrors(count("select count(*) from recon.integration_error_queue where tenant_id = ? and error_status = 'OPEN'", tenantId))
-                .pendingReplayRequests(count("select count(*) from recon.integration_replay_request where tenant_id = ? and replay_status in ('REQUESTED', 'ACCEPTED', 'RUNNING')", tenantId))
-                .publishedMessagesLast24Hours(count("""
+                        """, connectorKeys, "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .openErrors(count(withConnectorKeyFilter(
+                        "select count(*) from recon.integration_error_queue where tenant_id = ? and error_status = 'OPEN'",
+                        connectorKeys,
+                        "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .pendingReplayRequests(count(withConnectorKeyFilter(
+                        "select count(*) from recon.integration_replay_request where tenant_id = ? and replay_status in ('REQUESTED', 'ACCEPTED', 'RUNNING')",
+                        connectorKeys,
+                        "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
+                .publishedMessagesLast24Hours(count(withConnectorKeyFilter("""
                         select count(*) from recon.integration_message
                         where tenant_id = ?
                           and message_status = 'PUBLISHED'
                           and created_at >= now() - interval '24 hour'
-                        """, tenantId))
+                        """, connectorKeys, "connector_key"), argsWithTenantAndConnectorKeys(tenantId, connectorKeys)))
                 .build();
     }
 
@@ -59,6 +84,7 @@ public class IntegrationHubQueryRepository {
                        lr.run_status as latest_run_status,
                        lr.started_at as latest_run_started_at,
                        lr.completed_at as latest_run_completed_at,
+                       lp.last_published_at,
                        coalesce(err.open_error_count, 0) as open_error_count,
                        coalesce(pub.published_count, 0) as published_count,
                        coalesce(fail.failed_count, 0) as failed_count
@@ -71,6 +97,13 @@ public class IntegrationHubQueryRepository {
                     order by r.started_at desc nulls last, r.created_at desc
                     limit 1
                 ) lr on true
+                left join lateral (
+                    select max(m.created_at) as last_published_at
+                    from recon.integration_message m
+                    where m.tenant_id = cd.tenant_id
+                      and m.connector_key = cd.connector_key
+                      and m.message_status = 'PUBLISHED'
+                ) lp on true
                 left join (
                     select connector_key, count(*) as open_error_count
                     from recon.integration_error_queue
@@ -107,6 +140,7 @@ public class IntegrationHubQueryRepository {
                 .latestRunStatus(rs.getString("latest_run_status"))
                 .latestRunStartedAt(toIso(rs.getTimestamp("latest_run_started_at")))
                 .latestRunCompletedAt(toIso(rs.getTimestamp("latest_run_completed_at")))
+                .lastPublishedAt(toIso(rs.getTimestamp("last_published_at")))
                 .openErrorCount(rs.getLong("open_error_count"))
                 .publishedMessagesLast24Hours(rs.getLong("published_count"))
                 .failedMessagesLast24Hours(rs.getLong("failed_count"))
@@ -115,7 +149,8 @@ public class IntegrationHubQueryRepository {
 
     public List<IntegrationFlowDto> getFlows(String tenantId) {
         return jdbcTemplate.query("""
-                select fd.flow_key,
+                select cd.connector_key,
+                       fd.flow_key,
                        fd.flow_label,
                        fd.message_type,
                        fd.source_system,
@@ -124,8 +159,13 @@ public class IntegrationHubQueryRepository {
                        fd.enabled,
                        coalesce(msg.message_count, 0) as message_count,
                        coalesce(err.error_count, 0) as error_count,
-                       lr.run_status as latest_run_status
+                       lr.run_status as latest_run_status,
+                       lr.started_at as latest_run_started_at,
+                       lr.completed_at as latest_run_completed_at,
+                       lp.last_published_at
                 from recon.integration_flow_definition fd
+                join recon.integration_connector_definition cd
+                  on cd.id = fd.connector_definition_id
                 left join (
                     select flow_key, count(*) as message_count
                     from recon.integration_message
@@ -141,16 +181,24 @@ public class IntegrationHubQueryRepository {
                     group by flow_key
                 ) err on err.flow_key = fd.flow_key
                 left join lateral (
-                    select r.run_status
+                    select r.run_status, r.started_at, r.completed_at
                     from recon.integration_run r
                     where r.tenant_id = fd.tenant_id
                       and r.flow_key = fd.flow_key
                     order by r.started_at desc nulls last, r.created_at desc
                     limit 1
                 ) lr on true
+                left join lateral (
+                    select max(m.created_at) as last_published_at
+                    from recon.integration_message m
+                    where m.tenant_id = fd.tenant_id
+                      and m.flow_key = fd.flow_key
+                      and m.message_status = 'PUBLISHED'
+                ) lp on true
                 where fd.tenant_id = ?
                 order by fd.flow_label
                 """, (rs, rowNum) -> IntegrationFlowDto.builder()
+                .connectorKey(rs.getString("connector_key"))
                 .flowKey(rs.getString("flow_key"))
                 .flowLabel(rs.getString("flow_label"))
                 .messageType(rs.getString("message_type"))
@@ -161,6 +209,9 @@ public class IntegrationHubQueryRepository {
                 .messagesLast24Hours(rs.getLong("message_count"))
                 .errorsLast24Hours(rs.getLong("error_count"))
                 .latestRunStatus(rs.getString("latest_run_status"))
+                .latestRunStartedAt(toIso(rs.getTimestamp("latest_run_started_at")))
+                .latestRunCompletedAt(toIso(rs.getTimestamp("latest_run_completed_at")))
+                .lastPublishedAt(toIso(rs.getTimestamp("last_published_at")))
                 .build(), tenantId, tenantId, tenantId);
     }
 
@@ -405,17 +456,7 @@ public class IntegrationHubQueryRepository {
         return findReplayRequestById(tenantId, id);
     }
 
-    public IntegrationErrorQueueItemDto resolveError(String tenantId,
-                                                     UUID id,
-                                                     String resolutionNotes) {
-        jdbcTemplate.update("""
-                update recon.integration_error_queue
-                set error_status = 'RESOLVED',
-                    resolved_at = now(),
-                    resolution_notes = ?
-                where tenant_id = ?
-                  and id = ?
-                """, truncate(resolutionNotes, 300), tenantId, id);
+    public IntegrationErrorQueueItemDto findErrorById(String tenantId, UUID id) {
         List<IntegrationErrorQueueItemDto> rows = jdbcTemplate.query("""
                 select id,
                        integration_message_id,
@@ -451,6 +492,20 @@ public class IntegrationHubQueryRepository {
                 .resolutionNotes(rs.getString("resolution_notes"))
                 .build(), tenantId, id);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public IntegrationErrorQueueItemDto resolveError(String tenantId,
+                                                     UUID id,
+                                                     String resolutionNotes) {
+        jdbcTemplate.update("""
+                update recon.integration_error_queue
+                set error_status = 'RESOLVED',
+                    resolved_at = now(),
+                    resolution_notes = ?
+                where tenant_id = ?
+                  and id = ?
+                """, truncate(resolutionNotes, 300), tenantId, id);
+        return findErrorById(tenantId, id);
     }
 
     public IntegrationReplayRequestRecord findReplayRequestForExecution(String tenantId, UUID id) {
@@ -650,6 +705,27 @@ public class IntegrationHubQueryRepository {
     private long count(String sql, Object... args) {
         Long value = jdbcTemplate.queryForObject(sql, Long.class, args);
         return value == null ? 0L : value;
+    }
+
+    private String withConnectorKeyFilter(String baseSql,
+                                          Collection<String> connectorKeys,
+                                          String connectorColumn) {
+        return baseSql + " and " + connectorColumn + " in (" + connectorKeys.stream()
+                .map(key -> "?")
+                .collect(java.util.stream.Collectors.joining(", ")) + ")";
+    }
+
+    private String withFlowConnectorFilter(String baseSql, Collection<String> connectorKeys) {
+        return baseSql + " and cd.connector_key in (" + connectorKeys.stream()
+                .map(key -> "?")
+                .collect(java.util.stream.Collectors.joining(", ")) + ")";
+    }
+
+    private Object[] argsWithTenantAndConnectorKeys(String tenantId, Collection<String> connectorKeys) {
+        List<Object> args = new ArrayList<>();
+        args.add(tenantId);
+        args.addAll(connectorKeys);
+        return args.toArray();
     }
 
     private Timestamp parseTimestamp(String value) {

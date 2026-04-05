@@ -91,15 +91,21 @@ function getSuggestedClassification(reconStatus) {
     switch ((reconStatus || '').toUpperCase()) {
         case 'MISSING_IN_SIM':
         case 'MISSING_IN_SIOCS':
+        case 'MISSING_IN_MFCS':
+        case 'MISSING_IN_RMS':
         case 'MISSING_IN_XOCS':
         case 'PROCESSING_PENDING_IN_SIM':
         case 'PROCESSING_PENDING_IN_SIOCS':
+        case 'PROCESSING_PENDING_IN_MFCS':
+        case 'PROCESSING_PENDING_IN_RMS':
             return {
                 reasonCode: 'REPLICATION_LAG',
                 rootCauseCategory: 'INTEGRATION_TIMING',
             }
         case 'DUPLICATE_IN_SIM':
         case 'DUPLICATE_IN_SIOCS':
+        case 'DUPLICATE_IN_MFCS':
+        case 'DUPLICATE_IN_RMS':
         case 'DUPLICATE_IN_XOCS':
             return {
                 reasonCode: 'DUPLICATE_SUBMISSION',

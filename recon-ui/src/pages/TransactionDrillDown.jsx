@@ -19,7 +19,15 @@ import ReadMoreOutlinedIcon from '@mui/icons-material/ReadMoreOutlined'
 import {reconApi} from '../services/reconApi'
 import {useAuth} from '../context/AuthContext'
 import {exceptionApi} from '../services/exceptionApi'
-import {RECON_VIEW_OPTIONS, RECON_VIEW_LABEL_BY_VALUE} from '../constants/reconViews'
+import {
+    buildSiocsMfcsDemoResolvedProfiles,
+    buildSiocsMfcsPresentation,
+    formatSiocsMfcsTransactionFamily,
+    formatSiocsMfcsTransactionPhase,
+    SIOCS_MFCS_SCOPE_MODE,
+} from '../utils/siocsMfcsPresentation'
+import {buildFixedInventoryPresentation, isFixedInventoryReconView} from '../utils/simRmsPresentation'
+import {isSiocsMfcsDemoEnabled} from '../services/siocsMfcsDemoData'
 import {
     EXCEPTION_QUEUE_PREFILL_EVENT,
     EXCEPTION_QUEUE_PREFILL_KEY,
@@ -93,12 +101,38 @@ function discrepancyChipStyles(item, palette) {
     }
 }
 
+function getSessionReconModules() {
+    if (typeof window === 'undefined') {
+        return []
+    }
+    try {
+        const storedUser = window.sessionStorage.getItem('recon_user')
+        const user = storedUser ? JSON.parse(storedUser) : null
+        return Array.isArray(user?.accessibleModules) ? user.accessibleModules : []
+    } catch {
+        return []
+    }
+}
+
 function getReconTabId(reconView) {
-    return RECON_VIEW_OPTIONS.find((option) => option.value === reconView)?.tabId || null
+    return (
+        getSessionReconModules().find((module) => module?.reconView === reconView)
+            ?.tabId || null
+    )
 }
 
 function getTargetSystemLabel(reconView) {
-    return RECON_VIEW_OPTIONS.find((option) => option.value === reconView)?.targetSystem || 'Target'
+    return (
+        getSessionReconModules().find((module) => module?.reconView === reconView)
+            ?.targetSystem || 'Target'
+    )
+}
+
+function getReconViewLabel(reconView) {
+    return (
+        getSessionReconModules().find((module) => module?.reconView === reconView)
+            ?.label || reconView
+    )
 }
 
 export default function TransactionDrillDown({palette, t, onOpenTab}) {
@@ -178,6 +212,109 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
     const effectiveReconView = transaction?.reconView || selection?.reconView || ''
     const effectiveReconTabId = getReconTabId(effectiveReconView)
     const targetSystemLabel = getTargetSystemLabel(effectiveReconView)
+    const isSiocsMfcsLane = effectiveReconView === 'SIOCS_MFCS'
+    const isInventoryLane = isSiocsMfcsLane || isFixedInventoryReconView(effectiveReconView)
+    const siocsMfcsResolvedProfiles = useMemo(
+        () => (isSiocsMfcsLane && isSiocsMfcsDemoEnabled() ? buildSiocsMfcsDemoResolvedProfiles(t) : undefined),
+        [isSiocsMfcsLane, t],
+    )
+    const inventoryPresentation = useMemo(() => {
+        if (isSiocsMfcsLane) {
+            return buildSiocsMfcsPresentation({
+                selectedFamilies: transaction?.transactionFamily ? [transaction.transactionFamily] : [],
+                selectedPhases: transaction?.transactionPhase ? [transaction.transactionPhase] : [],
+                resolvedProfiles: siocsMfcsResolvedProfiles,
+                t,
+            })
+        }
+        if (isInventoryLane) {
+            return buildFixedInventoryPresentation({
+                reconView: effectiveReconView,
+                selectedFamilies: transaction?.transactionFamily ? [transaction.transactionFamily] : [],
+                selectedPhases: transaction?.transactionPhase ? [transaction.transactionPhase] : [],
+                t,
+            })
+        }
+        return null
+    }, [
+        isSiocsMfcsLane,
+        isInventoryLane,
+        effectiveReconView,
+        siocsMfcsResolvedProfiles,
+        t,
+        transaction?.transactionFamily,
+        transaction?.transactionPhase,
+    ])
+    const leftSystemLabel = isInventoryLane
+        ? inventoryPresentation?.scopeMode === SIOCS_MFCS_SCOPE_MODE.RESOLVED
+            ? inventoryPresentation.originSystem || t('Origin System')
+            : t('SIOCS')
+        : t('Xstore')
+    const rightSystemLabel = isInventoryLane
+        ? inventoryPresentation?.scopeMode === SIOCS_MFCS_SCOPE_MODE.RESOLVED
+            ? inventoryPresentation.counterpartySystem || t('Counterparty System')
+            : t('MFCS')
+        : targetSystemLabel
+    const transactionContextItems = useMemo(() => {
+        if (!transaction) {
+            return []
+        }
+        const items = [
+            {label: t('Recon View'), value: getReconViewLabel(transaction.reconView)},
+            {
+                label: isInventoryLane ? t('Origin System') : t('Source'),
+                value: isInventoryLane
+                    ? (transaction.originSystem || transaction.simSource || '-')
+                    : (transaction.simSource || '-'),
+            },
+            {label: t('Store'), value: transaction.storeId},
+        ]
+
+        if (isInventoryLane) {
+            items.push(
+                {
+                    label: t('Transaction Family'),
+                    value: transaction.transactionFamily
+                        ? formatSiocsMfcsTransactionFamily(transaction.transactionFamily, t)
+                        : '-',
+                },
+                {
+                    label: t('Transaction Phase'),
+                    value: transaction.transactionPhase
+                        ? formatSiocsMfcsTransactionPhase(transaction.transactionPhase, t)
+                        : '-',
+                },
+                {label: t('Transaction Type'), value: transaction.transactionType || '-'},
+            )
+        } else {
+            items.push({label: t('Register'), value: transaction.wkstnId || '-'})
+        }
+
+        items.push(
+            {label: t('Business Date'), value: transaction.businessDateDisplay || transaction.businessDate},
+            {label: t('Reconciled At'), value: formatDateTimeValue(transaction.reconciledAt)},
+            {label: t('Updated At'), value: formatDateTimeValue(transaction.updatedAt)},
+            {label: t('Tolerance Profile'), value: transaction.toleranceProfile || '-'},
+            {label: t('Match Rule'), value: transaction.matchRule || '-'},
+            {label: t('Match Summary'), value: transaction.matchSummary || '-'},
+            {
+                label: t('{system} Checksum', {system: leftSystemLabel}),
+                value: transaction.xstoreChecksum || '-',
+            },
+            {
+                label: t('{system} Checksum', {system: rightSystemLabel}),
+                value: transaction.siocsChecksum || '-',
+            },
+        )
+
+        return items
+    }, [isInventoryLane, leftSystemLabel, rightSystemLabel, t, transaction])
+    const discrepancyLeftQuantityLabel = isInventoryLane
+        ? t('{system} Qty', {system: leftSystemLabel})
+        : t('Xstore Qty')
+    const discrepancyRightQuantityLabel = isInventoryLane
+        ? t('{system} Qty', {system: rightSystemLabel})
+        : t('Target Qty')
 
     const openReconLane = () => {
         if (effectiveReconTabId) {
@@ -281,20 +418,7 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                 {t('Transaction Context')}
                             </Typography>
                             <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(2, minmax(0, 1fr))'}, gap: 1.15}}>
-                                {[
-                                    {label: t('Recon View'), value: RECON_VIEW_LABEL_BY_VALUE[transaction.reconView] || transaction.reconView},
-                                    {label: t('Source'), value: transaction.simSource},
-                                    {label: t('Store'), value: transaction.storeId},
-                                    {label: t('Register'), value: transaction.wkstnId || '-'},
-                                    {label: t('Business Date'), value: transaction.businessDateDisplay || transaction.businessDate},
-                                    {label: t('Reconciled At'), value: formatDateTimeValue(transaction.reconciledAt)},
-                                    {label: t('Updated At'), value: formatDateTimeValue(transaction.updatedAt)},
-                                    {label: t('Tolerance Profile'), value: transaction.toleranceProfile || '-'},
-                                    {label: t('Match Rule'), value: transaction.matchRule || '-'},
-                                    {label: t('Match Summary'), value: transaction.matchSummary || '-'},
-                                    {label: t('Xstore Checksum'), value: transaction.xstoreChecksum || '-'},
-                                    {label: t(`${targetSystemLabel} Checksum`), value: transaction.siocsChecksum || '-'},
-                                ].map((item) => (
+                                {transactionContextItems.map((item) => (
                                     <Box key={item.label} sx={{p: 1.1, borderRadius: '14px', border: `1px solid ${palette.borderSoft}`, backgroundColor: palette.cardBgAlt}}>
                                         <Typography sx={{fontSize: '0.73rem', color: palette.textMuted, fontWeight: 700}}>
                                             {item.label}
@@ -377,8 +501,8 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                     <TableRow>
                                         <TableCell>{t('Item')}</TableCell>
                                         <TableCell>{t('Type')}</TableCell>
-                                        <TableCell>{t('Xstore Qty')}</TableCell>
-                                        <TableCell>{t('Target Qty')}</TableCell>
+                                        <TableCell>{discrepancyLeftQuantityLabel}</TableCell>
+                                        <TableCell>{discrepancyRightQuantityLabel}</TableCell>
                                         <TableCell>{t('Variance')}</TableCell>
                                         <TableCell>{t('Amount')}</TableCell>
                                         <TableCell>{t('Severity')}</TableCell>

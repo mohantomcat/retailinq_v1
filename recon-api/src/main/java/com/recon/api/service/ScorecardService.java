@@ -26,9 +26,11 @@ public class ScorecardService {
     private final ReconElasticsearchRepository esRepository;
     private final ExceptionCaseRepository exceptionCaseRepository;
     private final ExceptionSlaService exceptionSlaService;
+    private final ReconModuleService reconModuleService;
 
     public ScorecardsResponse getScorecards(String tenantId,
                                             List<String> storeIds,
+                                            List<String> transactionFamilies,
                                             String fromBusinessDate,
                                             String toBusinessDate,
                                             String reconView,
@@ -43,6 +45,7 @@ public class ScorecardService {
                     storeIds,
                     List.of(),
                     null,
+                    transactionFamilies,
                     from,
                     to,
                     view
@@ -52,14 +55,15 @@ public class ScorecardService {
 
         return ScorecardsResponse.builder()
                 .executiveSummary(buildSummary("Executive Health", overallStatuses, activeCases))
-                .moduleScorecards(buildModuleScorecards(from, to, storeIds, activeCases, scopedViews))
-                .storeScorecards(buildStoreScorecards(from, to, storeIds, activeCases, scopedViews))
+                .moduleScorecards(buildModuleScorecards(from, to, storeIds, transactionFamilies, activeCases, scopedViews))
+                .storeScorecards(buildStoreScorecards(from, to, storeIds, transactionFamilies, activeCases, scopedViews))
                 .build();
     }
 
     private List<LocationScorecardDto> buildModuleScorecards(String from,
                                                              String to,
                                                              List<String> storeIds,
+                                                             List<String> transactionFamilies,
                                                              List<ExceptionCase> activeCases,
                                                              List<String> reconViews) {
         Map<String, Map<String, Long>> raw = new LinkedHashMap<>();
@@ -70,6 +74,7 @@ public class ScorecardService {
                     storeIds,
                     List.of(),
                     null,
+                    transactionFamilies,
                     from,
                     to,
                     reconView
@@ -91,6 +96,7 @@ public class ScorecardService {
     private List<LocationScorecardDto> buildStoreScorecards(String from,
                                                             String to,
                                                             List<String> storeIds,
+                                                            List<String> transactionFamilies,
                                                             List<ExceptionCase> activeCases,
                                                             List<String> reconViews) {
         Map<String, Map<String, Long>> raw = new LinkedHashMap<>();
@@ -101,6 +107,7 @@ public class ScorecardService {
                     storeIds,
                     List.of(),
                     null,
+                    transactionFamilies,
                     from,
                     to,
                     reconView
@@ -282,13 +289,7 @@ public class ScorecardService {
     }
 
     private String moduleLabel(String reconView) {
-        return switch (Objects.toString(reconView, "").toUpperCase()) {
-            case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
-            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
-            case "XSTORE_XOCS" -> "Xstore vs XOCS";
-            case "XSTORE_SIM" -> "Xstore vs SIM";
-            default -> Objects.toString(reconView, "Unknown Module");
-        };
+        return reconModuleService.resolveModuleLabel(reconView, Objects.toString(reconView, "Unknown Module"));
     }
 
     private boolean equalsIgnoreCase(String left, String right) {

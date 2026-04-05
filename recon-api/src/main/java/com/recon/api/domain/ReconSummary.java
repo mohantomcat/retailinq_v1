@@ -13,16 +13,38 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReconSummary {
+    private String tenantId;
     private String transactionKey;
     private String externalId;
     private String reconView;
     private String simSource;
     private String storeId;
     private String wkstnId;
-    private String businessDate;        // always yyyy-MM-dd — never mutated
-    private String businessDateDisplay; // locale display — dd-MMM-yyyy etc.
+    private String businessDate;
+    private String businessDateDisplay;
     private String transactionType;
+    private String transactionFamily;
+    private String transactionPhase;
+    private String originSystem;
+    private String counterpartySystem;
+    private boolean directionResolved;
+    private String businessReference;
+    private String headerMatchKey;
+    private String aggregateKey;
     private String reconStatus;
+    private boolean sourcePresent;
+    private boolean targetPresent;
+    private String sourceDocumentRef;
+    private String targetDocumentRef;
+    private List<String> sourceLineMatchKeys;
+    private List<String> targetLineMatchKeys;
+    private Integer sourceItemCount;
+    private Integer targetItemCount;
+    private BigDecimal sourceTotalQuantity;
+    private BigDecimal targetTotalQuantity;
+    private BigDecimal quantityVariance;
+    private boolean quantityMetricsAvailable;
+    private boolean valueMetricsAvailable;
     private Integer processingStatus;
     private String xstoreChecksum;
     private String siocsChecksum;

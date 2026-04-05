@@ -11,6 +11,7 @@ import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.AccessScopeService;
 import com.recon.api.service.AuditComplianceService;
 import com.recon.api.service.ActivityFeedService;
+import com.recon.api.service.ReconModuleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -36,6 +37,7 @@ public class ActivityFeedController {
     private final ActivityFeedService activityFeedService;
     private final AuditComplianceService auditComplianceService;
     private final AccessScopeService accessScopeService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping
     public ApiResponse<ActivityFeedResponse> getActivity(
@@ -54,6 +56,7 @@ public class ActivityFeedController {
                 principal.getTenantId(),
                 storeScope.storeIds(),
                 principal.getPermissions().contains("AUDIT_GLOBAL_VIEW"),
+                reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()),
                 moduleKey,
                 sourceType,
                 actor,

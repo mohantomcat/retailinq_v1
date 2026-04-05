@@ -25,6 +25,7 @@ public class RoleService {
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
     private final AuditLedgerService auditLedgerService;
+    private final ReconModuleService reconModuleService;
 
     public List<RoleDto> getAllRoles(String tenantId) {
         return roleRepository.findByTenantId(tenantId)
@@ -34,6 +35,7 @@ public class RoleService {
     }
 
     public List<Permission> getAllPermissions() {
+        reconModuleService.getAllActiveModules();
         return permissionRepository.findAll();
     }
 

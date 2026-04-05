@@ -106,8 +106,8 @@ public class IntegrationHubCatalogService {
                 new ConnectorSeed(
                         "sim-poller",
                         "SIM Poller",
-                        "API_POLLING",
-                        "SIOCS",
+                        "DATABASE_POLLING",
+                        "SIM",
                         "RECON",
                         "sim-poller",
                         "POLLING",
@@ -139,6 +139,19 @@ public class IntegrationHubCatalogService {
                         "POLLING",
                         "mfcs-canonical-transaction",
                         "MFCS canonical transaction feed",
+                        "CANONICAL_TRANSACTION",
+                        "INVENTORY_TRANSACTION"
+                ),
+                new ConnectorSeed(
+                        "rms-db-main",
+                        "RMS DB Connector",
+                        "DATABASE_POLLING",
+                        "RMS",
+                        "RECON",
+                        "rms-db-connector",
+                        "POLLING",
+                        "rms-canonical-transaction",
+                        "RMS canonical transaction feed",
                         "CANONICAL_TRANSACTION",
                         "INVENTORY_TRANSACTION"
                 ),

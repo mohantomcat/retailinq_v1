@@ -26,26 +26,28 @@ import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import {exceptionApi} from '../services/exceptionApi'
+import {operationsApi} from '../services/operationsApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const RECON_STATUS_OPTIONS = [
     '',
     'MISSING_IN_SIM',
     'MISSING_IN_SIOCS',
     'MISSING_IN_MFCS',
+    'MISSING_IN_RMS',
     'MISSING_IN_XOCS',
     'PROCESSING_PENDING_IN_SIM',
     'PROCESSING_PENDING_IN_SIOCS',
     'PROCESSING_PENDING_IN_MFCS',
+    'PROCESSING_PENDING_IN_RMS',
     'ITEM_MISSING',
     'QUANTITY_MISMATCH',
     'TOTAL_MISMATCH',
     'DUPLICATE_IN_SIM',
     'DUPLICATE_IN_SIOCS',
     'DUPLICATE_IN_MFCS',
+    'DUPLICATE_IN_RMS',
     'DUPLICATE_IN_XOCS',
 ]
 
@@ -71,20 +73,30 @@ const REASON_CODE_OPTIONS = [
     'SOURCE_DATA_ISSUE',
     'MANUAL_REVIEW_REQUIRED',
 ]
-const OPERATION_MODULE_OPTIONS = [
-    '',
-    'xstore-publisher',
-    'sim-poller',
-    'siocs-cloud-connector',
-    'mfcs-rds-connector',
-    'xocs-cloud-connector',
-]
+function buildOperationModuleOptions(actionCatalog) {
+    const seen = new Set()
+    return (actionCatalog || []).reduce((options, item) => {
+        const moduleId = item?.moduleId || ''
+        const reconView = item?.reconView || ''
+        const dedupeKey = `${reconView}:${moduleId}`
+        if (!moduleId || seen.has(dedupeKey)) {
+            return options
+        }
+        seen.add(dedupeKey)
+        options.push({
+            value: moduleId,
+            label: item?.moduleLabel || moduleId,
+            reconView,
+        })
+        return options
+    }, [])
+}
 
-function emptyRoutingRule() {
+function emptyRoutingRule(defaultReconView = '') {
     return {
         id: null,
         ruleName: '',
-        reconView: 'XSTORE_SIM',
+        reconView: defaultReconView,
         reconStatus: '',
         minSeverity: 'MEDIUM',
         rootCauseCategory: '',
@@ -109,11 +121,11 @@ function emptyStep(stepOrder) {
     }
 }
 
-function emptyPlaybook() {
+function emptyPlaybook(defaultReconView = '') {
     return {
         id: null,
         playbookName: '',
-        reconView: 'XSTORE_SIM',
+        reconView: defaultReconView,
         reconStatus: '',
         minSeverity: 'MEDIUM',
         rootCauseCategory: '',
@@ -122,6 +134,19 @@ function emptyPlaybook() {
         description: '',
         steps: [emptyStep(1)],
     }
+}
+
+function sanitizePlaybookSteps(steps, reconView, operationModuleOptions) {
+    const allowedModules = new Set(
+        (operationModuleOptions || [])
+            .filter((option) => option.reconView === reconView)
+            .map((option) => option.value)
+    )
+    return (steps || []).map((step) => (
+        step.operationModuleId && !allowedModules.has(step.operationModuleId)
+            ? {...step, operationModuleId: '', operationActionKey: ''}
+            : step
+    ))
 }
 
 function SummaryCard({label, value, palette, tone = 'blue'}) {
@@ -271,6 +296,7 @@ function PlaybookTable({playbooks, onEdit, onDelete, palette, t, canEdit, saving
 
 export default function RoutingPlaybooks({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_AUTOMATION_VIEW') || hasPermission('EXCEPTION_AUTOMATION_EDIT')
     const canEdit = hasPermission('EXCEPTION_AUTOMATION_EDIT')
     const [loading, setLoading] = useState(true)
@@ -280,19 +306,22 @@ export default function RoutingPlaybooks({palette, t}) {
     const [filters, setFilters] = useState({reconView: ''})
     const [assignmentOptions, setAssignmentOptions] = useState({usernames: [], roleNames: []})
     const [data, setData] = useState({routingRules: [], playbooks: []})
-    const [routingRuleForm, setRoutingRuleForm] = useState(emptyRoutingRule())
-    const [playbookForm, setPlaybookForm] = useState(emptyPlaybook())
+    const [operationModuleOptions, setOperationModuleOptions] = useState([])
+    const [routingRuleForm, setRoutingRuleForm] = useState(() => emptyRoutingRule())
+    const [playbookForm, setPlaybookForm] = useState(() => emptyPlaybook())
 
     const loadData = async (nextFilters = filters) => {
         setLoading(true)
         setError('')
         try {
-            const [automationCenter, options] = await Promise.all([
+            const [automationCenter, options, jobsCenter] = await Promise.all([
                 exceptionApi.getAutomationCenter({reconView: nextFilters.reconView}),
                 exceptionApi.getAssignmentOptions(),
+                operationsApi.getJobsCenter().catch(() => null),
             ])
             setData(automationCenter || {routingRules: [], playbooks: []})
             setAssignmentOptions(options || {usernames: [], roleNames: []})
+            setOperationModuleOptions(buildOperationModuleOptions(jobsCenter?.actionCatalog))
         } catch (err) {
             setError(err.message || t('Failed to load routing and playbook automation settings'))
         } finally {
@@ -311,6 +340,11 @@ export default function RoutingPlaybooks({palette, t}) {
         activeRules: (data.routingRules || []).filter((rule) => rule.active).length,
         playbooks: data.playbooks?.length || 0,
     }), [data])
+
+    const playbookOperationModuleOptions = useMemo(
+        () => operationModuleOptions.filter((option) => option.reconView === playbookForm.reconView),
+        [operationModuleOptions, playbookForm.reconView]
+    )
 
     if (!canView) {
         return null
@@ -363,7 +397,8 @@ export default function RoutingPlaybooks({palette, t}) {
         try {
             const payload = {
                 ...playbookForm,
-                steps: playbookForm.steps.map((step, index) => ({...step, stepOrder: index + 1})),
+                steps: sanitizePlaybookSteps(playbookForm.steps, playbookForm.reconView, operationModuleOptions)
+                    .map((step, index) => ({...step, stepOrder: index + 1})),
             }
             if (playbookForm.id) {
                 await exceptionApi.updatePlaybook(playbookForm.id, payload)
@@ -402,7 +437,16 @@ export default function RoutingPlaybooks({palette, t}) {
     const updatePlaybookStep = (index, field, value) => {
         setPlaybookForm((current) => ({
             ...current,
-            steps: current.steps.map((step, stepIndex) => stepIndex === index ? {...step, [field]: value} : step),
+            steps: current.steps.map((step, stepIndex) => {
+                if (stepIndex !== index) {
+                    return step
+                }
+                const nextStep = {...step, [field]: value}
+                if (field === 'operationModuleId') {
+                    nextStep.operationActionKey = ''
+                }
+                return nextStep
+            }),
         }))
     }
 
@@ -484,6 +528,7 @@ export default function RoutingPlaybooks({palette, t}) {
                                     <FormControl size="small" fullWidth>
                                         <InputLabel>{t('Module')}</InputLabel>
                                         <Select value={routingRuleForm.reconView} label={t('Module')} onChange={(event) => setRoutingRuleForm((current) => ({...current, reconView: event.target.value}))} disabled={!canEdit || saving}>
+                                            <MenuItem value="">{t('Select Module')}</MenuItem>
                                             {MODULE_OPTIONS.filter((option) => option.value).map((option) => (
                                                 <MenuItem key={option.value} value={option.value}>{t(option.label)}</MenuItem>
                                             ))}
@@ -569,7 +614,17 @@ export default function RoutingPlaybooks({palette, t}) {
                                     <TextField size="small" label={t('Playbook Name')} value={playbookForm.playbookName} onChange={(event) => setPlaybookForm((current) => ({...current, playbookName: event.target.value}))} disabled={!canEdit || saving}/>
                                     <FormControl size="small" fullWidth>
                                         <InputLabel>{t('Module')}</InputLabel>
-                                        <Select value={playbookForm.reconView} label={t('Module')} onChange={(event) => setPlaybookForm((current) => ({...current, reconView: event.target.value}))} disabled={!canEdit || saving}>
+                                        <Select
+                                            value={playbookForm.reconView}
+                                            label={t('Module')}
+                                            onChange={(event) => setPlaybookForm((current) => ({
+                                                ...current,
+                                                reconView: event.target.value,
+                                                steps: sanitizePlaybookSteps(current.steps, event.target.value, operationModuleOptions),
+                                            }))}
+                                            disabled={!canEdit || saving}
+                                        >
+                                            <MenuItem value="">{t('Select Module')}</MenuItem>
                                             {MODULE_OPTIONS.filter((option) => option.value).map((option) => (
                                                 <MenuItem key={option.value} value={option.value}>{t(option.label)}</MenuItem>
                                             ))}
@@ -632,8 +687,9 @@ export default function RoutingPlaybooks({palette, t}) {
                                                     <FormControl size="small" fullWidth>
                                                         <InputLabel>{t('Operation Module')}</InputLabel>
                                                         <Select value={step.operationModuleId} label={t('Operation Module')} onChange={(event) => updatePlaybookStep(index, 'operationModuleId', event.target.value)} disabled={!canEdit || saving}>
-                                                            {OPERATION_MODULE_OPTIONS.map((option) => (
-                                                                <MenuItem key={option || 'none'} value={option}>{option || t('None')}</MenuItem>
+                                                            <MenuItem value="">{t('None')}</MenuItem>
+                                                            {playbookOperationModuleOptions.map((option) => (
+                                                                <MenuItem key={`${option.reconView}:${option.value}`} value={option.value}>{option.label}</MenuItem>
                                                             ))}
                                                         </Select>
                                                     </FormControl>
@@ -661,7 +717,14 @@ export default function RoutingPlaybooks({palette, t}) {
                             </Paper>
                             <PlaybookTable
                                 playbooks={data.playbooks || []}
-                                onEdit={(playbook) => setPlaybookForm({...playbook, steps: (playbook.steps || []).map((step, index) => ({...step, stepOrder: index + 1}))})}
+                                onEdit={(playbook) => setPlaybookForm({
+                                    ...playbook,
+                                    steps: sanitizePlaybookSteps(
+                                        (playbook.steps || []).map((step, index) => ({...step, stepOrder: index + 1})),
+                                        playbook.reconView,
+                                        operationModuleOptions
+                                    ),
+                                })}
                                 onDelete={deletePlaybook}
                                 palette={palette}
                                 t={t}

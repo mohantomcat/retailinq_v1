@@ -19,9 +19,7 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import KnownIssueGuidanceCard from '../components/KnownIssueGuidanceCard'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 function formatCurrencyValue(amount, currencyCode) {
     if (amount === null || amount === undefined || amount === '') return '-'
@@ -112,6 +110,7 @@ function filterChannelsForIncident(channels, reconView) {
 
 export default function StoreManagerLite({palette, t}) {
     const {hasPermission, user, getAccessibleStores} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
     const canEdit = hasPermission('EXCEPTION_EDIT')
     const accessibleStores = getAccessibleStores()

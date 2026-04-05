@@ -69,7 +69,9 @@ cloud:
 
 kafka:
   topic:
-    sim-transactions: ${KAFKA_SIM_TOPIC:siocs.transactions.raw}
+    siocs-pos-transactions: ${KAFKA_SIOCS_POS_TOPIC:siocs.pos.transactions.raw}
+    siocs-inventory-transactions: ${KAFKA_SIOCS_INVENTORY_TOPIC:siocs.inventory.transactions.raw}
+    siocs-unknown-transactions: ${KAFKA_SIOCS_UNKNOWN_TOPIC:siocs.unknown.transactions.raw}
     integration-canonical: ${KAFKA_INTEGRATION_CANONICAL_TOPIC:integration.canonical.transactions}
 
 management:

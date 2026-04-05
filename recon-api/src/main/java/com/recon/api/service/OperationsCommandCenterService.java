@@ -13,6 +13,7 @@ import com.recon.api.domain.OperationsCommandCenterQueueLaneDto;
 import com.recon.api.domain.OperationsCommandCenterResponse;
 import com.recon.api.domain.OperationsCommandCenterSummaryDto;
 import com.recon.api.domain.OperationsResponse;
+import com.recon.api.domain.ReconModuleDto;
 import com.recon.api.domain.RegionalIncidentBoardResponse;
 import com.recon.api.domain.RegionalIncidentOutbreakDto;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ public class OperationsCommandCenterService {
     private final ExceptionNoiseSuppressionService exceptionNoiseSuppressionService;
     private final ExceptionCollaborationService exceptionCollaborationService;
     private final ExceptionBusinessValueService exceptionBusinessValueService;
+    private final ReconModuleService reconModuleService;
 
     @Transactional(readOnly = true)
     public OperationsCommandCenterResponse getCenter(String tenantId,
@@ -50,6 +52,7 @@ public class OperationsCommandCenterService {
                         tenantId,
                         username,
                         accessibleStoreIds,
+                        scopedViews,
                         view,
                         "ALL",
                         null,
@@ -75,7 +78,7 @@ public class OperationsCommandCenterService {
                 null,
                 null
         );
-        OperationsResponse operations = operationsService.getOperations(tenantId);
+        OperationsResponse operations = operationsService.getOperations(tenantId, scopedViews);
         List<OperationModuleStatusDto> integrationHealth = (operations.getModules() == null ? List.<OperationModuleStatusDto>of() : operations.getModules()).stream()
                 .filter(module -> scopedViews.isEmpty() || scopedViews.contains(normalize(module.getReconView())))
                 .sorted(Comparator
@@ -83,11 +86,11 @@ public class OperationsCommandCenterService {
                         .thenComparing(OperationModuleStatusDto::getHealthScore, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
 
-        ExceptionSuppressionSummaryDto suppressionSummary = exceptionNoiseSuppressionService.getSummary(tenantId);
-        List<ExceptionSuppressionAuditDto> recentAutomation = exceptionNoiseSuppressionService.getRecentActivity(tenantId).stream()
+        ExceptionSuppressionSummaryDto suppressionSummary = exceptionNoiseSuppressionService.getSummary(tenantId, reconView, scopedViews);
+        List<ExceptionSuppressionAuditDto> recentAutomation = exceptionNoiseSuppressionService.getRecentActivity(tenantId, reconView, scopedViews).stream()
                 .limit(8)
                 .toList();
-        ExceptionTicketingCenterResponse ticketingCenter = exceptionCollaborationService.getCenter(tenantId, reconView);
+        ExceptionTicketingCenterResponse ticketingCenter = exceptionCollaborationService.getCenter(tenantId, reconView, scopedViews);
 
         BusinessValueContextDto summaryBusinessValue = exceptionBusinessValueService.aggregateIncidentValue(
                 incidents.stream()
@@ -239,26 +242,29 @@ public class OperationsCommandCenterService {
     }
 
     private List<String> resolveViews(List<String> allowedReconViews, String requestedReconView) {
-        if (requestedReconView != null && !requestedReconView.isBlank()) {
-            return List.of(normalize(requestedReconView));
-        }
-        if (allowedReconViews == null || allowedReconViews.isEmpty()) {
-            return List.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS", "SIOCS_MFCS");
-        }
-        return allowedReconViews.stream()
+        List<String> accessibleViews = allowedReconViews == null || allowedReconViews.isEmpty()
+                ? reconModuleService.getAllActiveModules().stream()
+                .map(ReconModuleDto::getReconView)
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList()
+                : allowedReconViews.stream()
                 .map(this::normalize)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+        if (requestedReconView != null && !requestedReconView.isBlank()) {
+            String requestedView = normalize(requestedReconView);
+            return accessibleViews.contains(requestedView) ? List.of(requestedView) : List.of();
+        }
+        return accessibleViews;
     }
 
     private String moduleLabel(String reconView) {
-        return switch (normalize(reconView)) {
-            case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
-            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
-            case "XSTORE_XOCS" -> "Xstore vs XOCS";
-            default -> "Xstore vs SIM";
-        };
+        return reconModuleService.findByReconView(reconView)
+                .map(ReconModuleDto::getLabel)
+                .orElse(defaultText(reconView, "Reconciliation"));
     }
 
     private String defaultText(String value, String fallback) {

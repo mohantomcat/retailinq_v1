@@ -35,6 +35,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
@@ -42,6 +43,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -97,17 +99,21 @@ public class ExceptionCollaborationService {
     private String callbackBaseUrl;
 
     @Transactional(readOnly = true)
-    public ExceptionTicketingCenterResponse getCenter(String tenantId, String reconView) {
+    public ExceptionTicketingCenterResponse getCenter(String tenantId,
+                                                      String reconView,
+                                                      Collection<String> allowedReconViews) {
         String normalizedReconView = normalize(reconView);
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
         List<ExceptionIntegrationChannel> channels = channelRepository.findByTenantIdOrderByActiveDescUpdatedAtDesc(tenantId).stream()
-                .filter(matchesReconView(normalizedReconView))
+                .filter(matchesScopedChannel(normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                 .toList();
         List<ExceptionExternalTicket> recentTickets = externalTicketRepository.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-                .filter(ticket -> normalizedReconView == null || Objects.equals(normalizedReconView, normalize(ticket.getReconView())))
+                .filter(ticket -> matchesScopedRecord(ticket.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                 .limit(25)
                 .toList();
         List<ExceptionOutboundCommunication> recentCommunications = communicationRepository.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-                .filter(record -> normalizedReconView == null || Objects.equals(normalizedReconView, normalize(record.getReconView())))
+                .filter(record -> matchesScopedRecord(record.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                 .limit(25)
                 .toList();
 
@@ -127,19 +133,37 @@ public class ExceptionCollaborationService {
     }
 
     @Transactional(readOnly = true)
+    public ExceptionTicketingCenterResponse getCenter(String tenantId, String reconView) {
+        return getCenter(tenantId, reconView, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExceptionIntegrationChannelDto> getActiveChannels(String tenantId,
+                                                                  String reconView,
+                                                                  String channelGroup,
+                                                                  Collection<String> allowedReconViews) {
+        String normalizedReconView = normalize(reconView);
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
+        return channelRepository.findActiveChannels(tenantId, normalizedReconView, normalize(channelGroup)).stream()
+                .filter(matchesScopedChannel(normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
+                .map(this::toChannelDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<ExceptionIntegrationChannelDto> getActiveChannels(String tenantId,
                                                                   String reconView,
                                                                   String channelGroup) {
-        return channelRepository.findActiveChannels(tenantId, normalize(reconView), normalize(channelGroup)).stream()
-                .map(this::toChannelDto)
-                .toList();
+        return getActiveChannels(tenantId, reconView, channelGroup, null);
     }
 
     @Transactional
     public ExceptionIntegrationChannelDto saveChannel(String tenantId,
                                                       UUID channelId,
                                                       SaveExceptionIntegrationChannelRequest request,
-                                                      String actorUsername) {
+                                                      String actorUsername,
+                                                      Collection<String> allowedReconViews) {
         if (request == null) {
             throw new IllegalArgumentException("Integration channel request is required");
         }
@@ -150,6 +174,10 @@ public class ExceptionCollaborationService {
                 .updatedBy(actorUsername)
                 .build()
                 : channelRepository.findByIdAndTenantId(channelId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Integration channel not found"));
 
         String channelName = trimToNull(request.getChannelName());
@@ -194,10 +222,12 @@ public class ExceptionCollaborationService {
             throw new IllegalArgumentException("Automatic ticket push requires a ticketing-capable channel");
         }
 
+        String reconView = normalize(request.getReconView());
+        requireAllowedReconView(reconView, allowedReconViews);
         channel.setChannelName(channelName);
         channel.setChannelType(channelType);
         channel.setChannelGroup(channelGroup);
-        channel.setReconView(normalize(request.getReconView()));
+        channel.setReconView(reconView);
         channel.setEndpointUrl(trimToNull(request.getEndpointUrl()));
         channel.setRecipientEmail(trimToNull(request.getRecipientEmail()));
         channel.setHeadersJson(trimToNull(request.getHeadersJson()));
@@ -216,6 +246,14 @@ public class ExceptionCollaborationService {
         channel.setUpdatedBy(actorUsername);
 
         return toChannelDto(channelRepository.save(channel));
+    }
+
+    @Transactional
+    public ExceptionIntegrationChannelDto saveChannel(String tenantId,
+                                                      UUID channelId,
+                                                      SaveExceptionIntegrationChannelRequest request,
+                                                      String actorUsername) {
+        return saveChannel(tenantId, channelId, request, actorUsername, null);
     }
 
     @Transactional(readOnly = true)
@@ -1155,11 +1193,33 @@ public class ExceptionCollaborationService {
                 .build();
     }
 
-    private Predicate<ExceptionIntegrationChannel> matchesReconView(String normalizedReconView) {
+    private Predicate<ExceptionIntegrationChannel> matchesScopedChannel(String normalizedReconView,
+                                                                       Set<String> allowedReconViews,
+                                                                       boolean enforceAllowedScope) {
         if (normalizedReconView == null) {
-            return channel -> true;
+            if (!enforceAllowedScope) {
+                return channel -> true;
+            }
+            if (allowedReconViews.isEmpty()) {
+                return channel -> false;
+            }
+            return channel -> channel.getReconView() == null || allowedReconViews.contains(normalize(channel.getReconView()));
         }
-        return channel -> channel.getReconView() == null || Objects.equals(channel.getReconView(), normalizedReconView);
+        return channel -> channel.getReconView() == null || Objects.equals(normalize(channel.getReconView()), normalizedReconView);
+    }
+
+    private boolean matchesScopedRecord(String value,
+                                        String normalizedReconView,
+                                        Set<String> allowedReconViews,
+                                        boolean enforceAllowedScope) {
+        String normalizedValue = normalize(value);
+        if (normalizedReconView != null) {
+            return Objects.equals(normalizedReconView, normalizedValue);
+        }
+        if (!enforceAllowedScope) {
+            return true;
+        }
+        return normalizedValue != null && allowedReconViews.contains(normalizedValue);
     }
 
     private boolean isFailed(ExceptionExternalTicket ticket) {
@@ -1203,6 +1263,30 @@ public class ExceptionCollaborationService {
     private String normalize(String value) {
         String trimmed = trimToNull(value);
         return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    private Set<String> normalizeReconViews(Collection<String> reconViews) {
+        if (reconViews == null) {
+            return Set.of();
+        }
+        return reconViews.stream()
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalize(reconView);
+        if (normalizedReconView == null) {
+            throw new AccessDeniedException("A reconciliation module is required for this action");
+        }
+        Set<String> normalizedAllowedViews = normalizeReconViews(allowedReconViews);
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private String normalizeExternalStatus(String value) {

@@ -24,7 +24,7 @@ import {
 } from '@mui/material'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import {activityApi} from '../services/activityApi'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
+import {useReconModules} from '../hooks/useReconModules'
 
 const SOURCE_OPTIONS = [
     {value: '', label: 'All Sources'},
@@ -35,14 +35,6 @@ const SOURCE_OPTIONS = [
     {value: 'SLA', label: 'SLA'},
     {value: 'COMPLIANCE', label: 'Compliance'},
     {value: 'ALERT', label: 'Alerts'},
-]
-
-const MODULE_OPTIONS = [
-    {value: '', label: 'All Modules'},
-    ...RECON_VIEW_OPTIONS,
-    {value: 'CONFIGURATIONS', label: 'Configurations'},
-    {value: 'SECURITY', label: 'Security'},
-    {value: 'AUDIT', label: 'Audit'},
 ]
 
 function SummaryCard({label, value, palette, tone = 'blue'}) {
@@ -74,6 +66,7 @@ function MetricGrid({palette, t, metrics}) {
 }
 
 export default function Activity({palette, t}) {
+    const {moduleOptions} = useReconModules()
     const [data, setData] = useState(null)
     const [retentionCenter, setRetentionCenter] = useState(null)
     const [soxReport, setSoxReport] = useState(null)
@@ -97,6 +90,16 @@ export default function Activity({palette, t}) {
         defaultExportFormat: 'CSV',
         notes: '',
     })
+    const MODULE_OPTIONS = useMemo(
+        () => [
+            {value: '', label: 'All Modules'},
+            ...moduleOptions,
+            {value: 'CONFIGURATIONS', label: 'Configurations'},
+            {value: 'SECURITY', label: 'Security'},
+            {value: 'AUDIT', label: 'Audit'},
+        ],
+        [moduleOptions]
+    )
 
     const loadAuditWorkspace = async (nextFilters = filters) => {
         try {

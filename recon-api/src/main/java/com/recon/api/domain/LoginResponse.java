@@ -25,4 +25,5 @@ public class LoginResponse {
     private AccessScopeSummaryDto accessScope;
     private String authMode;
     private List<RoleDto> roles;
+    private List<ReconModuleDto> accessibleModules;
 }

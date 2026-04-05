@@ -8,6 +8,7 @@ import com.recon.api.domain.SlaManagementResponse;
 import com.recon.api.domain.TenantOperatingModelDto;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.ExceptionSlaService;
+import com.recon.api.service.ReconModuleService;
 import com.recon.api.service.TenantOperatingModelService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class SlaController {
 
     private final ExceptionSlaService exceptionSlaService;
     private final TenantOperatingModelService tenantOperatingModelService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<SlaManagementResponse>> getSlaManagement(
@@ -40,7 +42,10 @@ public class SlaController {
         try {
             requireSlaAccess(principal, reconView, false);
             return ResponseEntity.ok(ApiResponse.ok(
-                    exceptionSlaService.getManagementData(principal.getTenantId(), reconView)));
+                    exceptionSlaService.getManagementData(
+                            principal.getTenantId(),
+                            reconView,
+                            reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))));
         } catch (Exception e) {
             log.error("Get SLA management error: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
@@ -91,18 +96,6 @@ public class SlaController {
         if (!principal.hasPermission(permission)) {
             throw new AccessDeniedException("Missing permission: " + permission);
         }
-        if (reconView == null || reconView.isBlank()) {
-            return;
-        }
-        String requiredPermission = switch (reconView.toUpperCase()) {
-            case "XSTORE_SIOCS" -> "RECON_XSTORE_SIOCS";
-            case "XSTORE_XOCS" -> "RECON_XSTORE_XOCS";
-            case "XSTORE_SIM" -> "RECON_XSTORE_SIM";
-            case "SIOCS_MFCS" -> "RECON_SIOCS_MFCS";
-            default -> null;
-        };
-        if (requiredPermission != null && !principal.hasPermission(requiredPermission)) {
-            throw new AccessDeniedException("Missing permission: " + requiredPermission);
-        }
+        reconModuleService.requireAccess(principal.getTenantId(), reconView, principal.getPermissions());
     }
 }

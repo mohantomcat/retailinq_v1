@@ -1,7 +1,10 @@
 package com.recon.poller.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.integration.kafka.KafkaTopicCatalog;
 import com.recon.integration.model.CanonicalIntegrationEnvelope;
+import com.recon.integration.recon.TransactionDomain;
+import com.recon.integration.recon.TransactionDomainResolver;
 import com.recon.poller.aggregator.SiocsRowAggregator;
 import com.recon.poller.config.PollerConfig;
 import com.recon.poller.domain.AggregationResult;
@@ -42,8 +45,14 @@ public class SiocsKafkaPoller {
     private final ObjectMapper objectMapper;
     private final PollerRuntimeConfigService runtimeConfigService;
 
-    @Value("${kafka.topic.sim-transactions}")
-    private String topic;
+    @Value("${kafka.topic.sim-pos-transactions:}")
+    private String posTopic;
+
+    @Value("${kafka.topic.sim-inventory-transactions:}")
+    private String inventoryTopic;
+
+    @Value("${kafka.topic.sim-unknown-transactions:}")
+    private String unknownTopic;
 
     @Value("${kafka.topic.integration-canonical}")
     private String integrationCanonicalTopic;
@@ -78,7 +87,7 @@ public class SiocsKafkaPoller {
         UUID stepId = integrationRunJournalRepository.startStep(
                 runId,
                 "POLL_AND_PUBLISH",
-                "Poll SIOCS target status rows and journal Integration Hub status messages",
+                "Poll SIM transactions and journal Integration Hub status messages",
                 1
         );
 
@@ -105,7 +114,7 @@ public class SiocsKafkaPoller {
                     stepId,
                     metrics.publishedCount(),
                     metrics.errorCount(),
-                    "Processed " + metrics.sourceCount() + " SIM status transactions",
+                    "Processed " + metrics.sourceCount() + " SIM transactions",
                     metrics.errorCount() > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED"
             );
             integrationRunJournalRepository.completeRun(
@@ -212,9 +221,12 @@ public class SiocsKafkaPoller {
                     validateRow(row);
                     SimTransactionEvent event =
                             mapper.mapToEvent(row, config.getOrgId());
+                    TransactionDomain domain =
+                            TransactionDomainResolver.resolve(event.getTransactionType());
+                    String rawTopic = rawTopic(domain);
                     String payload =
                             objectMapper.writeValueAsString(event);
-                    ops.send(topic, event.getTransactionKey(), payload)
+                    ops.send(rawTopic, event.getTransactionKey(), payload)
                             .get(10, TimeUnit.SECONDS);
                     boolean journaled = publishIntegrationEnvelope(runId, event);
                     if (journaled) {
@@ -222,20 +234,36 @@ public class SiocsKafkaPoller {
                     } else {
                         errorCount[0]++;
                     }
-                    log.debug("Published simTxn key={}",
-                            event.getTransactionKey());
+                    log.debug("Published simTxn key={} domain={} topic={}",
+                            event.getTransactionKey(), domain, rawTopic);
 
                 } catch (Exception e) {
                     errorCount[0]++;
                     log.error("Failed to publish row externalId={}: {}",
                             row.getExternalId(), e.getMessage());
-                    recordStatusFailure(runId, row, null, "LEGACY_PUBLISH_ERROR", "SIM_RAW_TOPIC_PUBLISH_FAILED", e.getMessage(), true);
+                    recordStatusFailure(runId, row, null, "LEGACY_PUBLISH_ERROR", "SIM_DOMAIN_TOPIC_PUBLISH_FAILED", e.getMessage(), true);
                     sendToDlq(row, e.getMessage());
                 }
             }
             return null;
         });
         return new PublishMetrics(publishedCount[0], errorCount[0]);
+    }
+
+    private String rawTopic(TransactionDomain domain) {
+        return switch (domain) {
+            case POS -> configuredTopic(posTopic, TransactionDomain.POS);
+            case INVENTORY -> configuredTopic(inventoryTopic, TransactionDomain.INVENTORY);
+            case UNKNOWN -> configuredTopic(unknownTopic, TransactionDomain.UNKNOWN);
+        };
+    }
+
+    private String configuredTopic(String configuredTopic,
+                                   TransactionDomain domain) {
+        if (configuredTopic != null && !configuredTopic.isBlank()) {
+            return configuredTopic.trim();
+        }
+        return KafkaTopicCatalog.rawTransactionTopic("SIM", domain);
     }
 
     private boolean publishIntegrationEnvelope(UUID runId,

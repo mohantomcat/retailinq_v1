@@ -4,13 +4,16 @@ import com.recon.api.domain.ConfigurationCatalogResponse;
 import com.recon.api.domain.ConfigurationEntryDto;
 import com.recon.api.domain.ConfigurationSectionDto;
 import com.recon.api.domain.ModuleConfigurationDto;
+import com.recon.api.domain.ReconModuleDto;
 import com.recon.api.repository.ConfigurationOverrideRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,18 +26,25 @@ public class ConfigurationCatalogService {
 
     private final ConfigurationOverrideRepository configurationOverrideRepository;
     private final AuditLedgerService auditLedgerService;
+    private final ReconModuleService reconModuleService;
 
     public ConfigurationCatalogResponse getCatalog(boolean includeModules,
                                                    boolean includeSystemSections,
-                                                   boolean allowEdit) {
+                                                   boolean allowEdit,
+                                                   Collection<String> allowedReconViews) {
         Map<String, String> overrides = configurationOverrideRepository.findAllOverrides();
+        Set<String> normalizedAllowedViews = allowedReconViews == null
+                ? Set.of()
+                : allowedReconViews.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(java.util.Locale.ROOT))
+                .collect(Collectors.toSet());
         List<ModuleConfigurationDto> modules = includeModules
-                ? List.of(
-                buildXstoreSim(overrides),
-                buildXstoreSiocs(overrides),
-                buildSiocsMfcs(overrides),
-                buildXstoreXocs(overrides)
-        ).stream().map(module -> maskEditable(module, allowEdit)).collect(Collectors.toList())
+                ? reconModuleService.getAllActiveModules().stream()
+                .filter(module -> normalizedAllowedViews.contains(module.getReconView()))
+                .map(module -> buildReconModule(module, overrides))
+                .map(module -> maskEditable(module, allowEdit))
+                .collect(Collectors.toList())
                 : List.of();
         List<ConfigurationSectionDto> systemSections = includeSystemSections
                 ? buildSystemSections(overrides).stream()
@@ -44,6 +54,36 @@ public class ConfigurationCatalogService {
         return ConfigurationCatalogResponse.builder()
                 .modules(modules)
                 .systemSections(systemSections)
+                .build();
+    }
+
+    private ModuleConfigurationDto buildReconModule(ReconModuleDto module, Map<String, String> overrides) {
+        String configurationModuleId = module.getConfigurationModuleId();
+        if ("xstore-sim".equalsIgnoreCase(configurationModuleId)) {
+            return buildXstoreSim(module, overrides);
+        }
+        if ("xstore-siocs".equalsIgnoreCase(configurationModuleId)) {
+            return buildXstoreSiocs(module, overrides);
+        }
+        if ("xstore-xocs".equalsIgnoreCase(configurationModuleId)) {
+            return buildXstoreXocs(module, overrides);
+        }
+        if ("siocs-mfcs".equalsIgnoreCase(configurationModuleId)) {
+            return buildSiocsMfcs(module, overrides);
+        }
+        if ("sim-rms".equalsIgnoreCase(configurationModuleId)) {
+            return buildSimRms(module, overrides);
+        }
+        if ("sim-mfcs".equalsIgnoreCase(configurationModuleId)) {
+            return buildSimMfcs(module, overrides);
+        }
+        if ("siocs-rms".equalsIgnoreCase(configurationModuleId)) {
+            return buildSiocsRms(module, overrides);
+        }
+        return ModuleConfigurationDto.builder()
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
+                .sections(List.of())
                 .build();
     }
 
@@ -146,21 +186,21 @@ public class ConfigurationCatalogService {
                 : "tenant-india";
     }
 
-    private ModuleConfigurationDto buildXstoreSim(Map<String, String> overrides) {
+    private ModuleConfigurationDto buildXstoreSim(ReconModuleDto module, Map<String, String> overrides) {
         return ModuleConfigurationDto.builder()
-                .moduleId("xstore-sim")
-                .moduleLabel("Xstore vs SIM")
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
                 .sections(List.of(
                         xstorePublisherSection(overrides),
-                        siocsDbPollerSection(overrides)
+                        simDbPollerSection(overrides)
                 ))
                 .build();
     }
 
-    private ModuleConfigurationDto buildXstoreSiocs(Map<String, String> overrides) {
+    private ModuleConfigurationDto buildXstoreSiocs(ReconModuleDto module, Map<String, String> overrides) {
         return ModuleConfigurationDto.builder()
-                .moduleId("xstore-siocs")
-                .moduleLabel("Xstore vs SIOCS")
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
                 .sections(List.of(
                         xstorePublisherSection(overrides),
                         siocsCloudSection(overrides)
@@ -168,10 +208,10 @@ public class ConfigurationCatalogService {
                 .build();
     }
 
-    private ModuleConfigurationDto buildXstoreXocs(Map<String, String> overrides) {
+    private ModuleConfigurationDto buildXstoreXocs(ReconModuleDto module, Map<String, String> overrides) {
         return ModuleConfigurationDto.builder()
-                .moduleId("xstore-xocs")
-                .moduleLabel("Xstore vs XOCS")
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
                 .sections(List.of(
                         xstorePublisherSection(overrides),
                         xocsCloudSection(overrides)
@@ -179,13 +219,46 @@ public class ConfigurationCatalogService {
                 .build();
     }
 
-    private ModuleConfigurationDto buildSiocsMfcs(Map<String, String> overrides) {
+    private ModuleConfigurationDto buildSiocsMfcs(ReconModuleDto module, Map<String, String> overrides) {
         return ModuleConfigurationDto.builder()
-                .moduleId("siocs-mfcs")
-                .moduleLabel("SIOCS vs MFCS")
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
                 .sections(List.of(
                         siocsCloudSection(overrides),
                         mfcsRdsSection(overrides)
+                ))
+                .build();
+    }
+
+    private ModuleConfigurationDto buildSimRms(ReconModuleDto module, Map<String, String> overrides) {
+        return ModuleConfigurationDto.builder()
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
+                .sections(List.of(
+                        simDbPollerSection(overrides),
+                        rmsDbPollerSection(overrides)
+                ))
+                .build();
+    }
+
+    private ModuleConfigurationDto buildSimMfcs(ReconModuleDto module, Map<String, String> overrides) {
+        return ModuleConfigurationDto.builder()
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
+                .sections(List.of(
+                        simDbPollerSection(overrides),
+                        mfcsRdsSection(overrides)
+                ))
+                .build();
+    }
+
+    private ModuleConfigurationDto buildSiocsRms(ReconModuleDto module, Map<String, String> overrides) {
+        return ModuleConfigurationDto.builder()
+                .moduleId(module.getTabId())
+                .moduleLabel(module.getLabel())
+                .sections(List.of(
+                        siocsCloudSection(overrides),
+                        rmsDbPollerSection(overrides)
                 ))
                 .build();
     }
@@ -358,7 +431,9 @@ public class ConfigurationCatalogService {
                                 "PUBLISHER_SCHEDULER_ENABLED", "true", false, true, APPLY_MODE_RESTART_REQUIRED),
                         entry(overrides, "posTopic", "POS Topic",
                                 "Kafka topic for Xstore transaction events.",
-                                "KAFKA_POS_TOPIC", "pos.transactions.raw", false, true, APPLY_MODE_RESTART_REQUIRED),
+                                "KAFKA_XSTORE_POS_TOPIC",
+                                rawTransactionTopic("XSTORE", "POS"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
                         entry(overrides, "dlqTopic", "DLQ Topic",
                                 "Kafka dead-letter topic for connector failures.",
                                 "KAFKA_DLQ_TOPIC", "recon.dlq", false, true, APPLY_MODE_RESTART_REQUIRED)
@@ -366,26 +441,26 @@ public class ConfigurationCatalogService {
                 .build();
     }
 
-    private ConfigurationSectionDto siocsDbPollerSection(Map<String, String> overrides) {
+    private ConfigurationSectionDto simDbPollerSection(Map<String, String> overrides) {
         return ConfigurationSectionDto.builder()
-                .id("siocs-db-poller")
-                .label("SIM / SIOCS DB Poller")
-                .description("Database poller settings for the existing SIM lane.")
+                .id("sim-db-poller")
+                .label("SIM DB Connector")
+                .description("Database connector settings for the on-prem SIM transaction feed.")
                 .entries(List.of(
                         entry(overrides, "siocsDbHost", "Database Host",
-                                "SIOCS Oracle host or service endpoint.",
+                                "SIM Oracle host or service endpoint.",
                                 "SIOCS_DB_HOST", "localhost", false, false, APPLY_MODE_REFERENCE_ONLY),
                         entry(overrides, "siocsDbSid", "Database SID",
-                                "SIOCS Oracle SID.",
+                                "SIM Oracle SID.",
                                 "SIOCS_DB_SID", "JCR", false, false, APPLY_MODE_REFERENCE_ONLY),
                         entry(overrides, "siocsDbUser", "Database User",
-                                "SIOCS Oracle user.",
-                                "SIOCS_DB_USER", "siocs", false, false, APPLY_MODE_REFERENCE_ONLY),
+                                "SIM Oracle user.",
+                                "SIOCS_DB_USER", "sim", false, false, APPLY_MODE_REFERENCE_ONLY),
                         entry(overrides, "siocsDbPassword", "Database Password",
-                                "SIOCS Oracle password.",
+                                "SIM Oracle password.",
                                 "SIOCS_DB_PASSWORD", "", true, false, APPLY_MODE_REFERENCE_ONLY),
                         entry(overrides, "pollIntervalMs", "Poll Interval (ms)",
-                                "How often SIM/SIOCS DB is polled for new records.",
+                                "How often the SIM database is polled for new records.",
                                 "SIOCS_POLLER_INTERVAL_MS", "300000", false, true, APPLY_MODE_RESTART_REQUIRED),
                         entry(overrides, "safetyMarginMin", "Safety Margin (min)",
                                 "Overlap safety margin for incremental DB polling.",
@@ -402,9 +477,72 @@ public class ConfigurationCatalogService {
                         entry(overrides, "schedulerEnabled", "Scheduler Enabled",
                                 "Controls scheduled DB polling.",
                                 "SIOCS_POLLER_SCHEDULER_ENABLED", "true", false, true, APPLY_MODE_RESTART_REQUIRED),
-                        entry(overrides, "simTopic", "SIM Topic",
-                                "Kafka topic for SIM transaction events.",
-                                "KAFKA_SIM_TOPIC", "sim.transactions.raw", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "simPosTopic", "SIM POS Topic",
+                                "Kafka topic for SIM POS transaction events.",
+                                "KAFKA_SIM_POS_TOPIC",
+                                rawTransactionTopic("SIM", "POS"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "simInventoryTopic", "SIM Inventory Topic",
+                                "Kafka topic for SIM inventory transaction events.",
+                                "KAFKA_SIM_INVENTORY_TOPIC",
+                                rawTransactionTopic("SIM", "INVENTORY"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "simUnknownTopic", "SIM Unknown Topic",
+                                "Fallback Kafka topic for SIM events whose domain cannot be resolved safely.",
+                                "KAFKA_SIM_UNKNOWN_TOPIC",
+                                rawTransactionTopic("SIM", "UNKNOWN"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "dlqTopic", "DLQ Topic",
+                                "Kafka dead-letter topic for connector failures.",
+                                "KAFKA_DLQ_TOPIC", "recon.dlq", false, true, APPLY_MODE_RESTART_REQUIRED)
+                ))
+                .build();
+    }
+
+    private ConfigurationSectionDto rmsDbPollerSection(Map<String, String> overrides) {
+        return ConfigurationSectionDto.builder()
+                .id("rms-db-poller")
+                .label("RMS DB Connector")
+                .description("Database connector settings for the on-prem RMS transaction feed.")
+                .entries(List.of(
+                        entry(overrides, "rmsDbHost", "Database Host",
+                                "RMS Oracle host or service endpoint.",
+                                "RMS_DB_HOST", "localhost", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "rmsDbSid", "Database SID",
+                                "RMS Oracle SID.",
+                                "RMS_DB_SID", "JCR", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "rmsDbUser", "Database User",
+                                "RMS Oracle user.",
+                                "RMS_DB_USER", "rms", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "rmsDbPassword", "Database Password",
+                                "RMS Oracle password.",
+                                "RMS_DB_PASSWORD", "", true, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "rmsTransactionView", "Transaction View",
+                                "Normalized RMS inventory view queried by the RMS DB connector.",
+                                "RMS_TRANSACTION_VIEW", "RMS_TRANSACTION_V", false, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "pollIntervalMs", "Poll Interval (ms)",
+                                "How often the RMS database is polled for new records.",
+                                "RMS_POLLER_INTERVAL_MS", "300000", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "safetyMarginMin", "Safety Margin (min)",
+                                "Overlap safety margin for incremental DB polling.",
+                                "RMS_POLLER_SAFETY_MARGIN_MIN", "10", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "pageSize", "Page Size",
+                                "Rows fetched per database poll page.",
+                                "RMS_POLLER_PAGE_SIZE", "500", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "maxRetries", "Max Retries",
+                                "Max retries before poller moves repeated failures aside.",
+                                "RMS_POLLER_MAX_RETRIES", "5", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "leaseTimeoutSeconds", "Lease Timeout (sec)",
+                                "Single-worker DB lease timeout for the poller.",
+                                "RMS_POLLER_LEASE_TIMEOUT_SECONDS", "900", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "schedulerEnabled", "Scheduler Enabled",
+                                "Controls scheduled DB polling.",
+                                "RMS_POLLER_SCHEDULER_ENABLED", "true", false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "rmsInventoryTopic", "RMS Inventory Topic",
+                                "Kafka topic for RMS inventory transaction events.",
+                                "KAFKA_RMS_INVENTORY_TOPIC",
+                                rawTransactionTopic("RMS", "INVENTORY"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
                         entry(overrides, "dlqTopic", "DLQ Topic",
                                 "Kafka dead-letter topic for connector failures.",
                                 "KAFKA_DLQ_TOPIC", "recon.dlq", false, true, APPLY_MODE_RESTART_REQUIRED)
@@ -489,7 +627,22 @@ public class ConfigurationCatalogService {
                                 "CLOUD_IDCS_CLIENT_SECRET", "", true, false, APPLY_MODE_REFERENCE_ONLY),
                         entry(overrides, "apiKey", "API Key",
                                 "Optional API key for SIOCS API access.",
-                                "CLOUD_API_KEY", "", true, false, APPLY_MODE_REFERENCE_ONLY)
+                                "CLOUD_API_KEY", "", true, false, APPLY_MODE_REFERENCE_ONLY),
+                        entry(overrides, "siocsPosTopic", "SIOCS POS Topic",
+                                "Kafka topic for SIOCS POS transaction events.",
+                                "KAFKA_SIOCS_POS_TOPIC",
+                                rawTransactionTopic("SIOCS", "POS"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "siocsInventoryTopic", "SIOCS Inventory Topic",
+                                "Kafka topic for SIOCS inventory transaction events.",
+                                "KAFKA_SIOCS_INVENTORY_TOPIC",
+                                rawTransactionTopic("SIOCS", "INVENTORY"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED),
+                        entry(overrides, "siocsUnknownTopic", "SIOCS Unknown Topic",
+                                "Fallback Kafka topic for SIOCS events whose domain cannot be resolved safely.",
+                                "KAFKA_SIOCS_UNKNOWN_TOPIC",
+                                rawTransactionTopic("SIOCS", "UNKNOWN"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED)
                 ))
                 .build();
     }
@@ -569,9 +722,11 @@ public class ConfigurationCatalogService {
                         entry(overrides, "idcsClientSecret", "IDCS Client Secret",
                                 "Client secret for MFCS IDCS authentication.",
                                 "MFCS_IDCS_CLIENT_SECRET", "", true, false, APPLY_MODE_REFERENCE_ONLY),
-                        entry(overrides, "mfcsTopic", "MFCS Topic",
-                                "Kafka topic for MFCS transaction events.",
-                                "KAFKA_MFCS_TOPIC", "mfcs.transactions.raw", false, true, APPLY_MODE_RESTART_REQUIRED)
+                        entry(overrides, "mfcsInventoryTopic", "MFCS Inventory Topic",
+                                "Kafka topic for MFCS inventory transaction events.",
+                                "KAFKA_MFCS_INVENTORY_TOPIC",
+                                rawTransactionTopic("MFCS", "INVENTORY"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED)
                 ))
                 .build();
     }
@@ -654,11 +809,20 @@ public class ConfigurationCatalogService {
                         entry(overrides, "idcsClientSecret", "IDCS Client Secret",
                                 "Client secret for XOCS IDCS authentication.",
                                 "XOCS_IDCS_CLIENT_SECRET", "", true, false, APPLY_MODE_REFERENCE_ONLY),
-                        entry(overrides, "xocsTopic", "XOCS Topic",
-                                "Kafka topic for XOCS transaction events.",
-                                "KAFKA_XOCS_TOPIC", "xocs.transactions.raw", false, true, APPLY_MODE_RESTART_REQUIRED)
+                        entry(overrides, "xocsPosTopic", "XOCS POS Topic",
+                                "Kafka topic for XOCS POS transaction events.",
+                                "KAFKA_XOCS_POS_TOPIC",
+                                rawTransactionTopic("XOCS", "POS"),
+                                false, true, APPLY_MODE_RESTART_REQUIRED)
                 ))
                 .build();
+    }
+
+    private String rawTransactionTopic(String systemName, String domainName) {
+        return systemName.toLowerCase(java.util.Locale.ROOT)
+                + "."
+                + domainName.toLowerCase(java.util.Locale.ROOT)
+                + ".transactions.raw";
     }
 
     private ConfigurationEntryDto entry(Map<String, String> overrides,
@@ -693,13 +857,16 @@ public class ConfigurationCatalogService {
     }
 
     private ConfigDefinition findDefinition(String configKey) {
-        return getCatalog(true, true, true).getModules().stream()
+        List<String> allReconViews = reconModuleService.getAllActiveModules().stream()
+                .map(ReconModuleDto::getReconView)
+                .toList();
+        return getCatalog(true, true, true, allReconViews).getModules().stream()
                 .flatMap(module -> module.getSections().stream())
                 .flatMap(section -> section.getEntries().stream())
                 .filter(entry -> entry.getKey().equals(configKey))
                 .findFirst()
                 .map(entry -> new ConfigDefinition(entry.getKey(), entry.isSensitive(), entry.isEditable()))
-                .or(() -> getCatalog(true, true, true).getSystemSections().stream()
+                .or(() -> getCatalog(true, true, true, allReconViews).getSystemSections().stream()
                         .flatMap(section -> section.getEntries().stream())
                         .filter(entry -> entry.getKey().equals(configKey))
                         .findFirst()
@@ -754,6 +921,10 @@ public class ConfigurationCatalogService {
                  "SIOCS_POLLER_SAFETY_MARGIN_MIN",
                  "SIOCS_POLLER_PAGE_SIZE",
                  "SIOCS_POLLER_LEASE_TIMEOUT_SECONDS",
+                 "RMS_POLLER_SCHEDULER_ENABLED",
+                 "RMS_POLLER_SAFETY_MARGIN_MIN",
+                 "RMS_POLLER_PAGE_SIZE",
+                 "RMS_POLLER_LEASE_TIMEOUT_SECONDS",
                  "PUBLISHER_SCHEDULER_ENABLED",
                  "PUBLISHER_BATCH_SIZE",
                  "PUBLISHER_MAX_RETRIES",

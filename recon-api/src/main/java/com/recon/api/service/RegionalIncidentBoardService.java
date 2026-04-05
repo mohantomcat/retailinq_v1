@@ -38,6 +38,7 @@ public class RegionalIncidentBoardService {
                 tenantId,
                 username,
                 accessibleStoreIds,
+                allowedReconViews,
                 null,
                 "ALL",
                 null,

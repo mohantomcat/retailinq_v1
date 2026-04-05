@@ -25,9 +25,7 @@ import {
 import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const ACTION_OPTIONS = [
     {value: 'AUTO_RESOLVE', label: 'Auto Resolve'},
@@ -84,6 +82,7 @@ function formatDateTimeValue(value) {
 
 export default function NoiseSuppression({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_AUTOMATION_VIEW') || hasPermission('EXCEPTION_AUTOMATION_EDIT')
     const canEdit = hasPermission('EXCEPTION_AUTOMATION_EDIT')
     const [loading, setLoading] = useState(true)

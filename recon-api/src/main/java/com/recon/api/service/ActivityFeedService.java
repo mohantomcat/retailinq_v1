@@ -22,10 +22,12 @@ public class ActivityFeedService {
 
     private final AuditLedgerQueryRepository auditLedgerQueryRepository;
     private final ExceptionCaseRepository exceptionCaseRepository;
+    private final ReconModuleService reconModuleService;
 
     public ActivityFeedResponse getActivity(String tenantId,
                                             Collection<String> accessibleStoreIds,
                                             boolean globalAuditView,
+                                            Collection<String> allowedReconViews,
                                             String moduleKey,
                                             String sourceType,
                                             String actor,
@@ -34,6 +36,16 @@ public class ActivityFeedService {
                                             boolean includeArchived,
                                             Integer limit) {
         int resolvedLimit = limit == null || limit <= 0 ? 200 : Math.min(limit, 500);
+        Set<String> activeReconViews = reconModuleService.getAllActiveModules().stream()
+                .map(module -> normalize(module.getReconView()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> normalizedAllowedReconViews = allowedReconViews == null
+                ? Set.of()
+                : allowedReconViews.stream()
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
         List<ActivityRecordDto> records = auditLedgerQueryRepository.findEntries(
                 tenantId,
                 moduleKey,
@@ -58,6 +70,7 @@ public class ActivityFeedService {
                 .archived(record.isArchived())
                 .eventTimestamp(record.getEventTimestamp())
                 .build())
+                .filter(record -> isAllowedModule(record.getModuleKey(), activeReconViews, normalizedAllowedReconViews))
                 .toList();
 
         if (!globalAuditView) {
@@ -105,5 +118,18 @@ public class ActivityFeedService {
     private String normalize(String value) {
         String trimmed = Objects.toString(value, "").trim();
         return trimmed.isEmpty() ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean isAllowedModule(String moduleKey,
+                                    Set<String> activeReconViews,
+                                    Set<String> allowedReconViews) {
+        String normalizedModuleKey = normalize(moduleKey);
+        if (normalizedModuleKey == null) {
+            return true;
+        }
+        if (!activeReconViews.contains(normalizedModuleKey)) {
+            return true;
+        }
+        return allowedReconViews.contains(normalizedModuleKey);
     }
 }

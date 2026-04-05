@@ -24,9 +24,7 @@ import {
 import TimerOutlinedIcon from '@mui/icons-material/TimerOutlined'
 import {slaApi} from '../services/slaApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS
+import {useReconModules} from '../hooks/useReconModules'
 
 const SEVERITY_ORDER = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
 const WEEK_START_OPTIONS = ['MONDAY', 'SUNDAY', 'SATURDAY']
@@ -108,15 +106,20 @@ function AgingTable({title, rows, palette, t}) {
 
 export default function SlaManagement({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions} = useReconModules()
     const canEdit = hasPermission('SLA_EDIT')
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [feedback, setFeedback] = useState('')
     const [data, setData] = useState(null)
-    const [selectedReconView, setSelectedReconView] = useState('XSTORE_SIM')
+    const [selectedReconView, setSelectedReconView] = useState('')
     const [drafts, setDrafts] = useState({})
     const [operatingModelDraft, setOperatingModelDraft] = useState(createOperatingModelDraft())
+    const availableModuleOptions = useMemo(
+        () => moduleOptions.filter((option) => option?.value),
+        [moduleOptions]
+    )
 
     const loadData = async () => {
         try {
@@ -135,6 +138,18 @@ export default function SlaManagement({palette, t}) {
     useEffect(() => {
         loadData()
     }, [])
+
+    useEffect(() => {
+        if (!availableModuleOptions.length) {
+            if (selectedReconView) {
+                setSelectedReconView('')
+            }
+            return
+        }
+        if (!availableModuleOptions.some((option) => option.value === selectedReconView)) {
+            setSelectedReconView(availableModuleOptions[0].value)
+        }
+    }, [availableModuleOptions, selectedReconView])
 
     const filteredRules = useMemo(() => {
         const rules = data?.rules || []
@@ -400,12 +415,22 @@ export default function SlaManagement({palette, t}) {
                     <Paper elevation={0} sx={{p: 2, mb: 3, borderRadius: '20px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                         <FormControl size="small" sx={{minWidth: 280}}>
                             <InputLabel>{t('Module')}</InputLabel>
-                            <Select value={selectedReconView} label={t('Module')} onChange={(event) => setSelectedReconView(event.target.value)}>
-                                {MODULE_OPTIONS.map((option) => (
+                            <Select
+                                value={selectedReconView}
+                                label={t('Module')}
+                                onChange={(event) => setSelectedReconView(event.target.value)}
+                                disabled={!availableModuleOptions.length}
+                            >
+                                {availableModuleOptions.map((option) => (
                                     <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
+                        {!availableModuleOptions.length ? (
+                            <Typography sx={{mt: 0.75, fontSize: '0.78rem', color: palette.textMuted}}>
+                                {t('No reconciliation modules are assigned to this role.')}
+                            </Typography>
+                        ) : null}
                     </Paper>
 
                     <Grid container spacing={2}>
@@ -448,7 +473,7 @@ export default function SlaManagement({palette, t}) {
                                                         <Button
                                                             variant="contained"
                                                             onClick={() => saveRule(severity)}
-                                                            disabled={!canEdit || saving || !resolveDraft(severity, 'targetMinutes', rule?.targetMinutes)}
+                                                            disabled={!canEdit || saving || !selectedReconView || !resolveDraft(severity, 'targetMinutes', rule?.targetMinutes)}
                                                         >
                                                             {t('Save')}
                                                         </Button>

@@ -20,7 +20,7 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
 
     @Override
     public String sourceSystem() {
-        return "SIOCS";
+        return "SIM";
     }
 
     @Override
@@ -30,7 +30,7 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
 
     @Override
     public String flowKey() {
-        return "sim-target-status-poll";
+        return "sim-transaction-poll";
     }
 
     @Override
@@ -39,11 +39,11 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String flowLabel() {
-        return "SIM target status poll";
+        return "SIM transaction feed";
     }
 
     public String connectorType() {
-        return "API_POLLING";
+        return "DATABASE_POLLING";
     }
 
     public String runtimeMode() {
@@ -55,11 +55,11 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String businessObject() {
-        return "POS_TRANSACTION_STATUS";
+        return "RETAIL_TRANSACTION";
     }
 
     public String mappingName() {
-        return "sim-status-v1";
+        return "sim-transaction-v1";
     }
 
     public String messageType() {
@@ -75,6 +75,6 @@ public class SiocsIntegrationContract implements IntegrationConnectorContract {
     }
 
     public String mappingNotes() {
-        return "Target status poll events are journaled without canonical transaction payload transformation";
+        return "SIM database transaction feed publishes POS and inventory domains to dedicated raw topics while journaling integration status messages in parallel";
     }
 }

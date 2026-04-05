@@ -19,11 +19,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -37,26 +40,38 @@ public class ExceptionAutomationService {
     private final ExceptionNoiseSuppressionService exceptionNoiseSuppressionService;
 
     @Transactional(readOnly = true)
-    public ExceptionAutomationCenterResponse getAutomationCenter(String tenantId, String reconView) {
+    public ExceptionAutomationCenterResponse getAutomationCenter(String tenantId,
+                                                                String reconView,
+                                                                Collection<String> allowedReconViews) {
         String normalizedReconView = normalizeNullable(reconView);
+        Set<String> normalizedAllowedViews = normalizeAllowedReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
         return ExceptionAutomationCenterResponse.builder()
                 .routingRules(routingRuleRepository.findForAutomationCenter(tenantId, normalizedReconView).stream()
+                        .filter(rule -> matchesScopedReconView(rule.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                         .map(this::toRoutingRuleDto)
                         .toList())
                 .playbooks(playbookRepository.findForAutomationCenter(tenantId, normalizedReconView).stream()
+                        .filter(playbook -> matchesScopedReconView(playbook.getReconView(), normalizedReconView, normalizedAllowedViews, enforceAllowedScope))
                         .map(this::toPlaybookDto)
                         .toList())
-                .suppressionRules(exceptionNoiseSuppressionService.getRules(tenantId, normalizedReconView))
-                .suppressionSummary(exceptionNoiseSuppressionService.getSummary(tenantId))
-                .recentSuppressionActivity(exceptionNoiseSuppressionService.getRecentActivity(tenantId))
+                .suppressionRules(exceptionNoiseSuppressionService.getRules(tenantId, normalizedReconView, allowedReconViews))
+                .suppressionSummary(exceptionNoiseSuppressionService.getSummary(tenantId, normalizedReconView, allowedReconViews))
+                .recentSuppressionActivity(exceptionNoiseSuppressionService.getRecentActivity(tenantId, normalizedReconView, allowedReconViews))
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public ExceptionAutomationCenterResponse getAutomationCenter(String tenantId, String reconView) {
+        return getAutomationCenter(tenantId, reconView, null);
     }
 
     @Transactional
     public ExceptionRoutingRuleDto saveRoutingRule(String tenantId,
                                                    UUID ruleId,
                                                    SaveExceptionRoutingRuleRequest request,
-                                                   String actorUsername) {
+                                                   String actorUsername,
+                                                   Collection<String> allowedReconViews) {
         String ruleName = trimToNull(request.getRuleName());
         if (ruleName == null) {
             throw new IllegalArgumentException("ruleName is required");
@@ -64,6 +79,7 @@ public class ExceptionAutomationService {
         if (isBlank(request.getReconView())) {
             throw new IllegalArgumentException("reconView is required");
         }
+        requireAllowedReconView(request.getReconView(), allowedReconViews);
         if (isBlank(request.getTargetAssigneeUsername()) && isBlank(request.getTargetRoleName())) {
             throw new IllegalArgumentException("Either target assignee or target role is required");
         }
@@ -74,6 +90,10 @@ public class ExceptionAutomationService {
                 .createdBy(actorUsername)
                 .build()
                 : routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Routing rule not found"));
 
         rule.setRuleName(ruleName);
@@ -94,17 +114,32 @@ public class ExceptionAutomationService {
     }
 
     @Transactional
-    public void deleteRoutingRule(String tenantId, UUID ruleId) {
+    public ExceptionRoutingRuleDto saveRoutingRule(String tenantId,
+                                                   UUID ruleId,
+                                                   SaveExceptionRoutingRuleRequest request,
+                                                   String actorUsername) {
+        return saveRoutingRule(tenantId, ruleId, request, actorUsername, null);
+    }
+
+    @Transactional
+    public void deleteRoutingRule(String tenantId, UUID ruleId, Collection<String> allowedReconViews) {
         ExceptionRoutingRule rule = routingRuleRepository.findByIdAndTenantId(ruleId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Routing rule not found"));
+        requireAllowedReconView(rule.getReconView(), allowedReconViews);
         routingRuleRepository.delete(rule);
+    }
+
+    @Transactional
+    public void deleteRoutingRule(String tenantId, UUID ruleId) {
+        deleteRoutingRule(tenantId, ruleId, null);
     }
 
     @Transactional
     public ExceptionPlaybookDto savePlaybook(String tenantId,
                                              UUID playbookId,
                                              SaveExceptionPlaybookRequest request,
-                                             String actorUsername) {
+                                             String actorUsername,
+                                             Collection<String> allowedReconViews) {
         String playbookName = trimToNull(request.getPlaybookName());
         if (playbookName == null) {
             throw new IllegalArgumentException("playbookName is required");
@@ -112,6 +147,7 @@ public class ExceptionAutomationService {
         if (isBlank(request.getReconView())) {
             throw new IllegalArgumentException("reconView is required");
         }
+        requireAllowedReconView(request.getReconView(), allowedReconViews);
         if (request.getSteps() == null || request.getSteps().isEmpty()) {
             throw new IllegalArgumentException("At least one playbook step is required");
         }
@@ -122,6 +158,10 @@ public class ExceptionAutomationService {
                 .createdBy(actorUsername)
                 .build()
                 : playbookRepository.findByIdAndTenantId(playbookId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Playbook not found"));
 
         playbook.setPlaybookName(playbookName);
@@ -139,10 +179,24 @@ public class ExceptionAutomationService {
     }
 
     @Transactional
-    public void deletePlaybook(String tenantId, UUID playbookId) {
+    public ExceptionPlaybookDto savePlaybook(String tenantId,
+                                             UUID playbookId,
+                                             SaveExceptionPlaybookRequest request,
+                                             String actorUsername) {
+        return savePlaybook(tenantId, playbookId, request, actorUsername, null);
+    }
+
+    @Transactional
+    public void deletePlaybook(String tenantId, UUID playbookId, Collection<String> allowedReconViews) {
         ExceptionPlaybook playbook = playbookRepository.findByIdAndTenantId(playbookId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Playbook not found"));
+        requireAllowedReconView(playbook.getReconView(), allowedReconViews);
         playbookRepository.delete(playbook);
+    }
+
+    @Transactional
+    public void deletePlaybook(String tenantId, UUID playbookId) {
+        deletePlaybook(tenantId, playbookId, null);
     }
 
     @Transactional(readOnly = true)
@@ -360,6 +414,41 @@ public class ExceptionAutomationService {
     private String normalizeNullable(String value) {
         String trimmed = trimToNull(value);
         return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean matchesScopedReconView(String value,
+                                           String requestedReconView,
+                                           Set<String> allowedReconViews,
+                                           boolean enforceAllowedScope) {
+        String normalizedValue = normalizeNullable(value);
+        if (requestedReconView != null) {
+            return Objects.equals(requestedReconView, normalizedValue);
+        }
+        if (!enforceAllowedScope) {
+            return true;
+        }
+        return normalizedValue != null && allowedReconViews.contains(normalizedValue);
+    }
+
+    private Set<String> normalizeAllowedReconViews(Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return Set.of();
+        }
+        return allowedReconViews.stream()
+                .map(this::normalizeNullable)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalizeRequired(reconView, "reconView");
+        Set<String> normalizedAllowedViews = normalizeAllowedReconViews(allowedReconViews);
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new org.springframework.security.access.AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private String trimToNull(String value) {

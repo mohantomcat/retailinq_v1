@@ -17,12 +17,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -44,6 +47,18 @@ public class ExceptionSlaService {
             Map.entry("SIOCS_MFCS|MEDIUM", 240),
             Map.entry("SIOCS_MFCS|HIGH", 120),
             Map.entry("SIOCS_MFCS|CRITICAL", 60),
+            Map.entry("SIM_RMS|LOW", 720),
+            Map.entry("SIM_RMS|MEDIUM", 240),
+            Map.entry("SIM_RMS|HIGH", 120),
+            Map.entry("SIM_RMS|CRITICAL", 60),
+            Map.entry("SIM_MFCS|LOW", 720),
+            Map.entry("SIM_MFCS|MEDIUM", 240),
+            Map.entry("SIM_MFCS|HIGH", 120),
+            Map.entry("SIM_MFCS|CRITICAL", 60),
+            Map.entry("SIOCS_RMS|LOW", 720),
+            Map.entry("SIOCS_RMS|MEDIUM", 240),
+            Map.entry("SIOCS_RMS|HIGH", 120),
+            Map.entry("SIOCS_RMS|CRITICAL", 60),
             Map.entry("XSTORE_XOCS|LOW", 720),
             Map.entry("XSTORE_XOCS|MEDIUM", 240),
             Map.entry("XSTORE_XOCS|HIGH", 120),
@@ -55,13 +70,22 @@ public class ExceptionSlaService {
     private final TenantService tenantService;
     private final TenantOperatingModelService tenantOperatingModelService;
     private final AuditLedgerService auditLedgerService;
+    private final ReconModuleService reconModuleService;
 
     @Transactional(readOnly = true)
-    public SlaManagementResponse getManagementData(String tenantId, String reconView) {
+    public SlaManagementResponse getManagementData(String tenantId,
+                                                   String reconView,
+                                                   Collection<String> allowedReconViews) {
         TenantConfig tenant = tenantService.getTenant(tenantId);
-        List<ExceptionCase> activeCases = getActiveCases(tenantId, reconView, List.of(), List.of());
+        Set<String> normalizedAllowedReconViews = normalizeAllowedReconViews(allowedReconViews);
+        List<ExceptionCase> activeCases = getActiveCases(
+                tenantId,
+                reconView,
+                List.of(),
+                List.of(),
+                normalizedAllowedReconViews);
         return SlaManagementResponse.builder()
-                .rules(getRules(tenantId, reconView))
+                .rules(getRules(tenantId, reconView, normalizedAllowedReconViews))
                 .summary(buildSummary(activeCases))
                 .agingByAssignee(buildBreakdown(activeCases,
                         exceptionCase -> defaultLabel(exceptionCase.getAssigneeUsername(), "Unassigned"),
@@ -81,10 +105,21 @@ public class ExceptionSlaService {
 
     @Transactional(readOnly = true)
     public List<ExceptionSlaRuleDto> getRules(String tenantId, String reconView) {
+        return getRules(tenantId, reconView, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExceptionSlaRuleDto> getRules(String tenantId,
+                                              String reconView,
+                                              Collection<String> allowedReconViews) {
         List<ExceptionSlaRule> rules = reconView == null || reconView.isBlank()
                 ? slaRuleRepository.findByTenantIdOrderByReconViewAscSeverityAsc(tenantId)
                 : slaRuleRepository.findByTenantIdAndReconViewOrderBySeverityAsc(tenantId, normalizeReconView(reconView));
-        return rules.stream().map(this::toDto).toList();
+        Set<String> normalizedAllowedReconViews = allowedReconViews == null ? null : normalizeAllowedReconViews(allowedReconViews);
+        return rules.stream()
+                .filter(rule -> isAllowedReconView(rule.getReconView(), normalizedAllowedReconViews))
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional
@@ -165,19 +200,38 @@ public class ExceptionSlaService {
                                        String reconView,
                                        List<String> storeIds,
                                        List<String> wkstnIds) {
-        return buildSummary(getActiveCases(tenantId, reconView, storeIds, wkstnIds));
+        return getSlaSummary(tenantId, reconView, storeIds, wkstnIds, null);
+    }
+
+    @Transactional(readOnly = true)
+    public SlaSummaryDto getSlaSummary(String tenantId,
+                                       String reconView,
+                                       List<String> storeIds,
+                                       List<String> wkstnIds,
+                                       Collection<String> allowedReconViews) {
+        return buildSummary(getActiveCases(tenantId, reconView, storeIds, wkstnIds, allowedReconViews));
     }
 
     private List<ExceptionCase> getActiveCases(String tenantId,
                                                String reconView,
                                                List<String> storeIds,
                                                List<String> wkstnIds) {
+        return getActiveCases(tenantId, reconView, storeIds, wkstnIds, null);
+    }
+
+    private List<ExceptionCase> getActiveCases(String tenantId,
+                                               String reconView,
+                                               List<String> storeIds,
+                                               List<String> wkstnIds,
+                                               Collection<String> allowedReconViews) {
+        Set<String> normalizedAllowedReconViews = allowedReconViews == null ? null : normalizeAllowedReconViews(allowedReconViews);
         List<ExceptionCase> cases = caseRepository.findActiveCasesForAging(
                 tenantId,
                 reconView == null || reconView.isBlank() ? null : normalizeReconView(reconView),
                 LocalDateTime.now().minusDays(35)
         );
         return cases.stream()
+                .filter(exceptionCase -> isAllowedReconView(exceptionCase.getReconView(), normalizedAllowedReconViews))
                 .filter(exceptionCase -> storeIds == null || storeIds.isEmpty()
                         || storeIds.contains(exceptionCase.getStoreId()))
                 .filter(exceptionCase -> wkstnIds == null || wkstnIds.isEmpty()
@@ -239,6 +293,25 @@ public class ExceptionSlaService {
         return slaRuleRepository.findByTenantIdAndReconViewAndSeverity(tenantId, reconView, severity)
                 .map(ExceptionSlaRule::getTargetMinutes)
                 .orElseGet(() -> DEFAULT_TARGET_MINUTES.getOrDefault(reconView + "|" + severity, 240));
+    }
+
+    private Set<String> normalizeAllowedReconViews(Collection<String> allowedReconViews) {
+        return allowedReconViews.stream()
+                .map(this::trimToNull)
+                .filter(Objects::nonNull)
+                .map(String::toUpperCase)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private boolean isAllowedReconView(String reconView, Set<String> allowedReconViews) {
+        if (allowedReconViews == null || allowedReconViews.isEmpty()) {
+            return allowedReconViews == null;
+        }
+        String normalizedReconView = trimToNull(reconView);
+        if (normalizedReconView == null) {
+            return false;
+        }
+        return allowedReconViews.contains(normalizedReconView.toUpperCase());
     }
 
     private ExceptionSlaRuleDto toDto(ExceptionSlaRule rule) {
@@ -343,13 +416,7 @@ public class ExceptionSlaService {
     }
 
     private String moduleLabel(String reconView) {
-        return switch (Objects.toString(reconView, "").toUpperCase()) {
-            case "XSTORE_SIOCS" -> "Xstore vs SIOCS";
-            case "SIOCS_MFCS" -> "SIOCS vs MFCS";
-            case "XSTORE_XOCS" -> "Xstore vs XOCS";
-            case "XSTORE_SIM" -> "Xstore vs SIM";
-            default -> defaultLabel(reconView, "Unknown Module");
-        };
+        return reconModuleService.resolveModuleLabel(reconView, defaultLabel(reconView, "Unknown Module"));
     }
 
     private String normalizeReconView(String reconView) {

@@ -25,9 +25,7 @@ import dayjs from 'dayjs'
 import {useAuth} from '../context/AuthContext'
 import {exceptionApi} from '../services/exceptionApi'
 import {reconApi} from '../services/reconApi'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS
+import {useReconModules} from '../hooks/useReconModules'
 
 function formatPercent(value) {
     return `${Number(value || 0).toFixed(2)}%`
@@ -140,6 +138,7 @@ function CompactBreakdownList({title, rows, palette, t}) {
 
 export default function RootCauseAnalytics({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions: MODULE_OPTIONS} = useReconModules()
     const defaultFromDate = useMemo(() => dayjs().subtract(29, 'day').format('YYYY-MM-DD'), [])
     const defaultToDate = useMemo(() => dayjs().format('YYYY-MM-DD'), [])
     const [loading, setLoading] = useState(true)

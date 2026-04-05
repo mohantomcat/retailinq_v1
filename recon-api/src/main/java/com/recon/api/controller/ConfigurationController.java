@@ -5,6 +5,7 @@ import com.recon.api.domain.ConfigurationCatalogResponse;
 import com.recon.api.domain.ConfigurationOverrideRequest;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.ConfigurationCatalogService;
+import com.recon.api.service.ReconModuleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -28,6 +29,7 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 public class ConfigurationController {
 
     private final ConfigurationCatalogService configurationCatalogService;
+    private final ReconModuleService reconModuleService;
 
     @GetMapping("/catalog")
     public ResponseEntity<ApiResponse<ConfigurationCatalogResponse>> getCatalog(
@@ -39,7 +41,11 @@ public class ConfigurationController {
             throw new AccessDeniedException("Missing configuration view permission");
         }
         return ResponseEntity.ok(ApiResponse.ok(
-                configurationCatalogService.getCatalog(canViewModules, canViewSystem, canEdit)));
+                configurationCatalogService.getCatalog(
+                        canViewModules,
+                        canViewSystem,
+                        canEdit,
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))));
     }
 
     @PutMapping("/overrides/{configKey}")
@@ -57,7 +63,8 @@ public class ConfigurationController {
                 configurationCatalogService.getCatalog(
                         principal.hasPermission("CONFIG_MODULE_VIEW"),
                         principal.hasPermission("CONFIG_SYSTEM_VIEW"),
-                        principal.hasPermission("CONFIG_EDIT"))));
+                        principal.hasPermission("CONFIG_EDIT"),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))));
     }
 
     @DeleteMapping("/overrides/{configKey}")
@@ -74,7 +81,8 @@ public class ConfigurationController {
                 configurationCatalogService.getCatalog(
                         principal.hasPermission("CONFIG_MODULE_VIEW"),
                         principal.hasPermission("CONFIG_SYSTEM_VIEW"),
-                        principal.hasPermission("CONFIG_EDIT"))));
+                        principal.hasPermission("CONFIG_EDIT"),
+                        reconModuleService.allowedReconViews(principal.getTenantId(), principal.getPermissions()))));
     }
 
     private void requireAnyPermission(ReconUserPrincipal principal, Set<String> permissions) {

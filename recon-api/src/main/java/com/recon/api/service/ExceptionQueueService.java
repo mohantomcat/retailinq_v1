@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +48,7 @@ public class ExceptionQueueService {
     public ExceptionQueueResponse getQueue(String tenantId,
                                            String username,
                                            java.util.Collection<String> accessibleStoreIds,
+                                           Collection<String> allowedReconViews,
                                            String reconView,
                                            String queueType,
                                            String caseStatus,
@@ -53,11 +56,16 @@ public class ExceptionQueueService {
                                            String assignee,
                                            String assignedRole,
                                            String search) {
+        String normalizedReconView = normalizeReconView(reconView);
+        Set<String> normalizedAllowedReconViews = normalizeReconViews(allowedReconViews);
+        boolean enforceAllowedScope = normalizedReconView == null && allowedReconViews != null;
+
         List<ExceptionCase> cases = caseRepository.findActiveCasesForAging(
                 tenantId,
-                reconView == null || reconView.isBlank() ? null : reconView.toUpperCase(Locale.ROOT),
+                normalizedReconView,
                 LocalDateTime.now().minusDays(35)
         ).stream()
+                .filter(exceptionCase -> matchesReconScope(exceptionCase, normalizedReconView, normalizedAllowedReconViews, enforceAllowedScope))
                 .filter(exceptionCase -> matchesStoreScope(exceptionCase, accessibleStoreIds))
                 .toList();
         Set<String> userRoles = resolveUserRoles(tenantId, username);
@@ -100,6 +108,32 @@ public class ExceptionQueueService {
                 .storeIncidents(buildStoreIncidents(filtered, knownIssueContext))
                 .items(filtered.stream().map(rankedCase -> toQueueItem(rankedCase, knownIssueContext)).toList())
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public ExceptionQueueResponse getQueue(String tenantId,
+                                           String username,
+                                           java.util.Collection<String> accessibleStoreIds,
+                                           String reconView,
+                                           String queueType,
+                                           String caseStatus,
+                                           String severity,
+                                           String assignee,
+                                           String assignedRole,
+                                           String search) {
+        return getQueue(
+                tenantId,
+                username,
+                accessibleStoreIds,
+                null,
+                reconView,
+                queueType,
+                caseStatus,
+                severity,
+                assignee,
+                assignedRole,
+                search
+        );
     }
 
     private ExceptionQueueSummaryDto buildSummary(List<RankedCase> rankedCases,
@@ -532,6 +566,20 @@ public class ExceptionQueueService {
                 .anyMatch(storeId::equals);
     }
 
+    private boolean matchesReconScope(ExceptionCase exceptionCase,
+                                      String requestedReconView,
+                                      Set<String> allowedReconViews,
+                                      boolean enforceAllowedScope) {
+        String normalizedReconView = normalizeReconView(exceptionCase.getReconView());
+        if (requestedReconView != null) {
+            return Objects.equals(requestedReconView, normalizedReconView);
+        }
+        if (!enforceAllowedScope) {
+            return true;
+        }
+        return normalizedReconView != null && allowedReconViews.contains(normalizedReconView);
+    }
+
     private int severityRank(String severity) {
         return switch (Objects.toString(severity, "").toUpperCase(Locale.ROOT)) {
             case "CRITICAL" -> 4;
@@ -551,6 +599,21 @@ public class ExceptionQueueService {
     private String normalizeStoreKey(String storeId) {
         String normalized = trimToNull(storeId);
         return normalized == null ? null : normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeReconView(String reconView) {
+        String normalized = trimToNull(reconView);
+        return normalized == null ? null : normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private Set<String> normalizeReconViews(Collection<String> reconViews) {
+        if (reconViews == null) {
+            return Set.of();
+        }
+        return reconViews.stream()
+                .map(this::normalizeReconView)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private String repeatIssueKey(String storeId, String reconStatus) {

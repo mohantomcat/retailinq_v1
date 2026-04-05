@@ -1,5 +1,10 @@
 package com.recon.flink.domain;
 
+import com.recon.flink.util.InventoryBusinessContext;
+import com.recon.flink.util.InventoryBusinessContextFactory;
+import com.recon.flink.util.InventoryDirectionProfile;
+import com.recon.flink.util.InventoryDirectionResolver;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -19,6 +24,28 @@ public class ReconEvent implements Serializable {
     private String simSource;
     private String reconStatus;
     private String transactionType;
+    private String tenantId;
+    private String transactionFamily;
+    private String transactionPhase;
+    private String originSystem;
+    private String counterpartySystem;
+    private boolean directionResolved;
+    private String businessReference;
+    private String headerMatchKey;
+    private String aggregateKey;
+    private boolean sourcePresent;
+    private boolean targetPresent;
+    private String sourceDocumentRef;
+    private String targetDocumentRef;
+    private String[] sourceLineMatchKeys;
+    private String[] targetLineMatchKeys;
+    private Integer sourceItemCount;
+    private Integer targetItemCount;
+    private BigDecimal sourceTotalQuantity;
+    private BigDecimal targetTotalQuantity;
+    private BigDecimal quantityVariance;
+    private boolean quantityMetricsAvailable;
+    private boolean valueMetricsAvailable;
     private Integer processingStatus;
 
     private String xstoreChecksum;
@@ -108,10 +135,11 @@ public class ReconEvent implements Serializable {
     public static ReconEvent awaitingInventory(FlatSimTransaction source,
                                                String reconView,
                                                String counterSource) {
-        return base(source)
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, null);
+        return applyInventoryContext(base(source), source, null, reconView, direction)
                 .reconView(reconView)
-                .simSource(counterSource)
-                .reconStatus(awaitingStatus(reconView))
+                .simSource(direction.originSystem())
+                .reconStatus(awaitingStatus(direction))
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -119,10 +147,11 @@ public class ReconEvent implements Serializable {
     public static ReconEvent missingInventory(FlatSimTransaction source,
                                               String reconView,
                                               String counterSource) {
-        return base(source)
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, null);
+        return applyInventoryContext(base(source), source, null, reconView, direction)
                 .reconView(reconView)
-                .simSource(counterSource)
-                .reconStatus(missingStatus(reconView))
+                .simSource(direction.originSystem())
+                .reconStatus(missingStatus(direction))
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -132,9 +161,10 @@ public class ReconEvent implements Serializable {
                                               String reconView,
                                               List<ItemDiscrepancy> discrepancies,
                                               MatchEvaluation evaluation) {
-        Builder builder = base(source)
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        Builder builder = applyInventoryContext(base(source), source, counter, reconView, direction)
                 .reconView(reconView)
-                .simSource(counter.getSource())
+                .simSource(direction.originSystem())
                 .reconStatus(ReconStatus.MATCHED.name())
                 .processingStatus(counter.getProcessingStatus())
                 .xstoreChecksum(source.getChecksum())
@@ -152,9 +182,10 @@ public class ReconEvent implements Serializable {
                                                   List<ItemDiscrepancy> disc,
                                                   String reconView,
                                                   MatchEvaluation evaluation) {
-        Builder builder = base(source)
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        Builder builder = applyInventoryContext(base(source), source, counter, reconView, direction)
                 .reconView(reconView)
-                .simSource(counter.getSource())
+                .simSource(direction.originSystem())
                 .reconStatus(ReconStatus.ITEM_MISSING.name())
                 .processingStatus(counter.getProcessingStatus())
                 .xstoreChecksum(source.getChecksum())
@@ -172,9 +203,10 @@ public class ReconEvent implements Serializable {
                                                        List<ItemDiscrepancy> disc,
                                                        String reconView,
                                                        MatchEvaluation evaluation) {
-        Builder builder = base(source)
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        Builder builder = applyInventoryContext(base(source), source, counter, reconView, direction)
                 .reconView(reconView)
-                .simSource(counter.getSource())
+                .simSource(direction.originSystem())
                 .reconStatus(ReconStatus.QUANTITY_MISMATCH.name())
                 .processingStatus(counter.getProcessingStatus())
                 .xstoreChecksum(source.getChecksum())
@@ -254,6 +286,24 @@ public class ReconEvent implements Serializable {
                 .totalQuantity(siocs.getTotalQuantity())
                 .duplicateFlag(true)
                 .duplicatePostingCount(siocs.getDuplicatePostingCount())
+                .reconciledAt(Instant.now().toString());
+        return applyMatchEvaluation(builder, evaluation).build();
+    }
+
+    public static ReconEvent duplicateInventory(FlatSimTransaction source,
+                                                FlatSimTransaction counter,
+                                                String reconView,
+                                                MatchEvaluation evaluation) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        Builder builder = applyInventoryContext(base(source), source, counter, reconView, direction)
+                .reconView(reconView)
+                .simSource(direction.originSystem())
+                .reconStatus(duplicateStatus(direction))
+                .processingStatus(counter.getProcessingStatus())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .duplicateFlag(true)
+                .duplicatePostingCount(counter.getDuplicatePostingCount())
                 .reconciledAt(Instant.now().toString());
         return applyMatchEvaluation(builder, evaluation).build();
     }
@@ -491,7 +541,18 @@ public class ReconEvent implements Serializable {
             String prevStatus,
             String prevChecksum,
             String reconView) {
-        return builder()
+        return correctionMismatch(siocs, prevStatus, prevChecksum, reconView, null);
+    }
+
+    public static ReconEvent correctionMismatch(
+            FlatSimTransaction siocs,
+            String prevStatus,
+            String prevChecksum,
+            String reconView,
+            String counterpartySystem) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, null, siocs);
+        String effectiveCounterparty = counterpartySystem != null ? counterpartySystem : direction.counterpartySystem();
+        return applyInventoryContext(builder(), null, siocs, reconView, direction)
                 .transactionKey(siocs.getTransactionKey())
                 .externalId(siocs.getExternalId())
                 .storeId(siocs.getStoreId())
@@ -500,8 +561,8 @@ public class ReconEvent implements Serializable {
                         : wkstnFromExternal(siocs.getExternalId()))
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
-                .simSource(siocs.getSource())
-                .reconStatus(correctedStatus(reconView))
+                .simSource(direction.originSystem())
+                .reconStatus(correctedStatusForCounterparty(effectiveCounterparty))
                 .processingStatus(siocs.getProcessingStatus())
                 .lineItemCount(siocs.getLineItemCount())
                 .totalQuantity(siocs.getTotalQuantity())
@@ -516,7 +577,17 @@ public class ReconEvent implements Serializable {
             FlatSimTransaction siocs,
             String prevStatus,
             String reconView) {
-        return builder()
+        return lateCorrection(siocs, prevStatus, reconView, null);
+    }
+
+    public static ReconEvent lateCorrection(
+            FlatSimTransaction siocs,
+            String prevStatus,
+            String reconView,
+            String counterpartySystem) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, null, siocs);
+        String effectiveCounterparty = counterpartySystem != null ? counterpartySystem : direction.counterpartySystem();
+        return applyInventoryContext(builder(), null, siocs, reconView, direction)
                 .transactionKey(siocs.getTransactionKey())
                 .externalId(siocs.getExternalId())
                 .storeId(siocs.getStoreId())
@@ -525,11 +596,56 @@ public class ReconEvent implements Serializable {
                         : wkstnFromExternal(siocs.getExternalId()))
                 .businessDate(siocs.getBusinessDate())
                 .reconView(reconView)
-                .simSource(siocs.getSource())
-                .reconStatus(lateMatchStatus(reconView))
+                .simSource(direction.originSystem())
+                .reconStatus(lateMatchStatusForCounterparty(effectiveCounterparty))
                 .processingStatus(siocs.getProcessingStatus())
                 .lineItemCount(siocs.getLineItemCount())
                 .totalQuantity(siocs.getTotalQuantity())
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent processingPendingInventory(FlatSimTransaction source,
+                                                        FlatSimTransaction counter,
+                                                        String reconView) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        return applyInventoryContext(base(counter), source, counter, reconView, direction)
+                .reconView(reconView)
+                .simSource(direction.originSystem())
+                .reconStatus(processingPendingStatus(direction))
+                .processingStatus(counter.getProcessingStatus())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent revertedInventory(FlatSimTransaction source,
+                                               FlatSimTransaction counter,
+                                               String reconView) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        return applyInventoryContext(base(counter), source, counter, reconView, direction)
+                .reconView(reconView)
+                .simSource(direction.originSystem())
+                .reconStatus(revertedStatus(direction))
+                .processingStatus(counter.getProcessingStatus())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
+                .reconciledAt(Instant.now().toString())
+                .build();
+    }
+
+    public static ReconEvent processingFailedInventory(FlatSimTransaction source,
+                                                       FlatSimTransaction counter,
+                                                       String reconView) {
+        InventoryDirectionProfile direction = inventoryDirection(reconView, source, counter);
+        return applyInventoryContext(base(counter), source, counter, reconView, direction)
+                .reconView(reconView)
+                .simSource(direction.originSystem())
+                .reconStatus(processingFailedStatus(direction))
+                .processingStatus(counter.getProcessingStatus())
+                .siocsChecksum(counter.getChecksum())
+                .checksumMatch(false)
                 .reconciledAt(Instant.now().toString())
                 .build();
     }
@@ -538,32 +654,64 @@ public class ReconEvent implements Serializable {
         return "AWAITING_" + targetSystem(reconView);
     }
 
+    private static String awaitingStatus(InventoryDirectionProfile direction) {
+        return direction.awaitingStatus();
+    }
+
     private static String missingStatus(String reconView) {
         return "MISSING_IN_" + targetSystem(reconView);
+    }
+
+    private static String missingStatus(InventoryDirectionProfile direction) {
+        return direction.missingStatus();
     }
 
     private static String duplicateStatus(String reconView) {
         return "DUPLICATE_IN_" + targetSystem(reconView);
     }
 
+    private static String duplicateStatus(InventoryDirectionProfile direction) {
+        return direction.duplicateStatus();
+    }
+
     private static String processingPendingStatus(String reconView) {
         return "PROCESSING_PENDING_IN_" + targetSystem(reconView);
+    }
+
+    private static String processingPendingStatus(InventoryDirectionProfile direction) {
+        return direction.processingPendingStatus();
     }
 
     private static String processingFailedStatus(String reconView) {
         return "PROCESSING_FAILED_IN_" + targetSystem(reconView);
     }
 
+    private static String processingFailedStatus(InventoryDirectionProfile direction) {
+        return direction.processingFailedStatus();
+    }
+
     private static String revertedStatus(String reconView) {
         return "REVERTED_IN_" + targetSystem(reconView);
+    }
+
+    private static String revertedStatus(InventoryDirectionProfile direction) {
+        return direction.revertedStatus();
     }
 
     private static String correctedStatus(String reconView) {
         return "CORRECTED_IN_" + targetSystem(reconView);
     }
 
+    private static String correctedStatusForCounterparty(String counterpartySystem) {
+        return "CORRECTED_IN_" + counterpartySystem;
+    }
+
     private static String lateMatchStatus(String reconView) {
         return "LATE_MATCH_IN_" + targetSystem(reconView);
+    }
+
+    private static String lateMatchStatusForCounterparty(String counterpartySystem) {
+        return "LATE_MATCH_IN_" + counterpartySystem;
     }
 
     private static String targetSystem(String reconView) {
@@ -575,6 +723,15 @@ public class ReconEvent implements Serializable {
         }
         if ("SIOCS_MFCS".equalsIgnoreCase(reconView)) {
             return "MFCS";
+        }
+        if ("SIM_MFCS".equalsIgnoreCase(reconView)) {
+            return "MFCS";
+        }
+        if ("SIM_RMS".equalsIgnoreCase(reconView)) {
+            return "RMS";
+        }
+        if ("SIOCS_RMS".equalsIgnoreCase(reconView)) {
+            return "RMS";
         }
         return "SIM";
     }
@@ -616,6 +773,7 @@ public class ReconEvent implements Serializable {
         return builder()
                 .transactionKey(source.getTransactionKey())
                 .externalId(source.getExternalId())
+                .tenantId(source.getTenantId())
                 .storeId(source.getStoreId())
                 .wkstnId(source.getWkstnId())
                 .businessDate(source.getBusinessDate())
@@ -625,6 +783,53 @@ public class ReconEvent implements Serializable {
                 .lineItemCount(source.getLineItemCount())
                 .totalQuantity(source.getTotalQuantity())
                 .xstoreChecksum(source.getChecksum());
+    }
+
+    private static Builder applyInventoryBusinessContext(Builder builder,
+                                                         FlatSimTransaction source,
+                                                         FlatSimTransaction target) {
+        InventoryBusinessContext context = InventoryBusinessContextFactory.from(source, target);
+        return builder
+                .tenantId(context.tenantId())
+                .transactionFamily(context.transactionFamily())
+                .transactionPhase(context.transactionPhase())
+                .businessReference(context.businessReference())
+                .headerMatchKey(context.headerMatchKey())
+                .aggregateKey(context.aggregateKey())
+                .sourcePresent(source != null)
+                .targetPresent(target != null)
+                .sourceDocumentRef(context.sourceDocumentRef())
+                .targetDocumentRef(context.targetDocumentRef())
+                .sourceLineMatchKeys(toKeyArray(context.sourceLineMatchKeys()))
+                .targetLineMatchKeys(toKeyArray(context.targetLineMatchKeys()))
+                .sourceItemCount(context.sourceItemCount())
+                .targetItemCount(context.targetItemCount())
+                .sourceTotalQuantity(context.sourceTotalQuantity())
+                .targetTotalQuantity(context.targetTotalQuantity())
+                .quantityVariance(context.quantityVariance())
+                .quantityMetricsAvailable(context.quantityMetricsAvailable())
+                .valueMetricsAvailable(context.valueMetricsAvailable());
+    }
+
+    private static Builder applyInventoryContext(Builder builder,
+                                                 FlatSimTransaction source,
+                                                 FlatSimTransaction target,
+                                                 String reconView,
+                                                 InventoryDirectionProfile direction) {
+        Builder contextBuilder = applyInventoryBusinessContext(builder, source, target)
+                .originSystem(direction.originSystem())
+                .counterpartySystem(direction.counterpartySystem())
+                .directionResolved(direction.resolved());
+        if (direction.resolved() && direction.transactionPhase() != null) {
+            contextBuilder.transactionPhase(direction.transactionPhase().name());
+        }
+        return contextBuilder;
+    }
+
+    private static InventoryDirectionProfile inventoryDirection(String reconView,
+                                                                FlatSimTransaction source,
+                                                                FlatSimTransaction target) {
+        return InventoryDirectionResolver.resolve(reconView, source, target);
     }
 
     private static Builder applyMatchEvaluation(Builder builder, MatchEvaluation evaluation) {
@@ -703,6 +908,13 @@ public class ReconEvent implements Serializable {
         return left.subtract(right).abs();
     }
 
+    private static String[] toKeyArray(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return new String[0];
+        }
+        return keys.toArray(new String[0]);
+    }
+
     public static class Builder {
         private final ReconEvent e = new ReconEvent();
 
@@ -748,6 +960,116 @@ public class ReconEvent implements Serializable {
 
         public Builder transactionType(String v) {
             e.transactionType = v;
+            return this;
+        }
+
+        public Builder tenantId(String v) {
+            e.tenantId = v;
+            return this;
+        }
+
+        public Builder transactionFamily(String v) {
+            e.transactionFamily = v;
+            return this;
+        }
+
+        public Builder transactionPhase(String v) {
+            e.transactionPhase = v;
+            return this;
+        }
+
+        public Builder originSystem(String v) {
+            e.originSystem = v;
+            return this;
+        }
+
+        public Builder counterpartySystem(String v) {
+            e.counterpartySystem = v;
+            return this;
+        }
+
+        public Builder directionResolved(boolean v) {
+            e.directionResolved = v;
+            return this;
+        }
+
+        public Builder businessReference(String v) {
+            e.businessReference = v;
+            return this;
+        }
+
+        public Builder headerMatchKey(String v) {
+            e.headerMatchKey = v;
+            return this;
+        }
+
+        public Builder aggregateKey(String v) {
+            e.aggregateKey = v;
+            return this;
+        }
+
+        public Builder sourcePresent(boolean v) {
+            e.sourcePresent = v;
+            return this;
+        }
+
+        public Builder targetPresent(boolean v) {
+            e.targetPresent = v;
+            return this;
+        }
+
+        public Builder sourceDocumentRef(String v) {
+            e.sourceDocumentRef = v;
+            return this;
+        }
+
+        public Builder targetDocumentRef(String v) {
+            e.targetDocumentRef = v;
+            return this;
+        }
+
+        public Builder sourceLineMatchKeys(String[] v) {
+            e.sourceLineMatchKeys = v;
+            return this;
+        }
+
+        public Builder targetLineMatchKeys(String[] v) {
+            e.targetLineMatchKeys = v;
+            return this;
+        }
+
+        public Builder sourceItemCount(Integer v) {
+            e.sourceItemCount = v;
+            return this;
+        }
+
+        public Builder targetItemCount(Integer v) {
+            e.targetItemCount = v;
+            return this;
+        }
+
+        public Builder sourceTotalQuantity(BigDecimal v) {
+            e.sourceTotalQuantity = v;
+            return this;
+        }
+
+        public Builder targetTotalQuantity(BigDecimal v) {
+            e.targetTotalQuantity = v;
+            return this;
+        }
+
+        public Builder quantityVariance(BigDecimal v) {
+            e.quantityVariance = v;
+            return this;
+        }
+
+        public Builder quantityMetricsAvailable(boolean v) {
+            e.quantityMetricsAvailable = v;
+            return this;
+        }
+
+        public Builder valueMetricsAvailable(boolean v) {
+            e.valueMetricsAvailable = v;
             return this;
         }
 
@@ -963,6 +1285,182 @@ public class ReconEvent implements Serializable {
 
     public void setTransactionType(String v) {
         transactionType = v;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
+
+    public String getTransactionFamily() {
+        return transactionFamily;
+    }
+
+    public void setTransactionFamily(String transactionFamily) {
+        this.transactionFamily = transactionFamily;
+    }
+
+    public String getTransactionPhase() {
+        return transactionPhase;
+    }
+
+    public void setTransactionPhase(String transactionPhase) {
+        this.transactionPhase = transactionPhase;
+    }
+
+    public String getOriginSystem() {
+        return originSystem;
+    }
+
+    public void setOriginSystem(String originSystem) {
+        this.originSystem = originSystem;
+    }
+
+    public String getCounterpartySystem() {
+        return counterpartySystem;
+    }
+
+    public void setCounterpartySystem(String counterpartySystem) {
+        this.counterpartySystem = counterpartySystem;
+    }
+
+    public boolean isDirectionResolved() {
+        return directionResolved;
+    }
+
+    public void setDirectionResolved(boolean directionResolved) {
+        this.directionResolved = directionResolved;
+    }
+
+    public String getBusinessReference() {
+        return businessReference;
+    }
+
+    public void setBusinessReference(String businessReference) {
+        this.businessReference = businessReference;
+    }
+
+    public String getHeaderMatchKey() {
+        return headerMatchKey;
+    }
+
+    public void setHeaderMatchKey(String headerMatchKey) {
+        this.headerMatchKey = headerMatchKey;
+    }
+
+    public String getAggregateKey() {
+        return aggregateKey;
+    }
+
+    public void setAggregateKey(String aggregateKey) {
+        this.aggregateKey = aggregateKey;
+    }
+
+    public boolean isSourcePresent() {
+        return sourcePresent;
+    }
+
+    public void setSourcePresent(boolean sourcePresent) {
+        this.sourcePresent = sourcePresent;
+    }
+
+    public boolean isTargetPresent() {
+        return targetPresent;
+    }
+
+    public void setTargetPresent(boolean targetPresent) {
+        this.targetPresent = targetPresent;
+    }
+
+    public String getSourceDocumentRef() {
+        return sourceDocumentRef;
+    }
+
+    public void setSourceDocumentRef(String sourceDocumentRef) {
+        this.sourceDocumentRef = sourceDocumentRef;
+    }
+
+    public String getTargetDocumentRef() {
+        return targetDocumentRef;
+    }
+
+    public void setTargetDocumentRef(String targetDocumentRef) {
+        this.targetDocumentRef = targetDocumentRef;
+    }
+
+    public String[] getSourceLineMatchKeys() {
+        return sourceLineMatchKeys;
+    }
+
+    public void setSourceLineMatchKeys(String[] sourceLineMatchKeys) {
+        this.sourceLineMatchKeys = sourceLineMatchKeys;
+    }
+
+    public String[] getTargetLineMatchKeys() {
+        return targetLineMatchKeys;
+    }
+
+    public void setTargetLineMatchKeys(String[] targetLineMatchKeys) {
+        this.targetLineMatchKeys = targetLineMatchKeys;
+    }
+
+    public Integer getSourceItemCount() {
+        return sourceItemCount;
+    }
+
+    public void setSourceItemCount(Integer sourceItemCount) {
+        this.sourceItemCount = sourceItemCount;
+    }
+
+    public Integer getTargetItemCount() {
+        return targetItemCount;
+    }
+
+    public void setTargetItemCount(Integer targetItemCount) {
+        this.targetItemCount = targetItemCount;
+    }
+
+    public BigDecimal getSourceTotalQuantity() {
+        return sourceTotalQuantity;
+    }
+
+    public void setSourceTotalQuantity(BigDecimal sourceTotalQuantity) {
+        this.sourceTotalQuantity = sourceTotalQuantity;
+    }
+
+    public BigDecimal getTargetTotalQuantity() {
+        return targetTotalQuantity;
+    }
+
+    public void setTargetTotalQuantity(BigDecimal targetTotalQuantity) {
+        this.targetTotalQuantity = targetTotalQuantity;
+    }
+
+    public BigDecimal getQuantityVariance() {
+        return quantityVariance;
+    }
+
+    public void setQuantityVariance(BigDecimal quantityVariance) {
+        this.quantityVariance = quantityVariance;
+    }
+
+    public boolean isQuantityMetricsAvailable() {
+        return quantityMetricsAvailable;
+    }
+
+    public void setQuantityMetricsAvailable(boolean quantityMetricsAvailable) {
+        this.quantityMetricsAvailable = quantityMetricsAvailable;
+    }
+
+    public boolean isValueMetricsAvailable() {
+        return valueMetricsAvailable;
+    }
+
+    public void setValueMetricsAvailable(boolean valueMetricsAvailable) {
+        this.valueMetricsAvailable = valueMetricsAvailable;
     }
 
     public Integer getProcessingStatus() {

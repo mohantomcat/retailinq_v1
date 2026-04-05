@@ -32,6 +32,7 @@ public class AuthService {
     private final TenantAccessAdministrationService tenantAccessAdministrationService;
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final AccessScopeService accessScopeService;
+    private final ReconModuleService reconModuleService;
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -78,6 +79,8 @@ public class AuthService {
                 .evidenceTags(List.of("SECURITY", "LOGIN"))
                 .build());
 
+        reconModuleService.getAllActiveModules();
+        user = userRepository.findById(user.getId()).orElse(user);
         Set<String> permissions = user.getAllPermissions();
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
         Set<String> storeIds = new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds());
@@ -109,6 +112,8 @@ public class AuthService {
         log.info("User {} logged in with {} permissions",
                 user.getUsername(), permissions.size());
 
+        List<ReconModuleDto> accessibleModules = reconModuleService.getAccessibleModules(user.getTenantId(), permissions);
+
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -127,6 +132,7 @@ public class AuthService {
                 .accessScope(scopeSummary)
                 .authMode("PASSWORD")
                 .roles(roles)
+                .accessibleModules(accessibleModules)
                 .build();
     }
 
@@ -145,6 +151,8 @@ public class AuthService {
                         new RuntimeException(
                                 "User not found"));
 
+        reconModuleService.getAllActiveModules();
+        user = userRepository.findById(user.getId()).orElse(user);
         Set<String> permissions = user.getAllPermissions();
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
 
@@ -158,6 +166,8 @@ public class AuthService {
                         scopeSummary.isAllStoreAccess(),
                         "PASSWORD");
 
+        List<ReconModuleDto> accessibleModules = reconModuleService.getAccessibleModules(user.getTenantId(), permissions);
+
         return LoginResponse.builder()
                 .accessToken(newAccessToken)
                 .tokenType("Bearer")
@@ -169,6 +179,7 @@ public class AuthService {
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
                 .accessScope(scopeSummary)
                 .authMode("PASSWORD")
+                .accessibleModules(accessibleModules)
                 .build();
     }
 
@@ -319,22 +330,26 @@ public class AuthService {
     }
 
     private UserDto toUserDto(User user) {
-        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
+        reconModuleService.getAllActiveModules();
+        User currentUser = userRepository.findById(user.getId()).orElse(user);
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(currentUser);
+        Set<String> permissions = currentUser.getAllPermissions();
         return UserDto.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .fullName(user.getFullName())
-                .tenantId(user.getTenantId())
-                .active(user.isActive())
-                .createdAt(user.getCreatedAt())
-                .lastLogin(user.getLastLogin())
-                .storeIds(user.getStoreIds())
+                .id(currentUser.getId())
+                .username(currentUser.getUsername())
+                .email(currentUser.getEmail())
+                .fullName(currentUser.getFullName())
+                .tenantId(currentUser.getTenantId())
+                .active(currentUser.isActive())
+                .createdAt(currentUser.getCreatedAt())
+                .lastLogin(currentUser.getLastLogin())
+                .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
                 .accessScope(scopeSummary)
-                .permissions(user.getAllPermissions())
-                .roles(user.getRoles().stream()
+                .permissions(permissions)
+                .accessibleModules(reconModuleService.getAccessibleModules(currentUser.getTenantId(), permissions))
+                .roles(currentUser.getRoles().stream()
                         .map(r -> RoleDto.builder()
                                 .id(r.getId())
                                 .name(r.getName())

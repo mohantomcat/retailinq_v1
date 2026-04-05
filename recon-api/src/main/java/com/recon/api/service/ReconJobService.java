@@ -19,6 +19,7 @@ import com.recon.api.domain.ReconJobStepDto;
 import com.recon.api.domain.ReconJobStepRun;
 import com.recon.api.domain.ReconJobStepRunDto;
 import com.recon.api.domain.ReconJobTemplateDto;
+import com.recon.api.domain.ReconModuleDto;
 import com.recon.api.domain.SaveReconJobDefinitionRequest;
 import com.recon.api.domain.SaveReconJobStepRequest;
 import com.recon.api.domain.TenantConfig;
@@ -37,6 +38,7 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,6 +48,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -64,6 +67,11 @@ public class ReconJobService {
     private static final String STEP_TYPE_OPERATIONS_ACTION = "OPERATIONS_ACTION";
     private static final String STEP_TYPE_RECON_SUMMARY_SNAPSHOT = "RECON_SUMMARY_SNAPSHOT";
     private static final Set<String> ACTIVE_RUN_STATUSES = Set.of("PENDING", "RUNNING");
+    private static final Set<String> DEFAULT_TEMPLATE_KEYS = Set.of(
+            "SIM_RMS_EOD",
+            "SIM_MFCS_EOD",
+            "SIOCS_RMS_EOD"
+    );
 
     private final ReconJobDefinitionRepository definitionRepository;
     private final ReconJobStepDefinitionRepository stepDefinitionRepository;
@@ -76,12 +84,18 @@ public class ReconJobService {
     private final TenantService tenantService;
     private final AuditLedgerService auditLedgerService;
     private final ReconJobNotificationService reconJobNotificationService;
+    private final ReconModuleService reconModuleService;
     private final ObjectMapper objectMapper;
 
-    @Transactional(readOnly = true)
-    public OperationsJobCenterResponse getJobCenter(String tenantId) {
+    @Transactional
+    public OperationsJobCenterResponse getJobCenter(String tenantId, Collection<String> allowedReconViews) {
         TenantConfig tenant = tenantService.getTenant(tenantId);
+        Set<String> normalizedAllowedReconViews = normalizeAllowedReconViews(allowedReconViews);
+        ensureDefaultJobDefinitions(tenant);
         List<ReconJobDefinition> definitions = definitionRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+        List<ReconJobDefinition> visibleDefinitions = definitions.stream()
+                .filter(definition -> normalizedAllowedReconViews.contains(normalizeReconView(definition.getReconView())))
+                .toList();
         Map<UUID, List<ReconJobStepDefinition>> stepsByDefinition = definitions.stream()
                 .collect(Collectors.toMap(
                         ReconJobDefinition::getId,
@@ -95,35 +109,164 @@ public class ReconJobService {
         LocalDateTime since = LocalDateTime.now().minusHours(24);
 
         return OperationsJobCenterResponse.builder()
-                .enabledJobs(definitions.stream().filter(ReconJobDefinition::isEnabled).count())
-                .failedRunsLast24Hours(runRepository.countByTenantIdAndRunStatusAndCreatedAtAfter(tenantId, "FAILED", since))
-                .successfulRunsLast24Hours(runRepository.countByTenantIdAndRunStatusAndCreatedAtAfter(tenantId, "SUCCEEDED", since))
-                .pendingRetries(runRepository.countByTenantIdAndRetryPendingTrue(tenantId))
-                .actionCatalog(operationsService.getReconJobActionCatalog())
-                .templates(recommendedTemplates())
-                .jobDefinitions(definitions.stream()
+                .enabledJobs(visibleDefinitions.stream().filter(ReconJobDefinition::isEnabled).count())
+                .failedRunsLast24Hours(recentRuns.stream()
+                        .filter(run -> normalizedAllowedReconViews.contains(normalizeReconView(run.getReconView())))
+                        .filter(run -> "FAILED".equalsIgnoreCase(run.getRunStatus()))
+                        .filter(run -> run.getCreatedAt() != null && run.getCreatedAt().isAfter(since))
+                        .count())
+                .successfulRunsLast24Hours(recentRuns.stream()
+                        .filter(run -> normalizedAllowedReconViews.contains(normalizeReconView(run.getReconView())))
+                        .filter(run -> "SUCCEEDED".equalsIgnoreCase(run.getRunStatus()))
+                        .filter(run -> run.getCreatedAt() != null && run.getCreatedAt().isAfter(since))
+                        .count())
+                .pendingRetries(recentRuns.stream()
+                        .filter(run -> normalizedAllowedReconViews.contains(normalizeReconView(run.getReconView())))
+                        .filter(ReconJobRun::isRetryPending)
+                        .count())
+                .actionCatalog(operationsService.getReconJobActionCatalog(normalizedAllowedReconViews))
+                .templates(recommendedTemplates(normalizedAllowedReconViews))
+                .jobDefinitions(visibleDefinitions.stream()
                         .map(definition -> toDefinitionDto(definition, tenant, stepsByDefinition.getOrDefault(definition.getId(), List.of())))
                         .toList())
                 .recentRuns(recentRuns.stream()
+                        .filter(run -> normalizedAllowedReconViews.contains(normalizeReconView(run.getReconView())))
                         .map(run -> toRunDto(run, tenant, stepRunsByRun.getOrDefault(run.getId(), List.of()), deliveriesByRun.getOrDefault(run.getId(), List.of())))
                         .toList())
                 .build();
     }
 
+    private void ensureDefaultJobDefinitions(TenantConfig tenant) {
+        String tenantId = tenant.getTenantId();
+        if (trimToNull(tenantId) == null) {
+            return;
+        }
+        Set<String> allReconViews = reconModuleService.getAllActiveModules().stream()
+                .map(ReconModuleDto::getReconView)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        recommendedTemplates(allReconViews).stream()
+                .filter(template -> DEFAULT_TEMPLATE_KEYS.contains(defaultIfBlank(template.getTemplateKey(), "")))
+                .forEach(template -> ensureDefaultTemplateJobDefinition(tenant, template));
+    }
+
+    private void ensureDefaultTemplateJobDefinition(TenantConfig tenant, ReconJobTemplateDto template) {
+        String tenantId = tenant.getTenantId();
+        String templateKey = defaultIfBlank(template.getTemplateKey(), defaultIfBlank(template.getTemplateName(), "DEFAULT_JOB"));
+
+        ReconJobDefinition definition = definitionRepository.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(existing -> defaultIfBlank(template.getTemplateName(), "")
+                        .equalsIgnoreCase(defaultIfBlank(existing.getJobName(), "")))
+                .findFirst()
+                .orElse(null);
+
+        if (definition == null) {
+            definition = definitionRepository.save(ReconJobDefinition.builder()
+                    .id(stableUuid(tenantId + "|RECON_JOB|" + templateKey))
+                    .tenantId(tenantId)
+                    .jobName(template.getTemplateName())
+                    .reconView(normalizeReconView(template.getReconView()))
+                    .cronExpression(validateCron(template.getCronExpression()))
+                    .jobTimezone(defaultIfBlank(tenant.getTimezone(), "UTC"))
+                    .windowType(defaultIfBlank(template.getWindowType(), "END_OF_DAY"))
+                    .endOfDayLocalTime(trimToNull(template.getEndOfDayLocalTime()))
+                    .businessDateOffsetDays(defaultInt(template.getBusinessDateOffsetDays(), 0))
+                    .maxRetryAttempts(1)
+                    .retryDelayMinutes(15)
+                    .allowConcurrentRuns(false)
+                    .enabled(true)
+                    .scopeStoreIds(writeJson(List.of()))
+                    .notifyOnSuccess(false)
+                    .notifyOnFailure(true)
+                    .nextScheduledAt(nextExecution(
+                            validateCron(template.getCronExpression()),
+                            defaultIfBlank(tenant.getTimezone(), "UTC"),
+                            null))
+                    .createdBy("system")
+                    .updatedBy("system")
+                    .build());
+        }
+
+        ensureDefaultTemplateSteps(tenantId, definition, template, templateKey);
+    }
+
+    private void ensureDefaultTemplateSteps(String tenantId,
+                                            ReconJobDefinition definition,
+                                            ReconJobTemplateDto template,
+                                            String templateKey) {
+        List<ReconJobStepDefinition> existingSteps = stepDefinitionRepository.findByJobDefinitionIdOrderByStepOrderAsc(definition.getId());
+        Map<Integer, ReconJobStepDefinition> stepsByOrder = existingSteps.stream()
+                .collect(Collectors.toMap(
+                        ReconJobStepDefinition::getStepOrder,
+                        step -> step,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        List<ReconJobStepDefinition> missingSteps = new ArrayList<>();
+        Map<Integer, UUID> stepIdsByOrder = new LinkedHashMap<>();
+        for (ReconJobStepDto templateStep : template.getSteps()) {
+            Integer stepOrder = templateStep.getStepOrder();
+            if (stepOrder == null) {
+                continue;
+            }
+            stepIdsByOrder.put(stepOrder,
+                    stepsByOrder.containsKey(stepOrder)
+                            ? stepsByOrder.get(stepOrder).getId()
+                            : stableUuid(tenantId + "|RECON_JOB|" + templateKey + "|STEP|" + stepOrder));
+        }
+
+        Map<UUID, Integer> templateStepOrderById = new HashMap<>();
+        for (ReconJobStepDto templateStep : template.getSteps()) {
+            if (templateStep.getId() != null && templateStep.getStepOrder() != null) {
+                templateStepOrderById.put(templateStep.getId(), templateStep.getStepOrder());
+            }
+        }
+
+        for (ReconJobStepDto templateStep : template.getSteps()) {
+            Integer stepOrder = templateStep.getStepOrder();
+            if (stepOrder == null || stepsByOrder.containsKey(stepOrder)) {
+                continue;
+            }
+            Integer dependencyOrder = templateStep.getDependsOnStepId() == null
+                    ? null
+                    : templateStepOrderById.get(templateStep.getDependsOnStepId());
+            missingSteps.add(ReconJobStepDefinition.builder()
+                    .id(stepIdsByOrder.get(stepOrder))
+                    .jobDefinitionId(definition.getId())
+                    .stepOrder(stepOrder)
+                    .stepLabel(templateStep.getStepLabel())
+                    .stepType(templateStep.getStepType())
+                    .moduleId(trimToNull(templateStep.getModuleId()))
+                    .actionKey(trimToNull(templateStep.getActionKey()))
+                    .dependsOnStepId(dependencyOrder == null ? null : stepIdsByOrder.get(dependencyOrder))
+                    .settleDelaySeconds(defaultInt(templateStep.getSettleDelaySeconds(), 0))
+                    .build());
+        }
+
+        if (!missingSteps.isEmpty()) {
+            stepDefinitionRepository.saveAll(missingSteps);
+        }
+    }
+
     @Transactional
     public ReconJobDefinitionDto saveJobDefinition(String tenantId,
                                                    String username,
-                                                   SaveReconJobDefinitionRequest request) {
+                                                   SaveReconJobDefinitionRequest request,
+                                                   Collection<String> allowedReconViews) {
         validateSaveRequest(request);
+        Set<String> normalizedAllowedReconViews = normalizeAllowedReconViews(allowedReconViews);
         ReconJobDefinition definition = request.getId() == null
                 ? ReconJobDefinition.builder().tenantId(tenantId).createdBy(username).build()
                 : definitionRepository.findById(request.getId())
                 .filter(existing -> tenantId.equalsIgnoreCase(existing.getTenantId()))
                 .orElseThrow(() -> new EntityNotFoundException("Reconciliation job not found"));
+        if (definition.getId() != null) {
+            requireAllowedReconView(definition.getReconView(), normalizedAllowedReconViews);
+        }
         Map<String, Object> beforeState = definition.getId() == null ? null : snapshotDefinition(definition);
 
         definition.setJobName(request.getJobName().trim());
         definition.setReconView(normalizeReconView(request.getReconView()));
+        requireAllowedReconView(definition.getReconView(), normalizedAllowedReconViews);
         definition.setCronExpression(validateCron(request.getCronExpression()));
         definition.setJobTimezone(validateTimezone(request.getJobTimezone()));
         definition.setWindowType(normalizeWindowType(request.getWindowType()));
@@ -177,8 +320,10 @@ public class ReconJobService {
     @Transactional
     public ReconJobRunDto triggerManualRun(String tenantId,
                                            UUID jobDefinitionId,
-                                           String username) {
+                                           String username,
+                                           Collection<String> allowedReconViews) {
         ReconJobDefinition definition = loadDefinition(tenantId, jobDefinitionId);
+        requireAllowedReconView(definition.getReconView(), normalizeAllowedReconViews(allowedReconViews));
         ReconJobRun run = createRun(definition, "MANUAL", username, LocalDateTime.now(), 1, null, null);
         executeRun(definition, run);
         return toRunDto(runRepository.findById(run.getId()).orElse(run),
@@ -467,7 +612,8 @@ public class ReconJobService {
                 definition.getTenantId(),
                 stepDefinition.getModuleId(),
                 stepDefinition.getActionKey(),
-                defaultIfBlank(run.getInitiatedBy(), "system-scheduler")
+                defaultIfBlank(run.getInitiatedBy(), "system-scheduler"),
+                definition.getReconView()
         );
         String responseStatus = defaultIfBlank(response.getStatus(), "OK").toUpperCase(Locale.ROOT);
         boolean failed = responseStatus.contains("FAIL") || responseStatus.contains("ERROR");
@@ -791,7 +937,8 @@ public class ReconJobService {
                 .build();
     }
 
-    private List<ReconJobTemplateDto> recommendedTemplates() {
+    private List<ReconJobTemplateDto> recommendedTemplates(Collection<String> allowedReconViews) {
+        Set<String> normalizedAllowedReconViews = normalizeAllowedReconViews(allowedReconViews);
         return List.of(
                 template(
                         "XSTORE_SIM_EOD",
@@ -854,8 +1001,57 @@ public class ReconJobService {
                                 templateStep(4, "Publish MFCS staged records", STEP_TYPE_OPERATIONS_ACTION, "mfcs-rds-connector", "publish", 3, 90),
                                 templateStep(5, "Capture reconciliation summary", STEP_TYPE_RECON_SUMMARY_SNAPSHOT, null, null, 4, 30)
                         )
-                )
-        );
+                ),
+                  template(
+                          "SIM_RMS_EOD",
+                          "SIM vs RMS EOD",
+                          "Poll SIM and RMS on-prem inventory transactions, then capture the reconciliation summary.",
+                          "SIM_RMS",
+                        "0 0 0 * * *",
+                        "END_OF_DAY",
+                        "23:55",
+                        0,
+                        List.of(
+                                templateStep(1, "Poll SIM inventory transactions", STEP_TYPE_OPERATIONS_ACTION, "sim-db-connector", "poll", null, 0),
+                                  templateStep(2, "Poll RMS inventory transactions", STEP_TYPE_OPERATIONS_ACTION, "rms-db-connector", "poll", 1, 60),
+                                  templateStep(3, "Capture reconciliation summary", STEP_TYPE_RECON_SUMMARY_SNAPSHOT, null, null, 2, 30)
+                          )
+                  ),
+                  template(
+                          "SIM_MFCS_EOD",
+                          "SIM vs MFCS EOD",
+                          "Poll SIM inventory transactions, refresh MFCS staged data, then capture the reconciliation summary.",
+                          "SIM_MFCS",
+                          "0 5 0 * * *",
+                          "END_OF_DAY",
+                          "23:55",
+                          0,
+                          List.of(
+                                  templateStep(1, "Poll SIM inventory transactions", STEP_TYPE_OPERATIONS_ACTION, "sim-db-connector", "poll", null, 0),
+                                  templateStep(2, "Download MFCS RDS data", STEP_TYPE_OPERATIONS_ACTION, "mfcs-rds-connector", "download", 1, 0),
+                                  templateStep(3, "Publish MFCS staged records", STEP_TYPE_OPERATIONS_ACTION, "mfcs-rds-connector", "publish", 2, 90),
+                                  templateStep(4, "Capture reconciliation summary", STEP_TYPE_RECON_SUMMARY_SNAPSHOT, null, null, 3, 30)
+                          )
+                  ),
+                  template(
+                          "SIOCS_RMS_EOD",
+                          "SIOCS vs RMS EOD",
+                          "Download SIOCS inventory data, poll RMS, then capture the reconciliation summary.",
+                          "SIOCS_RMS",
+                          "0 10 0 * * *",
+                          "END_OF_DAY",
+                          "23:55",
+                          0,
+                          List.of(
+                                  templateStep(1, "Download SIOCS cloud data", STEP_TYPE_OPERATIONS_ACTION, "siocs-cloud-connector", "download", null, 0),
+                                  templateStep(2, "Publish SIOCS staged records", STEP_TYPE_OPERATIONS_ACTION, "siocs-cloud-connector", "publish", 1, 90),
+                                  templateStep(3, "Poll RMS inventory transactions", STEP_TYPE_OPERATIONS_ACTION, "rms-db-connector", "poll", 2, 60),
+                                  templateStep(4, "Capture reconciliation summary", STEP_TYPE_RECON_SUMMARY_SNAPSHOT, null, null, 3, 30)
+                          )
+                  )
+          ).stream()
+                .filter(template -> normalizedAllowedReconViews.contains(normalizeReconView(template.getReconView())))
+                .toList();
     }
 
     private ReconJobTemplateDto template(String key,
@@ -907,7 +1103,7 @@ public class ReconJobService {
         if (trimToNull(request.getJobName()) == null) {
             throw new IllegalArgumentException("Job name is required");
         }
-        normalizeReconView(request.getReconView());
+        String normalizedReconView = normalizeReconView(request.getReconView());
         validateCron(request.getCronExpression());
         validateTimezone(request.getJobTimezone());
         String windowType = normalizeWindowType(request.getWindowType());
@@ -924,8 +1120,23 @@ public class ReconJobService {
             }
             normalizeStepType(step.getStepType());
             if (STEP_TYPE_OPERATIONS_ACTION.equalsIgnoreCase(step.getStepType())) {
-                if (trimToNull(step.getModuleId()) == null || trimToNull(step.getActionKey()) == null) {
+                String moduleId = trimToNull(step.getModuleId());
+                String actionKey = trimToNull(step.getActionKey());
+                if (moduleId == null || actionKey == null) {
                     throw new IllegalArgumentException("Operations action steps require module and action");
+                }
+                var operationModule = reconModuleService.findOperationModule(moduleId, normalizedReconView)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Module %s is not available for reconciliation view %s".formatted(moduleId, normalizedReconView)
+                        ));
+                boolean supportedAction = operationModule.getSafeActions() != null
+                        && operationModule.getSafeActions().stream()
+                        .anyMatch(candidate -> candidate.equalsIgnoreCase(actionKey));
+                if (!supportedAction) {
+                    throw new IllegalArgumentException(
+                            "Action %s is not supported for module %s in reconciliation view %s"
+                                    .formatted(actionKey, moduleId, normalizedReconView)
+                    );
                 }
             }
             String clientStepKey = defaultIfBlank(step.getClientStepKey(), "step-" + defaultInt(step.getStepOrder(), clientStepKeys.size() + 1));
@@ -949,10 +1160,26 @@ public class ReconJobService {
 
     private String normalizeReconView(String reconView) {
         String normalized = defaultIfBlank(reconView, "").toUpperCase(Locale.ROOT);
-        if (!Set.of("XSTORE_SIM", "XSTORE_SIOCS", "XSTORE_XOCS", "SIOCS_MFCS").contains(normalized)) {
+        if (!reconModuleService.isValidReconView(normalized)) {
             throw new IllegalArgumentException("Unsupported reconciliation view: " + reconView);
         }
         return normalized;
+    }
+
+    private Set<String> normalizeAllowedReconViews(Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return Set.of();
+        }
+        return allowedReconViews.stream()
+                .filter(Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private void requireAllowedReconView(String reconView, Set<String> allowedReconViews) {
+        if (!allowedReconViews.contains(normalizeReconView(reconView))) {
+            throw new IllegalArgumentException("Missing access to reconciliation view: " + reconView);
+        }
     }
 
     private String normalizeWindowType(String windowType) {
@@ -1007,6 +1234,10 @@ public class ReconJobService {
         } catch (Exception ex) {
             throw new IllegalArgumentException("Invalid time: " + timeValue);
         }
+    }
+
+    private UUID stableUuid(String value) {
+        return UUID.nameUUIDFromBytes(defaultIfBlank(value, "recon-job").getBytes(StandardCharsets.UTF_8));
     }
 
     private LocalDateTime nextExecution(String cronExpression,

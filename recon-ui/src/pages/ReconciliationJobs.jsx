@@ -8,6 +8,7 @@ import {
     Button,
     Chip,
     FormControl,
+    FormHelperText,
     InputLabel,
     MenuItem,
     Paper,
@@ -23,7 +24,7 @@ import SaveRoundedIcon from '@mui/icons-material/SaveRounded'
 import PlaylistAddRoundedIcon from '@mui/icons-material/PlaylistAddRounded'
 import {operationsApi} from '../services/operationsApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS} from '../constants/reconViews'
+import {useReconModules} from '../hooks/useReconModules'
 
 function formatValue(value) {
     if (value == null || value === '') return '-'
@@ -59,11 +60,11 @@ function createClientKey() {
     return `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function emptyForm() {
+function emptyForm(defaultReconView = '') {
     return {
         id: null,
         jobName: '',
-        reconView: 'XSTORE_SIM',
+        reconView: defaultReconView,
         cronExpression: '0 30 23 * * *',
         jobTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         windowType: 'END_OF_DAY',
@@ -94,6 +95,27 @@ function emptyForm() {
     }
 }
 
+function sanitizeStepsForReconView(steps, reconView, actionCatalog) {
+    const scopedCatalog = (actionCatalog || []).filter((item) => item.reconView === reconView)
+    const allowedModules = new Set(scopedCatalog.map((item) => item.moduleId))
+    const actionsByModule = Object.fromEntries(
+        scopedCatalog.map((item) => [item.moduleId, item.availableActions || []])
+    )
+
+    return (steps || []).map((step) => {
+        if (step.stepType !== 'OPERATIONS_ACTION') {
+            return {...step, moduleId: '', actionKey: ''}
+        }
+        if (!step.moduleId || !allowedModules.has(step.moduleId)) {
+            return {...step, moduleId: '', actionKey: ''}
+        }
+        if (step.actionKey && !(actionsByModule[step.moduleId] || []).includes(step.actionKey)) {
+            return {...step, actionKey: ''}
+        }
+        return step
+    })
+}
+
 function SummaryCard({label, value, supporting, palette}) {
     return (
         <Paper elevation={0} sx={{p: 2, borderRadius: '20px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -106,9 +128,10 @@ function SummaryCard({label, value, supporting, palette}) {
 
 export default function ReconciliationJobs({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptions} = useReconModules()
     const canManage = hasPermission('OPS_EXECUTE_ADVANCED')
     const [center, setCenter] = useState(null)
-    const [form, setForm] = useState(emptyForm())
+    const [form, setForm] = useState(() => emptyForm())
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [runningJobId, setRunningJobId] = useState(null)
@@ -137,11 +160,33 @@ export default function ReconciliationJobs({palette, t}) {
 
     const actionsByModule = useMemo(() => {
         const map = {}
-        for (const module of center?.actionCatalog || []) {
+        for (const module of modules) {
             map[module.moduleId] = module.availableActions || []
         }
         return map
-    }, [center])
+    }, [modules])
+
+    useEffect(() => {
+        if (!moduleOptions.length || !form.reconView) {
+            return
+        }
+        if (moduleOptions.some((option) => option.value === form.reconView)) {
+            return
+        }
+        setForm((current) => ({
+            ...current,
+            reconView: '',
+            steps: sanitizeStepsForReconView(current.steps, '', center?.actionCatalog),
+        }))
+    }, [moduleOptions, form.reconView, center])
+
+    const setReconView = (reconView) => {
+        setForm((current) => ({
+            ...current,
+            reconView,
+            steps: sanitizeStepsForReconView(current.steps, reconView, center?.actionCatalog),
+        }))
+    }
 
     const applyTemplate = (template) => {
         const idMap = new Map()
@@ -164,14 +209,18 @@ export default function ReconciliationJobs({palette, t}) {
             dependsOnClientStepKey: step.templateDependsOnStepId ? (idMap.get(step.templateDependsOnStepId) || '') : '',
         }))
         setForm({
-            ...emptyForm(),
+            ...emptyForm(template.reconView || ''),
             jobName: template.templateName,
-            reconView: template.reconView || 'XSTORE_SIM',
+            reconView: template.reconView || '',
             cronExpression: template.cronExpression || '0 30 23 * * *',
             windowType: template.windowType || 'END_OF_DAY',
             endOfDayLocalTime: template.endOfDayLocalTime || '23:00',
             businessDateOffsetDays: template.businessDateOffsetDays ?? 0,
-            steps: steps.map(({templateDependsOnStepId, ...step}) => step),
+            steps: sanitizeStepsForReconView(
+                steps.map(({templateDependsOnStepId, ...step}) => step),
+                template.reconView || '',
+                center?.actionCatalog
+            ),
         })
     }
 
@@ -198,7 +247,7 @@ export default function ReconciliationJobs({palette, t}) {
         setForm({
             id: definition.id,
             jobName: definition.jobName || '',
-            reconView: definition.reconView || 'XSTORE_SIM',
+            reconView: definition.reconView || '',
             cronExpression: definition.cronExpression || '',
             jobTimezone: definition.jobTimezone || 'UTC',
             windowType: definition.windowType || 'CONTINUOUS',
@@ -214,11 +263,19 @@ export default function ReconciliationJobs({palette, t}) {
             notificationEndpoint: definition.notificationEndpoint || '',
             notificationEmail: definition.notificationEmail || '',
             scopeStoreIdsText: (definition.scopeStoreIds || []).join(', '),
-            steps: steps.map(({sourceDependsOnStepId, ...step}) => step),
+            steps: sanitizeStepsForReconView(
+                steps.map(({sourceDependsOnStepId, ...step}) => step),
+                definition.reconView || '',
+                center?.actionCatalog
+            ),
         })
     }
 
     const saveJob = async () => {
+        if (!form.reconView) {
+            setFeedback({severity: 'error', message: t('Select a reconciliation lane before saving the job definition')})
+            return
+        }
         setSaving(true)
         setFeedback(null)
         try {
@@ -389,30 +446,31 @@ export default function ReconciliationJobs({palette, t}) {
                     </Box>
 
                     <Box sx={{mt: 1.5, display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(2, minmax(0, 1fr))'}, gap: 1.25}}>
-                        <TextField label={t('Job Name')} value={form.jobName} onChange={(e) => setForm({...form, jobName: e.target.value})}/>
-                        <FormControl>
+                        <TextField fullWidth label={t('Job Name')} value={form.jobName} onChange={(e) => setForm({...form, jobName: e.target.value})}/>
+                        <FormControl fullWidth>
                             <InputLabel>{t('Recon View')}</InputLabel>
-                            <Select label={t('Recon View')} value={form.reconView} onChange={(e) => setForm({...form, reconView: e.target.value})}>
-                                        {RECON_VIEW_OPTIONS.map((option) => (
-                                            <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                                        ))}
+                            <Select label={t('Recon View')} value={form.reconView} onChange={(e) => setReconView(e.target.value)}>
+                                <MenuItem value="">{t('Select Reconciliation Lane')}</MenuItem>
+                                {moduleOptions.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                ))}
                             </Select>
                         </FormControl>
-                        <TextField label={t('Cron Expression')} value={form.cronExpression} onChange={(e) => setForm({...form, cronExpression: e.target.value})}/>
-                        <TextField label={t('Timezone')} value={form.jobTimezone} onChange={(e) => setForm({...form, jobTimezone: e.target.value})}/>
-                        <FormControl>
+                        <TextField fullWidth label={t('Cron Expression')} value={form.cronExpression} onChange={(e) => setForm({...form, cronExpression: e.target.value})}/>
+                        <TextField fullWidth label={t('Timezone')} value={form.jobTimezone} onChange={(e) => setForm({...form, jobTimezone: e.target.value})}/>
+                        <FormControl fullWidth>
                             <InputLabel>{t('Window Type')}</InputLabel>
                             <Select label={t('Window Type')} value={form.windowType} onChange={(e) => setForm({...form, windowType: e.target.value})}>
                                 <MenuItem value="CONTINUOUS">{t('Continuous')}</MenuItem>
                                 <MenuItem value="END_OF_DAY">{t('End of Day')}</MenuItem>
                             </Select>
                         </FormControl>
-                        <TextField label={t('End-of-Day Time')} value={form.endOfDayLocalTime} onChange={(e) => setForm({...form, endOfDayLocalTime: e.target.value})} disabled={form.windowType !== 'END_OF_DAY'}/>
-                        <TextField label={t('Business Date Offset')} type="number" value={form.businessDateOffsetDays} onChange={(e) => setForm({...form, businessDateOffsetDays: e.target.value})}/>
-                        <TextField label={t('Store Scope')} value={form.scopeStoreIdsText} onChange={(e) => setForm({...form, scopeStoreIdsText: e.target.value})} helperText={t('Comma-separated store IDs; leave empty for all stores')}/>
-                        <TextField label={t('Max Retry Attempts')} type="number" value={form.maxRetryAttempts} onChange={(e) => setForm({...form, maxRetryAttempts: e.target.value})}/>
-                        <TextField label={t('Retry Delay (mins)')} type="number" value={form.retryDelayMinutes} onChange={(e) => setForm({...form, retryDelayMinutes: e.target.value})}/>
-                        <FormControl>
+                        <TextField fullWidth label={t('End-of-Day Time')} value={form.endOfDayLocalTime} onChange={(e) => setForm({...form, endOfDayLocalTime: e.target.value})} disabled={form.windowType !== 'END_OF_DAY'}/>
+                        <TextField fullWidth label={t('Business Date Offset')} type="number" value={form.businessDateOffsetDays} onChange={(e) => setForm({...form, businessDateOffsetDays: e.target.value})}/>
+                        <TextField fullWidth label={t('Store Scope')} value={form.scopeStoreIdsText} onChange={(e) => setForm({...form, scopeStoreIdsText: e.target.value})} helperText={t('Comma-separated store IDs; leave empty for all stores')}/>
+                        <TextField fullWidth label={t('Max Retry Attempts')} type="number" value={form.maxRetryAttempts} onChange={(e) => setForm({...form, maxRetryAttempts: e.target.value})}/>
+                        <TextField fullWidth label={t('Retry Delay (mins)')} type="number" value={form.retryDelayMinutes} onChange={(e) => setForm({...form, retryDelayMinutes: e.target.value})}/>
+                        <FormControl fullWidth>
                             <InputLabel>{t('Notify Channel')}</InputLabel>
                             <Select label={t('Notify Channel')} value={form.notificationChannelType} onChange={(e) => setForm({...form, notificationChannelType: e.target.value})}>
                                 <MenuItem value="">{t('None')}</MenuItem>
@@ -422,8 +480,8 @@ export default function ReconciliationJobs({palette, t}) {
                                 <MenuItem value="SLACK">SLACK</MenuItem>
                             </Select>
                         </FormControl>
-                        <TextField label={t('Notification Email')} value={form.notificationEmail} onChange={(e) => setForm({...form, notificationEmail: e.target.value})}/>
-                        <TextField label={t('Notification Endpoint')} value={form.notificationEndpoint} onChange={(e) => setForm({...form, notificationEndpoint: e.target.value})}/>
+                        <TextField fullWidth label={t('Notification Email')} value={form.notificationEmail} onChange={(e) => setForm({...form, notificationEmail: e.target.value})}/>
+                        <TextField fullWidth label={t('Notification Endpoint')} value={form.notificationEndpoint} onChange={(e) => setForm({...form, notificationEndpoint: e.target.value})}/>
                     </Box>
 
                     <Stack direction="row" spacing={2} sx={{mt: 1.5}} useFlexGap flexWrap="wrap">
@@ -438,44 +496,61 @@ export default function ReconciliationJobs({palette, t}) {
                             <Typography sx={{fontSize: '0.92rem', fontWeight: 800, color: palette.text}}>{t('Job Steps')}</Typography>
                             <Button variant="outlined" startIcon={<PlaylistAddRoundedIcon/>} onClick={addStep}>{t('Add Step')}</Button>
                         </Box>
+                        <Typography sx={{mb: 1.1, fontSize: '0.76rem', color: palette.textMuted}}>
+                            {form.reconView
+                                ? t('Step modules are limited to the selected reconciliation lane.')
+                                : t('Select a reconciliation lane to enable the Module dropdown, then select a module to enable the Action dropdown.')}
+                        </Typography>
                         <Stack spacing={1}>
                             {form.steps.map((step, index) => (
                                 <Paper key={step.clientStepKey} elevation={0} sx={{p: 1.25, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, backgroundColor: palette.cardBgAlt}}>
-                                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', lg: '1.1fr 0.9fr 0.9fr 0.9fr 0.8fr auto'}, gap: 1}}>
-                                        <TextField label={`${t('Step')} ${index + 1}`} value={step.stepLabel} onChange={(e) => updateStep(step.clientStepKey, 'stepLabel', e.target.value)}/>
-                                        <FormControl>
+                                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'minmax(0, 1.6fr) minmax(220px, 0.9fr)'}, gap: 1.1}}>
+                                        <TextField fullWidth label={`${t('Step')} ${index + 1}`} value={step.stepLabel} onChange={(e) => updateStep(step.clientStepKey, 'stepLabel', e.target.value)}/>
+                                        <FormControl fullWidth>
                                             <InputLabel>{t('Type')}</InputLabel>
                                             <Select label={t('Type')} value={step.stepType} onChange={(e) => updateStep(step.clientStepKey, 'stepType', e.target.value)}>
                                                 <MenuItem value="OPERATIONS_ACTION">OPERATIONS_ACTION</MenuItem>
                                                 <MenuItem value="RECON_SUMMARY_SNAPSHOT">RECON_SUMMARY_SNAPSHOT</MenuItem>
                                             </Select>
                                         </FormControl>
-                                        <FormControl disabled={step.stepType !== 'OPERATIONS_ACTION'}>
+                                    </Box>
+                                    <Box sx={{mt: 1.1, display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'minmax(280px, 1fr) minmax(240px, 0.9fr) minmax(180px, 0.7fr)'}, gap: 1.1}}>
+                                        <FormControl fullWidth disabled={step.stepType !== 'OPERATIONS_ACTION' || !form.reconView}>
                                             <InputLabel>{t('Module')}</InputLabel>
                                             <Select label={t('Module')} value={step.moduleId} onChange={(e) => updateStep(step.clientStepKey, 'moduleId', e.target.value)}>
                                                 {modules.map((module) => <MenuItem key={module.moduleId} value={module.moduleId}>{module.moduleLabel}</MenuItem>)}
                                             </Select>
+                                            {!form.reconView ? (
+                                                <FormHelperText>{t('Select a reconciliation lane first.')}</FormHelperText>
+                                            ) : null}
                                         </FormControl>
-                                        <FormControl disabled={step.stepType !== 'OPERATIONS_ACTION' || !step.moduleId}>
+                                        <FormControl fullWidth disabled={step.stepType !== 'OPERATIONS_ACTION' || !step.moduleId}>
                                             <InputLabel>{t('Action')}</InputLabel>
                                             <Select label={t('Action')} value={step.actionKey} onChange={(e) => updateStep(step.clientStepKey, 'actionKey', e.target.value)}>
                                                 {(actionsByModule[step.moduleId] || []).map((action) => <MenuItem key={action} value={action}>{action}</MenuItem>)}
                                             </Select>
+                                            {step.stepType === 'OPERATIONS_ACTION' && !step.moduleId ? (
+                                                <FormHelperText>{t('Select a module first.')}</FormHelperText>
+                                            ) : null}
                                         </FormControl>
-                                        <TextField label={t('Settle Delay')} type="number" value={step.settleDelaySeconds} onChange={(e) => updateStep(step.clientStepKey, 'settleDelaySeconds', e.target.value)}/>
-                                        <Button color="error" variant="text" onClick={() => removeStep(step.clientStepKey)} disabled={form.steps.length === 1}>{t('Remove')}</Button>
+                                        <TextField fullWidth label={t('Settle Delay (secs)')} type="number" value={step.settleDelaySeconds} onChange={(e) => updateStep(step.clientStepKey, 'settleDelaySeconds', e.target.value)}/>
                                     </Box>
-                                    <FormControl sx={{mt: 1, minWidth: 220}}>
-                                        <InputLabel>{t('Depends On')}</InputLabel>
-                                        <Select label={t('Depends On')} value={step.dependsOnClientStepKey} onChange={(e) => updateStep(step.clientStepKey, 'dependsOnClientStepKey', e.target.value)}>
-                                            <MenuItem value="">{t('None')}</MenuItem>
-                                            {form.steps.filter((candidate, candidateIndex) => candidate.clientStepKey !== step.clientStepKey && candidateIndex < index).map((candidate) => (
-                                                <MenuItem key={candidate.clientStepKey} value={candidate.clientStepKey}>
-                                                    {candidate.stepLabel || `${t('Step')} ${candidate.stepOrder}`}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
+                                    <Box sx={{mt: 1.1, display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'minmax(240px, 0.9fr) auto'}, gap: 1.1, alignItems: 'center'}}>
+                                        <FormControl fullWidth>
+                                            <InputLabel>{t('Depends On')}</InputLabel>
+                                            <Select label={t('Depends On')} value={step.dependsOnClientStepKey} onChange={(e) => updateStep(step.clientStepKey, 'dependsOnClientStepKey', e.target.value)}>
+                                                <MenuItem value="">{t('None')}</MenuItem>
+                                                {form.steps.filter((candidate, candidateIndex) => candidate.clientStepKey !== step.clientStepKey && candidateIndex < index).map((candidate) => (
+                                                    <MenuItem key={candidate.clientStepKey} value={candidate.clientStepKey}>
+                                                        {candidate.stepLabel || `${t('Step')} ${candidate.stepOrder}`}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        <Box sx={{display: 'flex', justifyContent: {xs: 'stretch', md: 'flex-end'}}}>
+                                            <Button color="error" variant="text" onClick={() => removeStep(step.clientStepKey)} disabled={form.steps.length === 1}>{t('Remove')}</Button>
+                                        </Box>
+                                    </Box>
                                 </Paper>
                             ))}
                         </Stack>

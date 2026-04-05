@@ -13,6 +13,7 @@ import com.recon.api.repository.KnownIssueFeedbackRepository;
 import com.recon.api.repository.KnownIssueRepository;
 import com.recon.api.util.TimezoneConverter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,12 +42,14 @@ public class KnownIssueService {
     public KnownIssueCatalogResponse getCatalog(String tenantId,
                                                 String reconView,
                                                 Boolean activeOnly,
-                                                String search) {
+                                                String search,
+                                                Collection<String> allowedReconViews) {
         List<KnownIssue> issues = (Boolean.TRUE.equals(activeOnly)
                 ? knownIssueRepository.findByTenantIdAndActiveTrueOrderByPriorityWeightDescUpdatedAtDesc(tenantId)
                 : knownIssueRepository.findByTenantIdOrderByActiveDescPriorityWeightDescUpdatedAtDesc(tenantId))
                 .stream()
                 .filter(matchesReconView(reconView))
+                .filter(matchesAllowedReconViews(reconView, allowedReconViews))
                 .filter(matchesSearch(search))
                 .toList();
 
@@ -61,11 +64,20 @@ public class KnownIssueService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public KnownIssueCatalogResponse getCatalog(String tenantId,
+                                                String reconView,
+                                                Boolean activeOnly,
+                                                String search) {
+        return getCatalog(tenantId, reconView, activeOnly, search, null);
+    }
+
     @Transactional
     public KnownIssueDto saveKnownIssue(String tenantId,
                                         UUID issueId,
                                         SaveKnownIssueRequest request,
-                                        String actorUsername) {
+                                        String actorUsername,
+                                        Collection<String> allowedReconViews) {
         if (request == null) {
             throw new IllegalArgumentException("Known issue request is required");
         }
@@ -77,6 +89,10 @@ public class KnownIssueService {
                 .updatedBy(actorUsername)
                 .build()
                 : knownIssueRepository.findByIdAndTenantId(issueId, tenantId)
+                .map(existing -> {
+                    requireAllowedReconView(existing.getReconView(), allowedReconViews);
+                    return existing;
+                })
                 .orElseThrow(() -> new IllegalArgumentException("Known issue not found"));
 
         String title = trimToNull(request.getTitle());
@@ -93,6 +109,7 @@ public class KnownIssueService {
         }
 
         String reconView = normalize(request.getReconView());
+        requireAllowedReconView(reconView, allowedReconViews);
         String reconStatus = normalize(request.getReconStatus());
         String reasonCode = normalize(request.getReasonCode());
         String rootCauseCategory = normalize(request.getRootCauseCategory());
@@ -140,16 +157,29 @@ public class KnownIssueService {
     }
 
     @Transactional
+    public KnownIssueDto saveKnownIssue(String tenantId,
+                                        UUID issueId,
+                                        SaveKnownIssueRequest request,
+                                        String actorUsername) {
+        return saveKnownIssue(tenantId, issueId, request, actorUsername, null);
+    }
+
+    @Transactional
     public KnownIssueFeedbackResponse submitFeedback(String tenantId,
                                                      UUID knownIssueId,
                                                      SubmitKnownIssueFeedbackRequest request,
-                                                     String actorUsername) {
+                                                     String actorUsername,
+                                                     Collection<String> allowedReconViews) {
         if (request == null || request.getHelpful() == null) {
             throw new IllegalArgumentException("Helpful or not helpful feedback is required");
         }
 
         KnownIssue knownIssue = knownIssueRepository.findByIdAndTenantId(knownIssueId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Known issue not found"));
+        requireAllowedReconView(knownIssue.getReconView(), allowedReconViews);
+        if (normalize(request.getReconView()) != null) {
+            requireAllowedReconView(request.getReconView(), allowedReconViews);
+        }
 
         String contextKey = buildContextKey(request);
         KnownIssueFeedback feedback = knownIssueFeedbackRepository
@@ -186,6 +216,14 @@ public class KnownIssueService {
                         ? "Known issue marked as helpful"
                         : "Known issue marked as not helpful")
                 .build();
+    }
+
+    @Transactional
+    public KnownIssueFeedbackResponse submitFeedback(String tenantId,
+                                                     UUID knownIssueId,
+                                                     SubmitKnownIssueFeedbackRequest request,
+                                                     String actorUsername) {
+        return submitFeedback(tenantId, knownIssueId, request, actorUsername, null);
     }
 
     @Transactional(readOnly = true)
@@ -406,6 +444,37 @@ public class KnownIssueService {
             return issue -> true;
         }
         return issue -> issue.getReconView() == null || Objects.equals(issue.getReconView(), normalized);
+    }
+
+    private Predicate<KnownIssue> matchesAllowedReconViews(String reconView, Collection<String> allowedReconViews) {
+        if (normalize(reconView) != null || allowedReconViews == null) {
+            return issue -> true;
+        }
+        Set<String> normalizedAllowedViews = allowedReconViews.stream()
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalizedAllowedViews.isEmpty()) {
+            return issue -> false;
+        }
+        return issue -> issue.getReconView() == null || normalizedAllowedViews.contains(normalize(issue.getReconView()));
+    }
+
+    private void requireAllowedReconView(String reconView, Collection<String> allowedReconViews) {
+        if (allowedReconViews == null) {
+            return;
+        }
+        String normalizedReconView = normalize(reconView);
+        if (normalizedReconView == null) {
+            throw new AccessDeniedException("A reconciliation module is required for this action");
+        }
+        Set<String> normalizedAllowedViews = allowedReconViews.stream()
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!normalizedAllowedViews.contains(normalizedReconView)) {
+            throw new AccessDeniedException("You are not authorized for this reconciliation module");
+        }
     }
 
     private Predicate<KnownIssue> matchesSearch(String search) {

@@ -23,9 +23,7 @@ import {
 import PublicIcon from '@mui/icons-material/Public'
 import {exceptionApi} from '../services/exceptionApi'
 import {useAuth} from '../context/AuthContext'
-import {RECON_VIEW_OPTIONS_WITH_ALL} from '../constants/reconViews'
-
-const MODULE_OPTIONS = RECON_VIEW_OPTIONS_WITH_ALL
+import {useReconModules} from '../hooks/useReconModules'
 
 const STATUS_OPTIONS = [
     {value: 'DETECTED', label: 'Detected Outbreaks'},
@@ -108,6 +106,7 @@ function SummaryCard({label, value, palette, tone = '#2563EB'}) {
 
 export default function RegionalIncidentBoard({palette, t}) {
     const {hasPermission} = useAuth()
+    const {moduleOptionsWithAll: MODULE_OPTIONS} = useReconModules()
     const canView = hasPermission('EXCEPTION_QUEUE_VIEW')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')

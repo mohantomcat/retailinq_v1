@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Map;
+import static java.util.Map.entry;
 import java.util.UUID;
 
 @Component
@@ -18,14 +19,26 @@ public class SiocsTransactionMapper {
 
     private final PollerConfig config;
 
-    private static final Map<Integer, String> TYPE_DESC = Map.of(
-            1, "Sale",
-            2, "Return",
-            3, "VoidSale",
-            4, "VoidReturn",
-            5, "CancelReservation",
-            6, "New",
-            8, "Fulfill"
+    private static final Map<Integer, String> TYPE_DESC = Map.ofEntries(
+            entry(1, "Sale"),
+            entry(2, "Return"),
+            entry(3, "VoidSale"),
+            entry(4, "VoidReturn"),
+            entry(5, "CancelReservation"),
+            entry(6, "New"),
+            entry(8, "Fulfill"),
+            entry(10, "Transfer"),
+            entry(11, "StoreToStoreTransfer"),
+            entry(12, "StoreToWarehouseTransfer"),
+            entry(20, "Receiving"),
+            entry(21, "StoreToStoreReceiving"),
+            entry(22, "WarehouseDelivery"),
+            entry(30, "DirectStoreDelivery"),
+            entry(40, "InventoryAdjustment"),
+            entry(50, "PurchaseOrder"),
+            entry(60, "ReturnToVendor"),
+            entry(70, "WarehouseDelivery"),
+            entry(80, "StoreTransfer")
     );
 
     private static final Map<Integer, String> STATUS_DESC = Map.of(
