@@ -192,7 +192,7 @@ export default function KpiMockup() {
                 >
                     <Grid container spacing={2}>
                         {summaryCards.map((card) => (
-                            <Grid item xs={12} sm={6} lg={3} key={card.label}>
+                            <Grid size={{xs: 12, sm: 6, lg: 3}} key={card.label}>
                                 <MetricCard {...card} />
                             </Grid>
                         ))}
@@ -206,7 +206,7 @@ export default function KpiMockup() {
                         </Typography>
                         <Grid container spacing={2}>
                             {issueCards.slice(2).map((card) => (
-                                <Grid item xs={12} md={6} key={card.label}>
+                                <Grid size={{xs: 12, md: 6}} key={card.label}>
                                     <MetricCard {...card} compact />
                                 </Grid>
                             ))}
@@ -219,7 +219,7 @@ export default function KpiMockup() {
                         </Typography>
                         <Grid container spacing={2}>
                             {issueCards.slice(0, 2).map((card) => (
-                                <Grid item xs={12} md={6} key={card.label}>
+                                <Grid size={{xs: 12, md: 6}} key={card.label}>
                                     <MetricCard {...card} compact />
                                 </Grid>
                             ))}
@@ -243,7 +243,7 @@ export default function KpiMockup() {
                         }}
                     >
                         <Grid container spacing={2} alignItems="center">
-                            <Grid item xs={12} md={4}>
+                            <Grid size={{xs: 12, md: 4}}>
                                 <Typography sx={{fontSize: '0.82rem', opacity: 0.76}}>
                                     Total Transactions
                                 </Typography>
@@ -251,7 +251,7 @@ export default function KpiMockup() {
                                     354
                                 </Typography>
                             </Grid>
-                            <Grid item xs={6} md={4}>
+                            <Grid size={{xs: 6, md: 4}}>
                                 <Typography sx={{fontSize: '0.82rem', opacity: 0.76}}>
                                     Matched
                                 </Typography>
@@ -259,7 +259,7 @@ export default function KpiMockup() {
                                     119
                                 </Typography>
                             </Grid>
-                            <Grid item xs={6} md={4}>
+                            <Grid size={{xs: 6, md: 4}}>
                                 <Typography sx={{fontSize: '0.82rem', opacity: 0.76}}>
                                     Exception Count
                                 </Typography>
@@ -272,7 +272,7 @@ export default function KpiMockup() {
 
                     <Grid container spacing={2}>
                         {[...issueCards, ...healthCards.slice(0, 2)].map((card) => (
-                            <Grid item xs={12} sm={6} lg={4} key={card.label}>
+                            <Grid size={{xs: 12, sm: 6, lg: 4}} key={card.label}>
                                 <MetricCard {...card} compact />
                             </Grid>
                         ))}
@@ -284,7 +284,7 @@ export default function KpiMockup() {
                     subtitle="This layout separates reconciliation outcome from pipeline health. It is useful if operations teams care equally about data quality and connector processing state."
                 >
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -300,7 +300,7 @@ export default function KpiMockup() {
                                     </Typography>
                                     <Grid container spacing={2}>
                                         {summaryCards.slice(0, 3).map((card) => (
-                                            <Grid item xs={12} md={4} key={card.label}>
+                                            <Grid size={{xs: 12, md: 4}} key={card.label}>
                                                 <MetricCard {...card} compact />
                                             </Grid>
                                         ))}
@@ -308,7 +308,7 @@ export default function KpiMockup() {
                                 </Stack>
                             </Paper>
                         </Grid>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -324,7 +324,7 @@ export default function KpiMockup() {
                                     </Typography>
                                     <Grid container spacing={2}>
                                         {healthCards.map((card) => (
-                                            <Grid item xs={12} key={card.label}>
+                                            <Grid size={{xs: 12}} key={card.label}>
                                                 <MetricCard {...card} compact />
                                             </Grid>
                                         ))}
@@ -336,7 +336,7 @@ export default function KpiMockup() {
 
                     <Grid container spacing={2}>
                         {issueCards.map((card) => (
-                            <Grid item xs={12} sm={6} lg={3} key={card.label}>
+                            <Grid size={{xs: 12, sm: 6, lg: 3}} key={card.label}>
                                 <MetricCard {...card} compact />
                             </Grid>
                         ))}

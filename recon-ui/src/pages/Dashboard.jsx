@@ -3102,7 +3102,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                                 ) : (
                                     <Grid container spacing={2}>
                                         {summaryCards.map((card) => (
-                                            <Grid item xs={12} sm={6} md={4} xl={3} key={card.key}>
+                                            <Grid size={{xs: 12, sm: 6, md: 4, xl: 3}} key={card.key}>
                                                 <KPI
                                                     title={card.title}
                                                     value={card.value}
@@ -3437,7 +3437,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                                 ) : (
                                     <Grid container spacing={2}>
                                         {workbenchIssueCards.map((card) => (
-                                            <Grid item xs={12} sm={6} lg={3} key={card.key}>
+                                            <Grid size={{xs: 12, sm: 6, lg: 3}} key={card.key}>
                                                 <KPI
                                                     title={card.title}
                                                     value={card.value}
@@ -3556,7 +3556,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                     <Box>
                         <Paper
                             elevation={0}
-                            data-testid="selected-record-summary"
+                            data-testid="sla-summary-panel"
                             sx={{
                                 p: 2,
                                 borderRadius: 3,
@@ -3652,7 +3652,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                         </Box>
 
                         <Grid container spacing={2} sx={{mt: 0.1}}>
-                            <Grid item xs={12} md={6} lg={4}>
+                            <Grid size={{xs: 12, md: 6, lg: 4}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -3715,7 +3715,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} md={6} lg={4}>
+                        <Grid size={{xs: 12, md: 6, lg: 4}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -3778,7 +3778,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={4}>
+                        <Grid size={{xs: 12, lg: 4}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -3868,6 +3868,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                                 </Typography>
                                 <Paper
                                     elevation={0}
+                                    data-testid="selected-record-summary"
                                     sx={{
                                         p: 2,
                                         borderRadius: 3,
@@ -4089,6 +4090,7 @@ export default function Dashboard({
                         return (
                             <Box
                                 key={tabId}
+                                data-testid={`dashboard-tab-${tabId}`}
                                 onClick={() => setActiveTab(tabId)}
                                 sx={{
                                     display: 'flex',
@@ -4126,6 +4128,7 @@ export default function Dashboard({
                                 </Typography>
 
                                 <Box
+                                    data-testid={`dashboard-tab-close-${tabId}`}
                                     onClick={(e) => {
                                         e.stopPropagation()
                                         handleCloseTab(tabId)

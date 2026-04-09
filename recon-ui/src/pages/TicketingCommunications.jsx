@@ -227,10 +227,10 @@ export default function TicketingCommunications({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={3}><SummaryCard label={t('Channels')} value={data?.summary?.channelCount || 0} tone={palette.text} palette={palette}/></Grid>
-                        <Grid item xs={12} md={3}><SummaryCard label={t('Active Channels')} value={data?.summary?.activeChannelCount || 0} tone={palette.tealChipText} palette={palette}/></Grid>
-                        <Grid item xs={12} md={3}><SummaryCard label={t('Recent Tickets')} value={data?.summary?.recentTicketCount || 0} tone={palette.blueChipText} palette={palette}/></Grid>
-                        <Grid item xs={12} md={3}><SummaryCard label={t('Failed Deliveries')} value={data?.summary?.failedDeliveries || 0} tone="#DC2626" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 3}}><SummaryCard label={t('Channels')} value={data?.summary?.channelCount || 0} tone={palette.text} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 3}}><SummaryCard label={t('Active Channels')} value={data?.summary?.activeChannelCount || 0} tone={palette.tealChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 3}}><SummaryCard label={t('Recent Tickets')} value={data?.summary?.recentTicketCount || 0} tone={palette.blueChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 3}}><SummaryCard label={t('Failed Deliveries')} value={data?.summary?.failedDeliveries || 0} tone="#DC2626" palette={palette}/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2.25, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -253,7 +253,7 @@ export default function TicketingCommunications({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'center', mb: 1.5}}>
                                     <Box>
@@ -314,7 +314,7 @@ export default function TicketingCommunications({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap', mb: 2}}>
                                     <Box>
@@ -458,7 +458,7 @@ export default function TicketingCommunications({palette, t}) {
                     </Grid>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={6}>
+                        <Grid size={{xs: 12, lg: 6}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text}}>{t('Recent External Tickets')}</Typography>
                                 <Typography sx={{mt: 0.35, mb: 1.5, fontSize: '0.82rem', color: palette.textMuted}}>
@@ -516,7 +516,7 @@ export default function TicketingCommunications({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={6}>
+                        <Grid size={{xs: 12, lg: 6}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text}}>{t('Recent Operational Updates')}</Typography>
                                 <Typography sx={{mt: 0.35, mb: 1.5, fontSize: '0.82rem', color: palette.textMuted}}>

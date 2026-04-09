@@ -489,9 +489,9 @@ export default function RoutingPlaybooks({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Routing Rules')} value={summary.rules} palette={palette} tone="blue"/></Grid>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Active Rules')} value={summary.activeRules} palette={palette} tone="teal"/></Grid>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Playbooks')} value={summary.playbooks} palette={palette} tone="purple"/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Routing Rules')} value={summary.rules} palette={palette} tone="blue"/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Active Rules')} value={summary.activeRules} palette={palette} tone="teal"/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Playbooks')} value={summary.playbooks} palette={palette} tone="purple"/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -518,7 +518,7 @@ export default function RoutingPlaybooks({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={3}>
-                        <Grid item xs={12} xl={6}>
+                        <Grid size={{xs: 12, xl: 6}}>
                             <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {routingRuleForm.id ? t('Edit Routing Rule') : t('New Routing Rule')}
@@ -605,7 +605,7 @@ export default function RoutingPlaybooks({palette, t}) {
                             </Paper>
                             <RuleTable rules={data.routingRules || []} onEdit={(rule) => setRoutingRuleForm({...rule})} onDelete={deleteRoutingRule} palette={palette} t={t} canEdit={canEdit} saving={saving}/>
                         </Grid>
-                        <Grid item xs={12} xl={6}>
+                        <Grid size={{xs: 12, xl: 6}}>
                             <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {playbookForm.id ? t('Edit Playbook') : t('New Playbook')}

@@ -530,7 +530,7 @@ export default function IntegrationHub({palette, t}) {
                                 <Box sx={{p: 2.5}}>
                                     <Grid container spacing={1.5}>
                                         {businessImpact.map((item) => (
-                                            <Grid item xs={12} md={4} key={item.title}>
+                                            <Grid size={{xs: 12, md: 4}} key={item.title}>
                                                 <Paper elevation={0} sx={{p: 1.7, height: '100%', borderRadius: '18px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBgAlt}}>
                                                     <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                                                         <Typography sx={{fontSize: '0.84rem', fontWeight: 700, color: palette.text}}>{item.title}</Typography>
@@ -545,7 +545,7 @@ export default function IntegrationHub({palette, t}) {
                             </Section>
 
                             <Grid container spacing={2.2}>
-                                <Grid item xs={12} xl={7}>
+                                <Grid size={{xs: 12, xl: 7}}>
                                     <Section title={t('Connector Runtime')} subtitle={t('Operational visibility for connector health, last activity, volume, and error pressure.')} palette={palette}>
                                         <TableContainer>
                                             <Table size="small">
@@ -596,7 +596,7 @@ export default function IntegrationHub({palette, t}) {
                                     </Section>
                                 </Grid>
 
-                                <Grid item xs={12} xl={5}>
+                                <Grid size={{xs: 12, xl: 5}}>
                                     <Section title={t('Flow Health')} subtitle={t('Lag and status view for monitored integration flows.')} palette={palette}>
                                         <TableContainer>
                                             <Table size="small">
@@ -639,7 +639,7 @@ export default function IntegrationHub({palette, t}) {
                             </Grid>
 
                             <Grid container spacing={2.2}>
-                                <Grid item xs={12} xl={7}>
+                                <Grid size={{xs: 12, xl: 7}}>
                                     <Section title={t('Recent Runs')} subtitle={t('What just happened, how long it took, and whether support should care.')} palette={palette}>
                                         {!recentRuns.length ? (
                                             <EmptyState title={t('No connector runs have been journaled yet')} description={t('Recent execution history will appear here after a connector run starts publishing Integration Hub run entries.')} palette={palette} />
@@ -664,7 +664,7 @@ export default function IntegrationHub({palette, t}) {
                                     </Section>
                                 </Grid>
 
-                                <Grid item xs={12} xl={5}>
+                                <Grid size={{xs: 12, xl: 5}}>
                                     <Section title={t('Open Integration Errors')} subtitle={t('Current technical issues requiring support follow-up.')} palette={palette} action={openErrors.length ? <Button variant="outlined" size="small" onClick={() => setActiveTab(2)}>{t('Open Recovery Console')}</Button> : null}>
                                         {!openErrors.length ? (
                                             <EmptyState title={t('No active integration errors')} description={t('All monitored connectors are healthy right now. If a connector starts failing, the affected messages will appear here with trace and replay shortcuts.')} palette={palette} />
@@ -744,7 +744,7 @@ export default function IntegrationHub({palette, t}) {
 
                     {activeTab === 2 ? (
                         <Grid container spacing={2.2}>
-                            <Grid item xs={12} xl={5}>
+                            <Grid size={{xs: 12, xl: 5}}>
                                 <Section title={t('Replay & Recovery')} subtitle={t('Restricted recovery workspace for integration admins. Replay actions are audited and should be used only after confirming impact.')} palette={palette}>
                                     <Box sx={{p: 2.5}}>
                                         {!canReplay ? <Alert severity="info" sx={{mb: 2}}>{t('You can view recovery status here, but replay creation and execution require the Integration Hub replay permission.')}</Alert> : null}
@@ -763,7 +763,7 @@ export default function IntegrationHub({palette, t}) {
                                 </Section>
                             </Grid>
 
-                            <Grid item xs={12} xl={7}>
+                            <Grid size={{xs: 12, xl: 7}}>
                                 <Stack spacing={2.2}>
                                     <Section title={t('Replay Requests')} subtitle={t('Recovery history, request status, and execution follow-up for replay actions.')} palette={palette}>
                                         {!replayRequests.length ? (
@@ -850,7 +850,7 @@ export default function IntegrationHub({palette, t}) {
                         <Divider sx={{my: 2}} />
                         {messageDetailLoading ? <Box sx={{display: 'flex', justifyContent: 'center', py: 6}}><CircularProgress size={28} /></Box> : (
                             <Grid container spacing={1.4}>
-                                <Grid item xs={12} lg={7}>
+                                <Grid size={{xs: 12, lg: 7}}>
                                     <Paper elevation={0} sx={{p: 1.5, borderRadius: '16px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBgAlt}}>
                                         <MetaRow label={t('Connector')} value={connectorLookup.get(selectedMessageDetail.connectorKey)?.connectorLabel || selectedMessageDetail.connectorKey} palette={palette} />
                                         <MetaRow label={t('Flow')} value={flowLookup.get(selectedMessageDetail.flowKey)?.flowLabel || selectedMessageDetail.flowKey} palette={palette} />
@@ -868,7 +868,7 @@ export default function IntegrationHub({palette, t}) {
                                         <Box component="pre" sx={{m: 0, maxHeight: 260, overflow: 'auto', fontSize: '0.74rem', lineHeight: 1.45, color: palette.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>{selectedMessageDetail.payloadSnapshotJson || t('No payload snapshot was captured for this message.')}</Box>
                                     </Paper>
                                 </Grid>
-                                <Grid item xs={12} lg={5}>
+                                <Grid size={{xs: 12, lg: 5}}>
                                     <Paper elevation={0} sx={{p: 1.5, borderRadius: '16px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBgAlt}}>
                                         <Typography sx={{fontSize: '0.76rem', fontWeight: 700, color: palette.textMuted, mb: 0.8}}>{t('Related Errors')}</Typography>
                                         <Stack spacing={1}>

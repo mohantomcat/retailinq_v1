@@ -276,16 +276,16 @@ export default function RecurrenceAnalytics({palette, t}) {
                     </Box>
 
                     <Grid container spacing={2.2} sx={{mb: 3}}>
-                        <Grid item xs={12} lg={6}>
+                        <Grid size={{xs: 12, lg: 6}}>
                             <TrendCard title={t('Repeat Operational Load')} data={trend} dataKey="repeatCases" color="#DC2626" palette={palette} formatter={(value) => Number(value || 0)} t={t}/>
                         </Grid>
-                        <Grid item xs={12} lg={6}>
+                        <Grid size={{xs: 12, lg: 6}}>
                             <TrendCard title={t('Repeat Value At Risk')} data={trend} dataKey="repeatValueAtRisk" color="#15803D" palette={palette} formatter={(value) => Number(value || 0).toLocaleString(undefined, {maximumFractionDigits: 0})} t={t}/>
                         </Grid>
                     </Grid>
 
                     <Grid container spacing={2.2} sx={{mb: 3}}>
-                        <Grid item xs={12} xl={8}>
+                        <Grid size={{xs: 12, xl: 8}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '0.96rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
                                     {t('Top Recurring Incident Patterns')}
@@ -360,7 +360,7 @@ export default function RecurrenceAnalytics({palette, t}) {
                                 )}
                             </Paper>
                         </Grid>
-                        <Grid item xs={12} xl={4}>
+                        <Grid size={{xs: 12, xl: 4}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '0.96rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
                                     {t('Prevention Opportunities')}
@@ -396,19 +396,19 @@ export default function RecurrenceAnalytics({palette, t}) {
                     </Grid>
 
                     <Grid container spacing={2.2}>
-                        <Grid item xs={12} md={6} xl={2.4}>
+                        <Grid size={{xs: 12, md: 6, xl: 2.4}}>
                             <BreakdownCard title={t('Top Repeat Stores')} rows={data?.topStores} palette={palette} t={t}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={2.4}>
+                        <Grid size={{xs: 12, md: 6, xl: 2.4}}>
                             <BreakdownCard title={t('Top Repeat Modules')} rows={data?.topModules} palette={palette} t={t}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={2.4}>
+                        <Grid size={{xs: 12, md: 6, xl: 2.4}}>
                             <BreakdownCard title={t('Top Repeat Reasons')} rows={data?.topReasons} palette={palette} t={t}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={2.4}>
+                        <Grid size={{xs: 12, md: 6, xl: 2.4}}>
                             <BreakdownCard title={t('Top Known Issues')} rows={data?.topKnownIssues} palette={palette} t={t}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={2.4}>
+                        <Grid size={{xs: 12, md: 6, xl: 2.4}}>
                             <BreakdownCard title={t('Top Owner Teams')} rows={data?.topOwnerTeams} palette={palette} t={t}/>
                         </Grid>
                     </Grid>

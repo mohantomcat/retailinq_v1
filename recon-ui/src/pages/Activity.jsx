@@ -57,7 +57,7 @@ function MetricGrid({palette, t, metrics}) {
     return (
         <Grid container spacing={2}>
             {metrics.map((metric) => (
-                <Grid key={metric.label} item xs={12} sm={6} md={3}>
+                <Grid key={metric.label} size={{xs: 12, sm: 6, md: 3}}>
                     <SummaryCard label={t(metric.label)} value={metric.value || 0} tone={metric.tone} palette={palette}/>
                 </Grid>
             ))}
@@ -299,22 +299,22 @@ export default function Activity({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} xl={7}>
+                        <Grid size={{xs: 12, xl: 7}}>
                             <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {t('Retention & Archive Policy')}
                                 </Typography>
                                 <Grid container spacing={1.5}>
-                                    <Grid item xs={12} md={6}>
+                                    <Grid size={{xs: 12, md: 6}}>
                                         <TextField size="small" fullWidth label={t('Policy Name')} value={retentionForm.policyName} onChange={(event) => handleRetentionChange('policyName', event.target.value)}/>
                                     </Grid>
-                                    <Grid item xs={12} md={3}>
+                                    <Grid size={{xs: 12, md: 3}}>
                                         <TextField size="small" fullWidth type="number" label={t('Min Retention Days')} value={retentionForm.minimumRetentionDays} onChange={(event) => handleRetentionChange('minimumRetentionDays', Number(event.target.value || 0))}/>
                                     </Grid>
-                                    <Grid item xs={12} md={3}>
+                                    <Grid size={{xs: 12, md: 3}}>
                                         <TextField size="small" fullWidth type="number" label={t('Archive After Days')} value={retentionForm.archiveAfterDays} onChange={(event) => handleRetentionChange('archiveAfterDays', Number(event.target.value || 0))}/>
                                     </Grid>
-                                    <Grid item xs={12} md={4}>
+                                    <Grid size={{xs: 12, md: 4}}>
                                         <FormControl size="small" fullWidth>
                                             <InputLabel>{t('Default Export')}</InputLabel>
                                             <Select value={retentionForm.defaultExportFormat} label={t('Default Export')} onChange={(event) => handleRetentionChange('defaultExportFormat', event.target.value)}>
@@ -323,10 +323,10 @@ export default function Activity({palette, t}) {
                                             </Select>
                                         </FormControl>
                                     </Grid>
-                                    <Grid item xs={12} md={8}>
+                                    <Grid size={{xs: 12, md: 8}}>
                                         <TextField size="small" fullWidth label={t('Notes')} value={retentionForm.notes} onChange={(event) => handleRetentionChange('notes', event.target.value)}/>
                                     </Grid>
-                                    <Grid item xs={12}>
+                                    <Grid size={{xs: 12}}>
                                         <FormControlLabel control={<Switch checked={retentionForm.legalHold} onChange={(event) => handleRetentionChange('legalHold', event.target.checked)}/>} label={t('Legal Hold Active')}/>
                                     </Grid>
                                 </Grid>
@@ -347,16 +347,16 @@ export default function Activity({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} xl={5}>
+                        <Grid size={{xs: 12, xl: 5}}>
                             <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {t('Archive Readiness')}
                                 </Typography>
                                 <Grid container spacing={1.2} sx={{mb: 2}}>
-                                    <Grid item xs={6}><SummaryCard label={t('Live Entries')} value={retentionCenter?.liveEntries || 0} tone="blue" palette={palette}/></Grid>
-                                    <Grid item xs={6}><SummaryCard label={t('Archived Entries')} value={retentionCenter?.archivedEntries || 0} tone="teal" palette={palette}/></Grid>
-                                    <Grid item xs={6}><SummaryCard label={t('Eligible For Archive')} value={retentionCenter?.eligibleForArchive || 0} tone="amber" palette={palette}/></Grid>
-                                    <Grid item xs={6}><SummaryCard label={t('Last Archive')} value={retentionCenter?.lastArchiveAt ? t('Ready') : t('Pending')} tone="neutral" palette={palette}/></Grid>
+                                    <Grid size={{xs: 6}}><SummaryCard label={t('Live Entries')} value={retentionCenter?.liveEntries || 0} tone="blue" palette={palette}/></Grid>
+                                    <Grid size={{xs: 6}}><SummaryCard label={t('Archived Entries')} value={retentionCenter?.archivedEntries || 0} tone="teal" palette={palette}/></Grid>
+                                    <Grid size={{xs: 6}}><SummaryCard label={t('Eligible For Archive')} value={retentionCenter?.eligibleForArchive || 0} tone="amber" palette={palette}/></Grid>
+                                    <Grid size={{xs: 6}}><SummaryCard label={t('Last Archive')} value={retentionCenter?.lastArchiveAt ? t('Ready') : t('Pending')} tone="neutral" palette={palette}/></Grid>
                                 </Grid>
                                 <Typography sx={{fontSize: '0.8rem', color: palette.textMuted, mb: 1}}>
                                     {t('Last archive at')}: {retentionCenter?.lastArchiveAt || '-'}
@@ -435,7 +435,7 @@ export default function Activity({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} lg={8}>
+                        <Grid size={{xs: 12, lg: 8}}>
                             <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {t('Immutable Audit Feed')}
@@ -495,7 +495,7 @@ export default function Activity({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={4}>
+                        <Grid size={{xs: 12, lg: 4}}>
                             <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {t('Recent SOX Evidence')}

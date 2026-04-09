@@ -197,7 +197,7 @@ export default function OperationsCommandCenter({palette, t}) {
                     </Box>
 
                     <Grid container spacing={2.2} sx={{mb: 3}}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '0.98rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
                                     {t('Priority Actions')}
@@ -230,14 +230,14 @@ export default function OperationsCommandCenter({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Paper elevation={0} sx={{p: 2.25, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '0.98rem', fontWeight: 800, color: palette.text, mb: 1.5}}>
                                     {t('Queue Pressure By Module')}
                                 </Typography>
                                 <Grid container spacing={1.4}>
                                     {queueLanes.length ? queueLanes.map((lane) => (
-                                        <Grid item xs={12} md={6} key={lane.reconView || lane.label}>
+                                        <Grid size={{xs: 12, md: 6}} key={lane.reconView || lane.label}>
                                             <Paper elevation={0} sx={{p: 1.6, borderRadius: 3, border: `1px solid ${palette.borderSoft}`, backgroundColor: palette.cardBgAlt, height: '100%'}}>
                                                 <Typography sx={{fontSize: '0.9rem', fontWeight: 800, color: palette.text}}>{lane.label}</Typography>
                                                 <Stack direction="row" spacing={0.75} sx={{mt: 0.95}} flexWrap="wrap" useFlexGap>
@@ -251,7 +251,7 @@ export default function OperationsCommandCenter({palette, t}) {
                                             </Paper>
                                         </Grid>
                                     )) : (
-                                        <Grid item xs={12}>
+                                        <Grid size={{xs: 12}}>
                                             <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
                                                 {t('No queue pressure data is available.')}
                                             </Typography>
@@ -263,7 +263,7 @@ export default function OperationsCommandCenter({palette, t}) {
                     </Grid>
 
                     <Grid container spacing={2.2} sx={{mb: 3}}>
-                        <Grid item xs={12} xl={7}>
+                        <Grid size={{xs: 12, xl: 7}}>
                             <Paper elevation={0} sx={{borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg, overflow: 'hidden'}}>
                                 <Box sx={{px: 2.5, py: 2}}>
                                     <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text}}>
@@ -333,7 +333,7 @@ export default function OperationsCommandCenter({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} xl={5}>
+                        <Grid size={{xs: 12, xl: 5}}>
                             <Paper elevation={0} sx={{borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg, overflow: 'hidden', height: '100%'}}>
                                 <Box sx={{px: 2.5, py: 2}}>
                                     <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text}}>

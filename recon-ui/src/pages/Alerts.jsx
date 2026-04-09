@@ -1383,18 +1383,18 @@ export default function Alerts({palette, t}) {
             {loading ? <Box sx={{display: 'flex', justifyContent: 'center', py: 8}}><CircularProgress/></Box> : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Active Rules')} value={data?.summary?.activeRules || 0} tone="blue" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Open Alerts')} value={data?.summary?.openEvents || 0} tone="red" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Critical Alerts')} value={data?.summary?.criticalEvents || 0} tone="orange" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Open Anomalies')} value={data?.summary?.openAnomalyEvents || 0} tone="orange" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Daily Digests')} value={data?.summary?.activeDigestSubscriptions || 0} tone="teal" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('SMS Subscriptions')} value={data?.summary?.activeSmsSubscriptions || 0} tone="purple" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Escalation Policies')} value={data?.summary?.activeEscalationPolicies || 0} tone="purple" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Escalated Events')} value={data?.summary?.escalatedEvents || 0} tone="teal" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('My Subscriptions')} value={data?.summary?.activePersonalSubscriptions || 0} tone="blue" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Email Subscriptions')} value={data?.summary?.activeSubscriptions || 0} tone="purple" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Webhook Subscriptions')} value={data?.summary?.activeWebhookSubscriptions || 0} tone="teal" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} xl={2}><SummaryCard label={t('Failed Notifications')} value={data?.summary?.failedNotificationDeliveries || 0} tone="red" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Active Rules')} value={data?.summary?.activeRules || 0} tone="blue" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Open Alerts')} value={data?.summary?.openEvents || 0} tone="red" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Critical Alerts')} value={data?.summary?.criticalEvents || 0} tone="orange" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Open Anomalies')} value={data?.summary?.openAnomalyEvents || 0} tone="orange" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Daily Digests')} value={data?.summary?.activeDigestSubscriptions || 0} tone="teal" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('SMS Subscriptions')} value={data?.summary?.activeSmsSubscriptions || 0} tone="purple" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Escalation Policies')} value={data?.summary?.activeEscalationPolicies || 0} tone="purple" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Escalated Events')} value={data?.summary?.escalatedEvents || 0} tone="teal" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('My Subscriptions')} value={data?.summary?.activePersonalSubscriptions || 0} tone="blue" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Email Subscriptions')} value={data?.summary?.activeSubscriptions || 0} tone="purple" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Webhook Subscriptions')} value={data?.summary?.activeWebhookSubscriptions || 0} tone="teal" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, xl: 2}}><SummaryCard label={t('Failed Notifications')} value={data?.summary?.failedNotificationDeliveries || 0} tone="red" palette={palette}/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2, mb: 3, borderRadius: '20px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -1414,7 +1414,7 @@ export default function Alerts({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.5, mb: 2, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {editingRuleId ? t('Edit Alert Rule') : t('Create Alert Rule')}
@@ -1650,7 +1650,7 @@ export default function Alerts({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <RuleTable rules={filteredRules} palette={palette} canEdit={canEdit} onEdit={editRule} onDelete={deleteRule} t={t} saving={saving}/>
                             <EventTable events={filteredEvents} palette={palette} canEdit={canEdit} onStatus={updateEvent} t={t} saving={saving}/>
                             <Box sx={{mt: 2}}>

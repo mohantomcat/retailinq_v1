@@ -3,7 +3,7 @@ import {expect, test} from '@playwright/test'
 const credentials = {
     tenantId: process.env.SMOKE_TENANT_ID || 'tenant-india',
     username: process.env.SMOKE_USERNAME || 'admin',
-    password: process.env.SMOKE_PASSWORD || 'Admin@123',
+    password: process.env.SMOKE_PASSWORD || 'Admin123!',
 }
 
 test('kpi drill-down opens the scoped transaction and exception queue flow', async ({page}) => {

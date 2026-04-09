@@ -262,22 +262,22 @@ export default function NoiseSuppression({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={3}>
+                        <Grid size={{xs: 12, md: 3}}>
                             <SummaryCard label={t('Rules')} value={summary.ruleCount || 0} supporting={t('Total suppression rules')} tone={palette.text} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={3}>
+                        <Grid size={{xs: 12, md: 3}}>
                             <SummaryCard label={t('Active Rules')} value={summary.activeRuleCount || 0} supporting={t('Currently evaluating cases')} tone={palette.tealChipText} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={3}>
+                        <Grid size={{xs: 12, md: 3}}>
                             <SummaryCard label={t('Auto Resolved 7d')} value={summary.autoResolvedLast7Days || 0} supporting={t('Closed without analyst handling')} tone={palette.blueChipText} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={3}>
+                        <Grid size={{xs: 12, md: 3}}>
                             <SummaryCard label={t('Suppressed 7d')} value={summary.suppressedLast7Days || 0} supporting={t('Removed from the working queue')} tone="#D97706" palette={palette}/>
                         </Grid>
                     </Grid>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'center', mb: 1.5}}>
                                     <Box>
@@ -331,7 +331,7 @@ export default function NoiseSuppression({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap', mb: 2}}>
                                     <Box>

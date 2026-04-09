@@ -463,16 +463,16 @@ export default function ExceptionQueues({palette, t}) {
             {loading ? <Box sx={{display: 'flex', justifyContent: 'center', py: 8}}><CircularProgress/></Box> : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Open Cases')} value={data?.summary?.openCases || 0} tone="blue" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('High Impact')} value={data?.summary?.highImpactCases || 0} tone="red" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Store Incidents')} value={data?.summary?.storeIncidentCount || 0} tone="purple" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Stores At Risk')} value={data?.summary?.storesAtRisk || 0} tone="amber" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Escalated')} value={data?.summary?.escalatedCases || 0} tone="red" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Unassigned High Impact')} value={data?.summary?.unassignedHighImpactCases || 0} tone="purple" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Ownership Gaps')} value={data?.summary?.ownershipGapCases || 0} tone="red" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Action Due')} value={data?.summary?.actionDueCases || 0} tone="amber" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('Overdue')} value={data?.summary?.overdueCases || 0} tone="teal" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2}><SummaryCard label={t('My Team')} value={data?.summary?.myTeamCases || 0} tone="blue" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Open Cases')} value={data?.summary?.openCases || 0} tone="blue" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('High Impact')} value={data?.summary?.highImpactCases || 0} tone="red" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Store Incidents')} value={data?.summary?.storeIncidentCount || 0} tone="purple" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Stores At Risk')} value={data?.summary?.storesAtRisk || 0} tone="amber" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Escalated')} value={data?.summary?.escalatedCases || 0} tone="red" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Unassigned High Impact')} value={data?.summary?.unassignedHighImpactCases || 0} tone="purple" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Ownership Gaps')} value={data?.summary?.ownershipGapCases || 0} tone="red" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Action Due')} value={data?.summary?.actionDueCases || 0} tone="amber" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('Overdue')} value={data?.summary?.overdueCases || 0} tone="teal" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}><SummaryCard label={t('My Team')} value={data?.summary?.myTeamCases || 0} tone="blue" palette={palette}/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>

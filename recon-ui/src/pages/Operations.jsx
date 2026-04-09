@@ -359,7 +359,7 @@ function AdvancedActionDialog({
                             </Select>
                         </FormControl>
                         <Grid container spacing={1.5}>
-                            <Grid item xs={12} md={6}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <TextField
                                     fullWidth
                                     label={t('From Business Date')}
@@ -369,7 +369,7 @@ function AdvancedActionDialog({
                                     onChange={(event) => onChange('fromBusinessDate', event.target.value)}
                                 />
                             </Grid>
-                            <Grid item xs={12} md={6}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <TextField
                                     fullWidth
                                     label={t('To Business Date')}
@@ -636,7 +636,7 @@ export default function Operations({palette, t}) {
 
                     <Grid container spacing={2}>
                         {(data?.modules || []).map((module) => (
-                            <Grid item xs={12} md={6} key={`${module.reconView}:${module.moduleId}`}>
+                            <Grid size={{xs: 12, md: 6}} key={`${module.reconView}:${module.moduleId}`}>
                                 <OperationCard
                                     module={module}
                                     palette={palette}

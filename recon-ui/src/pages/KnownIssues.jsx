@@ -214,9 +214,9 @@ export default function KnownIssues({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Catalog Size')} value={data?.totalCount || 0} tone={palette.text} palette={palette}/></Grid>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Active Issues')} value={data?.activeCount || 0} tone={palette.tealChipText} palette={palette}/></Grid>
-                        <Grid item xs={12} md={4}><SummaryCard label={t('Issues With Feedback')} value={feedbackCoverage} tone={palette.blueChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Catalog Size')} value={data?.totalCount || 0} tone={palette.text} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Active Issues')} value={data?.activeCount || 0} tone={palette.tealChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 4}}><SummaryCard label={t('Issues With Feedback')} value={feedbackCoverage} tone={palette.blueChipText} palette={palette}/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2.25, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -247,7 +247,7 @@ export default function KnownIssues({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'center', mb: 1.5}}>
                                     <Box>
@@ -301,7 +301,7 @@ export default function KnownIssues({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Paper elevation={0} sx={{p: 2.25, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap', mb: 2}}>
                                     <Box>

@@ -304,13 +304,13 @@ export default function ApprovalCenter({palette, t}) {
             {error ? <Alert severity="error" sx={{mb: 2}}>{error}</Alert> : null}
 
             <Grid container spacing={2} sx={{mb: 3}}>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Pending Approvals')} value={data?.summary?.pendingApprovals || 0} tone="amber" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Overdue Pending')} value={data?.summary?.overduePendingApprovals || 0} tone="red" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Approved 7 Days')} value={data?.summary?.approvedLast7Days || 0} tone="teal" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Rejected 7 Days')} value={data?.summary?.rejectedLast7Days || 0} tone="purple" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Active Closure Policies')} value={data?.summary?.activePolicies || 0} tone="blue" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Escalated Cases')} value={escalationCenter?.summary?.currentlyEscalatedCases || 0} tone="red" palette={palette}/></Grid>
-                <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Active Escalation Policies')} value={escalationCenter?.summary?.activePolicies || 0} tone="amber" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Pending Approvals')} value={data?.summary?.pendingApprovals || 0} tone="amber" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Overdue Pending')} value={data?.summary?.overduePendingApprovals || 0} tone="red" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Approved 7 Days')} value={data?.summary?.approvedLast7Days || 0} tone="teal" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Rejected 7 Days')} value={data?.summary?.rejectedLast7Days || 0} tone="purple" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Active Closure Policies')} value={data?.summary?.activePolicies || 0} tone="blue" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Escalated Cases')} value={escalationCenter?.summary?.currentlyEscalatedCases || 0} tone="red" palette={palette}/></Grid>
+                <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Active Escalation Policies')} value={escalationCenter?.summary?.activePolicies || 0} tone="amber" palette={palette}/></Grid>
             </Grid>
 
             <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -353,7 +353,7 @@ export default function ApprovalCenter({palette, t}) {
             </Paper>
 
             <Grid container spacing={3}>
-                <Grid item xs={12} xl={4.4}>
+                <Grid size={{xs: 12, xl: 4.4}}>
                     <Stack spacing={3}>
                         <Paper elevation={0} sx={{p: 2.5, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                             <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
@@ -526,7 +526,7 @@ export default function ApprovalCenter({palette, t}) {
                     </Stack>
                 </Grid>
 
-                <Grid item xs={12} xl={7.6}>
+                <Grid size={{xs: 12, xl: 7.6}}>
                     <Stack spacing={3}>
                         <Paper elevation={0} sx={{p: 2.5, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                             <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>

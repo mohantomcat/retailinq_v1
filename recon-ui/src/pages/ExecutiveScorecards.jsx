@@ -311,7 +311,7 @@ export default function ExecutiveScorecards({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} lg={4}>
+                        <Grid size={{xs: 12, lg: 4}}>
                             <Paper
                                 elevation={0}
                                 sx={{
@@ -346,31 +346,31 @@ export default function ExecutiveScorecards({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} md={6} lg={2}>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}>
                             <SummaryMetric label={t('Total Transactions')} value={executive?.totalTransactions ?? 0} accent={palette.text} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} lg={2}>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}>
                             <SummaryMetric label={t('Match Rate')} value={formatPercent(executive?.matchRate)} accent={palette.tealChipText} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} lg={2}>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}>
                             <SummaryMetric label={t('Exception Rate')} value={formatPercent(executive?.exceptionRate)} accent="#DC2626" palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} lg={2}>
+                        <Grid size={{xs: 12, md: 6, lg: 2}}>
                             <SummaryMetric label={t('Duplicate Rate')} value={formatPercent(executive?.duplicateRate)} accent="#7C3AED" palette={palette}/>
                         </Grid>
                     </Grid>
 
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={6} xl={3}>
+                        <Grid size={{xs: 12, md: 6, xl: 3}}>
                             <SummaryMetric label={t('Missing Count')} value={executive?.missingCount ?? 0} accent="#D97706" palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={3}>
+                        <Grid size={{xs: 12, md: 6, xl: 3}}>
                             <SummaryMetric label={t('Active Exceptions')} value={executive?.activeExceptions ?? 0} accent={palette.blueChipText} palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={3}>
+                        <Grid size={{xs: 12, md: 6, xl: 3}}>
                             <SummaryMetric label={t('Breached Exceptions')} value={executive?.breachedExceptions ?? 0} accent="#DC2626" palette={palette}/>
                         </Grid>
-                        <Grid item xs={12} md={6} xl={3}>
+                        <Grid size={{xs: 12, md: 6, xl: 3}}>
                             <SummaryMetric label={t('SLA Breach Rate')} value={formatPercent(executive?.slaBreachRate)} accent="#C2410C" palette={palette}/>
                         </Grid>
                     </Grid>
@@ -387,12 +387,12 @@ export default function ExecutiveScorecards({palette, t}) {
                     <Grid container spacing={2}>
                         {(data?.moduleScorecards || []).length ? (
                             data.moduleScorecards.map((item) => (
-                                <Grid item xs={12} md={6} xl={4} key={item.key}>
+                                <Grid size={{xs: 12, md: 6, xl: 4}} key={item.key}>
                                     <ModuleCard item={item} palette={palette} t={t}/>
                                 </Grid>
                             ))
                         ) : (
-                            <Grid item xs={12}>
+                            <Grid size={{xs: 12}}>
                                 <Paper
                                     elevation={0}
                                     sx={{

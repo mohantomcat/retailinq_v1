@@ -251,11 +251,11 @@ export default function SlaManagement({palette, t}) {
             ) : (
                 <>
                     <Grid container spacing={2} sx={{mb: 3}}>
-                        <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Active Cases')} value={data?.summary?.activeCases || 0} accent={palette.blueChipText} palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Breached')} value={data?.summary?.breachedCases || 0} accent="#DC2626" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Due Soon')} value={data?.summary?.dueSoonCases || 0} accent="#D97706" palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Within SLA')} value={data?.summary?.withinSlaCases || 0} accent={palette.tealChipText} palette={palette}/></Grid>
-                        <Grid item xs={12} md={6} lg={2.4}><SummaryCard label={t('Breach Rate')} value={`${data?.summary?.breachRate || 0}%`} accent="#7C3AED" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Active Cases')} value={data?.summary?.activeCases || 0} accent={palette.blueChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Breached')} value={data?.summary?.breachedCases || 0} accent="#DC2626" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Due Soon')} value={data?.summary?.dueSoonCases || 0} accent="#D97706" palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Within SLA')} value={data?.summary?.withinSlaCases || 0} accent={palette.tealChipText} palette={palette}/></Grid>
+                        <Grid size={{xs: 12, md: 6, lg: 2.4}}><SummaryCard label={t('Breach Rate')} value={`${data?.summary?.breachRate || 0}%`} accent="#7C3AED" palette={palette}/></Grid>
                     </Grid>
 
                     <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
@@ -275,7 +275,7 @@ export default function SlaManagement({palette, t}) {
                         </Box>
 
                         <Grid container spacing={2}>
-                            <Grid item xs={12} md={4}>
+                            <Grid size={{xs: 12, md: 4}}>
                                 <TextField
                                     size="small"
                                     label={t('Timezone')}
@@ -285,7 +285,7 @@ export default function SlaManagement({palette, t}) {
                                     fullWidth
                                 />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('Country')}
@@ -295,7 +295,7 @@ export default function SlaManagement({palette, t}) {
                                     fullWidth
                                 />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('Currency')}
@@ -305,7 +305,7 @@ export default function SlaManagement({palette, t}) {
                                     fullWidth
                                 />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('Locale')}
@@ -315,7 +315,7 @@ export default function SlaManagement({palette, t}) {
                                     fullWidth
                                 />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('Date Pattern')}
@@ -325,7 +325,7 @@ export default function SlaManagement({palette, t}) {
                                     fullWidth
                                 />
                             </Grid>
-                            <Grid item xs={12} md={3}>
+                            <Grid size={{xs: 12, md: 3}}>
                                 <FormControl size="small" fullWidth>
                                     <InputLabel>{t('Week Starts')}</InputLabel>
                                     <Select
@@ -340,7 +340,7 @@ export default function SlaManagement({palette, t}) {
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} md={5}>
+                            <Grid size={{xs: 12, md: 5}}>
                                 <FormControl size="small" fullWidth>
                                     <InputLabel>{t('Business Days')}</InputLabel>
                                     <Select
@@ -362,7 +362,7 @@ export default function SlaManagement({palette, t}) {
                                     </Select>
                                 </FormControl>
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('Start Time')}
@@ -374,7 +374,7 @@ export default function SlaManagement({palette, t}) {
                                     InputLabelProps={{shrink: true}}
                                 />
                             </Grid>
-                            <Grid item xs={12} md={2}>
+                            <Grid size={{xs: 12, md: 2}}>
                                 <TextField
                                     size="small"
                                     label={t('End Time')}
@@ -386,7 +386,7 @@ export default function SlaManagement({palette, t}) {
                                     InputLabelProps={{shrink: true}}
                                 />
                             </Grid>
-                            <Grid item xs={12}>
+                            <Grid size={{xs: 12}}>
                                 <TextField
                                     label={t('Holiday Dates')}
                                     value={operatingModelDraft.holidayDatesText}
@@ -434,7 +434,7 @@ export default function SlaManagement({palette, t}) {
                     </Paper>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={12} lg={5}>
+                        <Grid size={{xs: 12, lg: 5}}>
                             <Paper elevation={0} sx={{p: 2.5, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
                                 <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
                                     {t('Resolution Targets')}
@@ -486,15 +486,15 @@ export default function SlaManagement({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid item xs={12} lg={7}>
+                        <Grid size={{xs: 12, lg: 7}}>
                             <Grid container spacing={2}>
-                                <Grid item xs={12}>
+                                <Grid size={{xs: 12}}>
                                     <AgingTable title={t('Aging by Assignee')} rows={data?.agingByAssignee || []} palette={palette} t={t}/>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <AgingTable title={t('Aging by Store')} rows={data?.agingByStore || []} palette={palette} t={t}/>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <AgingTable title={t('Aging by Module')} rows={data?.agingByModule || []} palette={palette} t={t}/>
                                 </Grid>
                             </Grid>
