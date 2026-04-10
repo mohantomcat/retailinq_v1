@@ -54,6 +54,16 @@ public class User {
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "failed_login_attempts", nullable = false)
+    @Builder.Default
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
+    @Column(name = "last_failed_login_at")
+    private LocalDateTime lastFailedLoginAt;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             schema = "recon",

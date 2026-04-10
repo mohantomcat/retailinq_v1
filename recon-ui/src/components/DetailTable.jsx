@@ -114,12 +114,24 @@ const DetailTable = ({
         closeExportMenu()
         if (!exportData.length) return
 
-        import('xlsx').then((XLSX) => {
-            const worksheet = XLSX.utils.json_to_sheet(exportData)
-            const workbook = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Data')
-            XLSX.writeFile(workbook, 'reconciliation_data.xlsx')
+        const headers = Object.keys(exportData[0])
+        const rows = exportData.map((row) =>
+            `<tr>${headers.map((field) => `<td>${escapeHtml(row[field])}</td>`).join('')}</tr>`
+        )
+        const workbook = [
+            '<html><head><meta charset="UTF-8"></head><body><table>',
+            `<thead><tr>${headers.map((field) => `<th>${escapeHtml(field)}</th>`).join('')}</tr></thead>`,
+            `<tbody>${rows.join('')}</tbody>`,
+            '</table></body></html>',
+        ].join('')
+
+        const blob = new Blob([workbook], {
+            type: 'application/vnd.ms-excel;charset=utf-8;',
         })
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = 'reconciliation_data.xls'
+        link.click()
     }
 
     const handleExportPDF = () => {
@@ -361,6 +373,15 @@ const DetailTable = ({
             </Box>
         </Paper>
     )
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
 }
 
 export default DetailTable

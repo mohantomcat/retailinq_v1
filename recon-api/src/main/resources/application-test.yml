@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    password: ${PG_PASSWORD:recon123}
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:test-jwt-secret-for-automated-tests-only}
+  operations:
+    connector-admin-password: ${CONNECTOR_ADMIN_PASSWORD:test-connector-admin-password}
+  security:
+    cors:
+      allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+
+logging:
+  level:
+    com.recon: INFO

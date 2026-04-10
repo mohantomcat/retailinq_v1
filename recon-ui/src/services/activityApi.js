@@ -64,7 +64,7 @@ export const activityApi = {
         }
         const blob = await res.blob()
         const disposition = res.headers.get('content-disposition') || ''
-        const match = disposition.match(/filename=\"?([^"]+)\"?/)
+        const match = disposition.match(/filename="?([^"]+)"?/)
         const filename = match?.[1] || 'audit-export.csv'
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')

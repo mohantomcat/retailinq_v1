@@ -1,0 +1,7 @@
+connector:
+  security:
+    password: ${CONNECTOR_ADMIN_PASSWORD:local-development-connector-admin-password}
+
+logging:
+  level:
+    com.recon: DEBUG

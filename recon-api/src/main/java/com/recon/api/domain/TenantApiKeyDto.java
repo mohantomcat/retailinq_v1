@@ -21,6 +21,8 @@ public class TenantApiKeyDto {
     private List<String> allowedStoreIds;
     private LocalDateTime lastUsedAt;
     private String lastUsedBy;
+    private LocalDateTime expiresAt;
+    private LocalDateTime revokedAt;
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

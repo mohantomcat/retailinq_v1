@@ -34,10 +34,12 @@ import com.recon.api.repository.TenantGroupSelectionRepository;
 import com.recon.api.repository.UserOrganizationScopeRepository;
 import com.recon.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -67,6 +69,12 @@ public class TenantAccessAdministrationService {
     private final ReconModuleService reconModuleService;
     private final SystemEndpointProfileService systemEndpointProfileService;
     private final AuditLedgerService auditLedgerService;
+
+    @Value("${app.security.api-keys.default-expiration-days:90}")
+    private int defaultApiKeyExpirationDays;
+
+    @Value("${app.security.api-keys.max-expiration-days:365}")
+    private int maxApiKeyExpirationDays;
 
     @Transactional
     public TenantAccessCenterResponse getAccessCenter(String tenantId) {
@@ -392,6 +400,7 @@ public class TenantAccessAdministrationService {
         if (!allStoreAccess && allowedStoreIds.isEmpty()) {
             throw new IllegalArgumentException("At least one allowed store is required when all-store access is disabled");
         }
+        int expirationDays = resolveApiKeyExpirationDays(safeRequest.getExpiresInDays());
 
         String prefix = "rk_" + randomToken(8);
         String secret = randomToken(32);
@@ -407,6 +416,7 @@ public class TenantAccessAdministrationService {
                 .active(true)
                 .allStoreAccess(allStoreAccess)
                 .allowedStoreIds(String.join(",", allowedStoreIds))
+                .expiresAt(LocalDateTime.now().plusDays(expirationDays))
                 .createdBy(defaultActor(actor))
                 .build());
 
@@ -432,6 +442,7 @@ public class TenantAccessAdministrationService {
                 .orElseThrow(() -> new IllegalArgumentException("API key not found"));
         TenantApiKey before = cloneForAudit(apiKey);
         apiKey.setActive(false);
+        apiKey.setRevokedAt(LocalDateTime.now());
         apiKey.setLastUsedBy(defaultActor(actor));
         TenantApiKey saved = tenantApiKeyRepository.save(apiKey);
         recordAudit(tenantId,
@@ -553,10 +564,25 @@ public class TenantAccessAdministrationService {
                 .allowedStoreIds(splitCsv(entity.getAllowedStoreIds()))
                 .lastUsedAt(entity.getLastUsedAt())
                 .lastUsedBy(entity.getLastUsedBy())
+                .expiresAt(entity.getExpiresAt())
+                .revokedAt(entity.getRevokedAt())
                 .createdBy(entity.getCreatedBy())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
+    }
+
+    private int resolveApiKeyExpirationDays(Integer requestedDays) {
+        int fallback = Math.max(1, defaultApiKeyExpirationDays);
+        int max = Math.max(fallback, maxApiKeyExpirationDays);
+        int resolved = requestedDays == null ? fallback : requestedDays;
+        if (resolved <= 0) {
+            throw new IllegalArgumentException("API key expiration must be at least 1 day");
+        }
+        if (resolved > max) {
+            throw new IllegalArgumentException("API key expiration must not exceed " + max + " days");
+        }
+        return resolved;
     }
 
     private void recordAudit(String tenantId,
@@ -677,6 +703,8 @@ public class TenantAccessAdministrationService {
                 .allowedStoreIds(entity.getAllowedStoreIds())
                 .lastUsedAt(entity.getLastUsedAt())
                 .lastUsedBy(entity.getLastUsedBy())
+                .expiresAt(entity.getExpiresAt())
+                .revokedAt(entity.getRevokedAt())
                 .createdBy(entity.getCreatedBy())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())

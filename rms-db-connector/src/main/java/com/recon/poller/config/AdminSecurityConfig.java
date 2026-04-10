@@ -34,7 +34,11 @@ public class AdminSecurityConfig {
 
     @Bean
     public InMemoryUserDetailsManager userDetailsService(PasswordEncoder passwordEncoder) {
-        String resolvedPassword = (password == null || password.isBlank()) ? "change-me-now" : password;
+        String resolvedPassword = trimToNull(password);
+        if (resolvedPassword == null) {
+            throw new IllegalStateException(
+                    "CONNECTOR_ADMIN_PASSWORD must be configured");
+        }
         UserDetails user = User.withUsername(username)
                 .password(passwordEncoder.encode(resolvedPassword))
                 .roles("CONNECTOR_ADMIN")
@@ -46,5 +50,12 @@ public class AdminSecurityConfig {
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
-}
 
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+}

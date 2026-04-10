@@ -60,6 +60,12 @@ public class TenantApiKey {
     @Column(name = "last_used_by")
     private String lastUsedBy;
 
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
+
     @Column(name = "created_by")
     private String createdBy;
 

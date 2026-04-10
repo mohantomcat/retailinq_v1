@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    default: dev
   application:
     name: mfcs-rds-ingestion-connector
   datasource:
@@ -17,6 +19,8 @@ spring:
     table: mfcs_rds_flyway_schema_history
   kafka:
     bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
     producer:
       acks: all
       retries: 10
@@ -91,4 +95,4 @@ management:
 
 logging:
   level:
-    com.recon: DEBUG
+    com.recon: ${LOG_LEVEL_COM_RECON:INFO}

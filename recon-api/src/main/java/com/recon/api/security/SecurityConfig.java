@@ -1,6 +1,7 @@
 package com.recon.api.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,7 +18,9 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @Configuration
 @EnableWebSecurity
@@ -27,6 +30,15 @@ public class SecurityConfig {
 
     private final ApiKeyAuthenticationFilter apiKeyFilter;
     private final JwtAuthenticationFilter jwtFilter;
+
+    @Value("${app.security.cors.allowed-origins:}")
+    private String allowedOrigins;
+
+    @Value("${app.security.cors.allowed-methods:GET,POST,PUT,DELETE,OPTIONS}")
+    private String allowedMethods;
+
+    @Value("${app.security.cors.allowed-headers:*}")
+    private String allowedHeaders;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http)
@@ -70,17 +82,21 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://localhost:3000"));
-        config.setAllowedMethods(List.of(
-                "GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedOrigins(csv(allowedOrigins));
+        config.setAllowedMethods(csv(allowedMethods));
+        config.setAllowedHeaders(csv(allowedHeaders));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration(
                 "/api/**", config);
         return source;
+    }
+
+    private List<String> csv(String value) {
+        return Arrays.stream(Objects.toString(value, "").split(","))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .toList();
     }
 }

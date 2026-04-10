@@ -1,0 +1,149 @@
+name: Enterprise Quality Gate
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  backend:
+    name: Backend Tests And SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run Maven tests
+        run: mvn -B -Dspring.profiles.active=test test
+
+      - name: Generate Maven SBOM
+        run: >
+          mvn -B -DskipTests
+          org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom
+          -Dcyclonedx.outputFormat=json
+
+      - name: Upload Maven SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-sbom
+          path: target/bom.json
+          if-no-files-found: error
+
+  frontend:
+    name: Frontend Lint Build And SBOM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recon-ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: recon-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Build production UI
+        run: npm run build
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+      - name: Generate npm SBOM
+        run: >
+          npx --yes @cyclonedx/cyclonedx-npm
+          --output-format JSON
+          --output-file bom.json
+
+      - name: Upload npm SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-sbom
+          path: recon-ui/bom.json
+          if-no-files-found: error
+
+  dependency-scan:
+    name: Backend Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run OWASP Dependency Check
+        run: >
+          mvn -B -DskipTests
+          org.owasp:dependency-check-maven:9.2.0:check
+          -DfailBuildOnCVSS=7
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+  smoke:
+    name: Playwright Smoke Tests
+    runs-on: ubuntu-latest
+    if: ${{ vars.SMOKE_BASE_URL != '' }}
+    defaults:
+      run:
+        working-directory: recon-ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: recon-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: npm run test:smoke
+        env:
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+          SMOKE_TENANT_ID: ${{ vars.SMOKE_TENANT_ID }}
+          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}

@@ -11,4 +11,5 @@ public class CreateTenantApiKeyRequest {
     private List<String> permissionCodes;
     private Boolean allStoreAccess;
     private List<String> allowedStoreIds;
+    private Integer expiresInDays;
 }

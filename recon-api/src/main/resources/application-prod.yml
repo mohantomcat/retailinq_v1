@@ -1,0 +1,11 @@
+server:
+  forward-headers-strategy: framework
+
+elasticsearch:
+  scheme: ${ES_SCHEME:https}
+  username: ${ES_USER:}
+  password: ${ES_PASSWORD:}
+
+logging:
+  level:
+    com.recon: INFO

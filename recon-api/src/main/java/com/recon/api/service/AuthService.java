@@ -6,12 +6,14 @@ import com.recon.api.repository.TenantAuthConfigRepository;
 import com.recon.api.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -33,36 +35,74 @@ public class AuthService {
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final AccessScopeService accessScopeService;
     private final ReconModuleService reconModuleService;
+    private final LoginAttemptRateLimiter loginAttemptRateLimiter;
+
+    @Value("${app.security.auth.max-failed-attempts:5}")
+    private int maxFailedAttempts;
+
+    @Value("${app.security.auth.lockout-duration-minutes:15}")
+    private long lockoutDurationMinutes;
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        TenantAuthConfigEntity authConfig = tenantAuthConfigRepository.findById(request.getTenantId()).orElse(null);
+        String tenantId = trimToNull(request != null ? request.getTenantId() : null);
+        String username = trimToNull(request != null ? request.getUsername() : null);
+        String password = request != null ? request.getPassword() : null;
+        if (tenantId == null || username == null || trimToNull(password) == null) {
+            throw new RuntimeException("Tenant, username, and password are required");
+        }
+
+        loginAttemptRateLimiter.assertAllowed(tenantId, username);
+
+        TenantAuthConfigEntity authConfig = tenantAuthConfigRepository.findById(tenantId).orElse(null);
         if (authConfig != null && !authConfig.isLocalLoginEnabled()) {
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "LOCAL_LOGIN_DISABLED", null);
             throw new RuntimeException("Local login is disabled for this tenant");
         }
 
         User user = userRepository
                 .findByUsernameAndTenantId(
-                        request.getUsername(),
-                        request.getTenantId())
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Invalid username or password"));
+                        username,
+                        tenantId)
+                .orElse(null);
+        if (user == null) {
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "INVALID_CREDENTIALS", null);
+            throw new RuntimeException(
+                    "Invalid username or password");
+        }
 
         if (!user.isActive()) {
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "ACCOUNT_DEACTIVATED", user);
             throw new RuntimeException(
                     "Account is deactivated");
         }
 
+        if (isLocked(user)) {
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "ACCOUNT_LOCKED", user);
+            throw new RuntimeException(
+                    "Account is temporarily locked. Try again later.");
+        }
+
         if (!passwordEncoder.matches(
-                request.getPassword(),
+                password,
                 user.getPasswordHash())) {
+            handleFailedPassword(user);
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "INVALID_CREDENTIALS", user);
             throw new RuntimeException(
                     "Invalid username or password");
         }
 
         user.setLastLogin(LocalDateTime.now());
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastFailedLoginAt(null);
         userRepository.save(user);
+        loginAttemptRateLimiter.recordSuccess(tenantId, username);
         auditLedgerService.record(com.recon.api.domain.AuditLedgerWriteRequest.builder()
                 .tenantId(user.getTenantId())
                 .sourceType("SECURITY")
@@ -368,5 +408,54 @@ public class AuthService {
 
     public LoginOptionsResponse getLoginOptions(String tenantId) {
         return tenantAccessAdministrationService.getLoginOptions(tenantId);
+    }
+
+    private boolean isLocked(User user) {
+        LocalDateTime lockedUntil = user.getLockedUntil();
+        return lockedUntil != null && lockedUntil.isAfter(LocalDateTime.now());
+    }
+
+    private void handleFailedPassword(User user) {
+        int nextFailedAttempts = user.getFailedLoginAttempts() + 1;
+        user.setFailedLoginAttempts(nextFailedAttempts);
+        user.setLastFailedLoginAt(LocalDateTime.now());
+        if (maxFailedAttempts > 0 && nextFailedAttempts >= maxFailedAttempts) {
+            user.setLockedUntil(LocalDateTime.now().plusMinutes(
+                    Math.max(1L, lockoutDurationMinutes)));
+        }
+        userRepository.save(user);
+    }
+
+    private void recordLoginFailure(String tenantId,
+                                    String username,
+                                    String reason,
+                                    User user) {
+        auditLedgerService.record(AuditLedgerWriteRequest.builder()
+                .tenantId(defaultIfBlank(tenantId, "unknown"))
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER_SESSION")
+                .entityKey(user != null ? user.getId().toString() : username)
+                .actionType("LOGIN_FAILURE")
+                .title("User login failed")
+                .summary(username)
+                .actor(username)
+                .reason(reason)
+                .status("FAILED")
+                .referenceKey(user != null ? user.getId().toString() : username)
+                .controlFamily("ACCESS_CONTROL")
+                .evidenceTags(List.of("SECURITY", "LOGIN"))
+                .metadata(Map.of(
+                        "reason", reason,
+                        "failedLoginAttempts", user != null ? user.getFailedLoginAttempts() : 0,
+                        "lockedUntil", user != null && user.getLockedUntil() != null
+                                ? user.getLockedUntil().toString()
+                                : ""))
+                .build());
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? fallback : trimmed;
     }
 }

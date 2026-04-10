@@ -38,7 +38,13 @@ public class TenantApiKeyAuthService {
 
         String prefix = normalizedValue.substring(0, normalizedValue.indexOf('.'));
         TenantApiKey apiKey = tenantApiKeyRepository.findByKeyPrefixAndActiveTrue(prefix).orElse(null);
-        if (apiKey == null || !Objects.equals(apiKey.getKeyHash(), hashKey(normalizedValue))) {
+        if (apiKey == null || !hashesMatch(apiKey.getKeyHash(), hashKey(normalizedValue))) {
+            return null;
+        }
+
+        if (apiKey.getRevokedAt() != null
+                || (apiKey.getExpiresAt() != null
+                && apiKey.getExpiresAt().isBefore(LocalDateTime.now()))) {
             return null;
         }
 
@@ -74,6 +80,15 @@ public class TenantApiKeyAuthService {
         } catch (Exception ex) {
             throw new IllegalStateException("Unable to hash API key", ex);
         }
+    }
+
+    private boolean hashesMatch(String expectedHash, String actualHash) {
+        if (expectedHash == null || actualHash == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expectedHash.getBytes(StandardCharsets.UTF_8),
+                actualHash.getBytes(StandardCharsets.UTF_8));
     }
 
     private Set<String> parseCsv(String value) {

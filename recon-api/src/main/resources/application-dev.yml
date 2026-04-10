@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    password: ${PG_PASSWORD:recon123}
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:local-development-jwt-secret-change-before-any-shared-environment}
+  operations:
+    connector-admin-password: ${CONNECTOR_ADMIN_PASSWORD:local-development-connector-admin-password}
+  security:
+    cors:
+      allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+
+logging:
+  level:
+    com.recon: DEBUG

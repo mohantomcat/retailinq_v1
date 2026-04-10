@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    default: dev
   application:
     name: xstore-kafka-publisher
   main:
@@ -13,6 +15,8 @@ spring:
       connection-timeout: 30000
   kafka:
     bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
     producer:
       acks: all
       retries: 10
@@ -76,7 +80,7 @@ connector:
 
 logging:
   level:
-    com.recon: DEBUG
+    com.recon: ${LOG_LEVEL_COM_RECON:INFO}
     org.springframework.kafka: INFO
 
 server:

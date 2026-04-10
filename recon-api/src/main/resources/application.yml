@@ -1,10 +1,12 @@
 spring:
+  profiles:
+    default: dev
   application:
     name: recon-api
   datasource:
     url: jdbc:postgresql://${PG_HOST:localhost}:5432/${PG_DB:recondb}?options=-c%20TimeZone%3DUTC
     username: ${PG_USER:recon}
-    password: ${PG_PASSWORD:recon123}
+    password: ${PG_PASSWORD:}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 5
@@ -46,12 +48,28 @@ server:
 elasticsearch:
   host: ${ES_HOST:localhost}
   port: ${ES_PORT:9200}
+  scheme: ${ES_SCHEME:http}
+  username: ${ES_USER:}
+  password: ${ES_PASSWORD:}
 
 app:
   jwt:
-    secret: your-256-bit-secret-key-change-in-production-must-be-long
+    secret: ${APP_JWT_SECRET:}
     expiration-ms: 86400000
     refresh-expiration-ms: 604800000
+  security:
+    cors:
+      allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+      allowed-methods: ${APP_CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
+      allowed-headers: ${APP_CORS_ALLOWED_HEADERS:*}
+    auth:
+      max-failed-attempts: ${APP_AUTH_MAX_FAILED_ATTEMPTS:5}
+      lockout-duration-minutes: ${APP_AUTH_LOCKOUT_DURATION_MINUTES:15}
+      rate-limit-max-attempts: ${APP_AUTH_RATE_LIMIT_MAX_ATTEMPTS:10}
+      rate-limit-window-seconds: ${APP_AUTH_RATE_LIMIT_WINDOW_SECONDS:60}
+    api-keys:
+      default-expiration-days: ${APP_API_KEYS_DEFAULT_EXPIRATION_DAYS:90}
+      max-expiration-days: ${APP_API_KEYS_MAX_EXPIRATION_DAYS:365}
   alerting:
     enabled: ${APP_ALERTING_ENABLED:true}
     generation-interval-ms: ${APP_ALERTING_GENERATION_INTERVAL_MS:300000}
