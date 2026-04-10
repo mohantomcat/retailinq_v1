@@ -85,6 +85,8 @@ jobs:
   dependency-scan:
     name: Backend Dependency Vulnerability Scan
     runs-on: ubuntu-latest
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,13 +98,18 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Check NVD API key
+        if: ${{ env.NVD_API_KEY == '' }}
+        run: |
+          echo "::warning::NVD_API_KEY is not configured; skipping OWASP Dependency Check because NVD returns 403/404 without an API key."
+
       - name: Run OWASP Dependency Check
+        if: ${{ env.NVD_API_KEY != '' }}
         run: >
           mvn -B -DskipTests
           org.owasp:dependency-check-maven:9.2.0:check
           -DfailBuildOnCVSS=7
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          -DnvdApiKey="${NVD_API_KEY}"
 
   secret-scan:
     name: Secret Scan
