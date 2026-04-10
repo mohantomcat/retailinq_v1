@@ -15,6 +15,9 @@ public class TenantAuthConfigDto {
     private String oidcDisplayName;
     private String oidcIssuerUrl;
     private String oidcClientId;
+    private String oidcRedirectUri;
+    private String oidcScopes;
+    private String oidcClientSecretRef;
     private boolean samlEnabled;
     private String samlDisplayName;
     private String samlEntityId;

@@ -7,12 +7,17 @@ import com.recon.api.domain.AssignUserOrganizationScopesRequest;
 import com.recon.api.domain.CreateTenantApiKeyRequest;
 import com.recon.api.domain.CreatedTenantApiKeyResponse;
 import com.recon.api.domain.LoginOptionsResponse;
+import com.recon.api.domain.OidcGroupRoleMappingAssignmentRequest;
+import com.recon.api.domain.OidcGroupRoleMappingDto;
 import com.recon.api.domain.OrganizationUnit;
 import com.recon.api.domain.OrganizationUnitDto;
 import com.recon.api.domain.ReconGroupCatalog;
 import com.recon.api.domain.ReconGroupSelectionAssignmentRequest;
 import com.recon.api.domain.ReconGroupSelectionDto;
 import com.recon.api.domain.ReconModuleDto;
+import com.recon.api.domain.Role;
+import com.recon.api.domain.RoleDto;
+import com.recon.api.domain.SaveOidcGroupRoleMappingsRequest;
 import com.recon.api.domain.SaveOrganizationUnitRequest;
 import com.recon.api.domain.SaveTenantAuthConfigRequest;
 import com.recon.api.domain.SaveTenantReconGroupSelectionsRequest;
@@ -25,15 +30,18 @@ import com.recon.api.domain.TenantApiKeyDto;
 import com.recon.api.domain.TenantAuthConfigDto;
 import com.recon.api.domain.TenantAuthConfigEntity;
 import com.recon.api.domain.TenantGroupSelection;
+import com.recon.api.domain.TenantOidcGroupRoleMapping;
 import com.recon.api.domain.User;
 import com.recon.api.domain.UserOrganizationScope;
 import com.recon.api.domain.UserOrganizationScopeDto;
 import com.recon.api.repository.OrganizationUnitRepository;
 import com.recon.api.repository.PermissionRepository;
 import com.recon.api.repository.ReconGroupCatalogRepository;
+import com.recon.api.repository.RoleRepository;
 import com.recon.api.repository.TenantApiKeyRepository;
 import com.recon.api.repository.TenantAuthConfigRepository;
 import com.recon.api.repository.TenantGroupSelectionRepository;
+import com.recon.api.repository.TenantOidcGroupRoleMappingRepository;
 import com.recon.api.repository.UserOrganizationScopeRepository;
 import com.recon.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -68,8 +76,10 @@ public class TenantAccessAdministrationService {
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final TenantApiKeyRepository tenantApiKeyRepository;
     private final PermissionRepository permissionRepository;
+    private final RoleRepository roleRepository;
     private final ReconGroupCatalogRepository reconGroupCatalogRepository;
     private final TenantGroupSelectionRepository tenantGroupSelectionRepository;
+    private final TenantOidcGroupRoleMappingRepository tenantOidcGroupRoleMappingRepository;
     private final ReconModuleService reconModuleService;
     private final SystemEndpointProfileService systemEndpointProfileService;
     private final AuditLedgerService auditLedgerService;
@@ -89,6 +99,14 @@ public class TenantAccessAdministrationService {
         return TenantAccessCenterResponse.builder()
                 .authConfig(toDto(authConfig))
                 .governance(buildGovernance(authConfig, users, apiKeys))
+                .oidcGroupRoleMappings(tenantOidcGroupRoleMappingRepository.findByTenantIdOrderByUpdatedAtDesc(tenantId)
+                        .stream()
+                        .map(this::toDto)
+                        .toList())
+                .roles(roleRepository.findByTenantId(tenantId)
+                        .stream()
+                        .map(this::toDto)
+                        .toList())
                 .apiKeys(apiKeys.stream()
                         .map(this::toDto)
                         .toList())
@@ -234,6 +252,9 @@ public class TenantAccessAdministrationService {
         config.setOidcDisplayName(trimToNull(safeRequest.getOidcDisplayName()));
         config.setOidcIssuerUrl(trimToNull(safeRequest.getOidcIssuerUrl()));
         config.setOidcClientId(trimToNull(safeRequest.getOidcClientId()));
+        config.setOidcRedirectUri(trimToNull(safeRequest.getOidcRedirectUri()));
+        config.setOidcScopes(normalizeScopes(safeRequest.getOidcScopes()));
+        config.setOidcClientSecretRef(trimToNull(safeRequest.getOidcClientSecretRef()));
         if (safeRequest.getSamlEnabled() != null) {
             config.setSamlEnabled(safeRequest.getSamlEnabled());
         }
@@ -264,6 +285,61 @@ public class TenantAccessAdministrationService {
                 before,
                 saved);
         return toDto(saved);
+    }
+
+    @Transactional
+    public List<OidcGroupRoleMappingDto> saveOidcGroupRoleMappings(String tenantId,
+                                                                   SaveOidcGroupRoleMappingsRequest request,
+                                                                   String actor) {
+        List<OidcGroupRoleMappingDto> before = tenantOidcGroupRoleMappingRepository
+                .findByTenantIdOrderByUpdatedAtDesc(tenantId)
+                .stream()
+                .map(this::toDto)
+                .toList();
+        tenantOidcGroupRoleMappingRepository.deleteByTenantId(tenantId);
+        tenantOidcGroupRoleMappingRepository.flush();
+
+        List<OidcGroupRoleMappingAssignmentRequest> requested = request != null && request.getMappings() != null
+                ? request.getMappings()
+                : List.of();
+        Set<String> seen = new LinkedHashSet<>();
+        for (OidcGroupRoleMappingAssignmentRequest mappingRequest : requested) {
+            String oidcGroup = trimToNull(mappingRequest != null ? mappingRequest.getOidcGroup() : null);
+            if (oidcGroup == null) {
+                continue;
+            }
+            if (mappingRequest.getRoleId() == null) {
+                throw new IllegalArgumentException("Role is required for OIDC group " + oidcGroup);
+            }
+            Role role = roleRepository.findById(mappingRequest.getRoleId())
+                    .filter(existing -> Objects.equals(existing.getTenantId(), tenantId))
+                    .orElseThrow(() -> new IllegalArgumentException("Role not found for OIDC group " + oidcGroup));
+            String key = oidcGroup.toLowerCase(Locale.ROOT) + "|" + role.getId();
+            if (!seen.add(key)) {
+                continue;
+            }
+            tenantOidcGroupRoleMappingRepository.save(TenantOidcGroupRoleMapping.builder()
+                    .tenantId(tenantId)
+                    .oidcGroup(oidcGroup)
+                    .role(role)
+                    .active(mappingRequest.getActive() == null || mappingRequest.getActive())
+                    .updatedBy(defaultActor(actor))
+                    .build());
+        }
+
+        List<OidcGroupRoleMappingDto> saved = tenantOidcGroupRoleMappingRepository
+                .findByTenantIdOrderByUpdatedAtDesc(tenantId)
+                .stream()
+                .map(this::toDto)
+                .toList();
+        recordAudit(tenantId,
+                "OIDC_GROUP_ROLE_MAPPINGS_UPDATED",
+                "OIDC group role mappings updated",
+                tenantId,
+                actor,
+                before,
+                saved);
+        return saved;
     }
 
     @Transactional
@@ -484,6 +560,7 @@ public class TenantAccessAdministrationService {
                 .preferredLoginMode(config.getPreferredLoginMode())
                 .oidcEnabled(config.isOidcEnabled())
                 .oidcDisplayName(config.getOidcDisplayName())
+                .oidcRedirectUri(config.getOidcRedirectUri())
                 .samlEnabled(config.isSamlEnabled())
                 .samlDisplayName(config.getSamlDisplayName())
                 .apiKeyAuthEnabled(config.isApiKeyAuthEnabled())
@@ -497,6 +574,7 @@ public class TenantAccessAdministrationService {
                         .localLoginEnabled(true)
                         .preferredLoginMode("LOCAL")
                         .oidcEnabled(false)
+                        .oidcScopes("openid profile email")
                         .samlEnabled(false)
                         .apiKeyAuthEnabled(false)
                         .updatedBy("system")
@@ -559,6 +637,9 @@ public class TenantAccessAdministrationService {
                 .oidcDisplayName(entity.getOidcDisplayName())
                 .oidcIssuerUrl(entity.getOidcIssuerUrl())
                 .oidcClientId(entity.getOidcClientId())
+                .oidcRedirectUri(entity.getOidcRedirectUri())
+                .oidcScopes(entity.getOidcScopes())
+                .oidcClientSecretRef(entity.getOidcClientSecretRef())
                 .samlEnabled(entity.isSamlEnabled())
                 .samlDisplayName(entity.getSamlDisplayName())
                 .samlEntityId(entity.getSamlEntityId())
@@ -573,6 +654,31 @@ public class TenantAccessAdministrationService {
                 .samlGroupsAttribute(entity.getSamlGroupsAttribute())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
+                .build();
+    }
+
+    private OidcGroupRoleMappingDto toDto(TenantOidcGroupRoleMapping entity) {
+        Role role = entity.getRole();
+        return OidcGroupRoleMappingDto.builder()
+                .id(entity.getId())
+                .tenantId(entity.getTenantId())
+                .oidcGroup(entity.getOidcGroup())
+                .roleId(role != null ? role.getId() : null)
+                .roleName(role != null ? role.getName() : null)
+                .active(entity.isActive())
+                .updatedAt(entity.getUpdatedAt())
+                .updatedBy(entity.getUpdatedBy())
+                .build();
+    }
+
+    private RoleDto toDto(Role role) {
+        return RoleDto.builder()
+                .id(role.getId())
+                .name(role.getName())
+                .description(role.getDescription())
+                .permissionCodes(role.getPermissions().stream()
+                        .map(permission -> permission.getCode())
+                        .collect(java.util.stream.Collectors.toSet()))
                 .build();
     }
 
@@ -804,6 +910,10 @@ public class TenantAccessAdministrationService {
         if (config.isOidcEnabled()) {
             requireHttpUrl(config.getOidcIssuerUrl(), "OIDC issuer URL");
             requireField(config.getOidcClientId(), "OIDC client id");
+            requireHttpUrl(config.getOidcRedirectUri(), "OIDC redirect URI");
+            if (!splitScopes(config.getOidcScopes()).contains("openid")) {
+                throw new IllegalArgumentException("OIDC scopes must include openid");
+            }
         }
         if (config.isSamlEnabled()) {
             requireField(config.getSamlEntityId(), "SAML entity id");
@@ -918,6 +1028,33 @@ public class TenantAccessAdministrationService {
                 .collect(java.util.stream.Collectors.joining(","));
     }
 
+    private String normalizeScopes(String value) {
+        List<String> scopes = splitScopes(defaultIfBlank(value, "openid profile email"));
+        if (scopes.isEmpty()) {
+            scopes = List.of("openid", "profile", "email");
+        }
+        if (!scopes.contains("openid")) {
+            List<String> withOpenId = new ArrayList<>();
+            withOpenId.add("openid");
+            withOpenId.addAll(scopes);
+            scopes = withOpenId;
+        }
+        return String.join(" ", scopes);
+    }
+
+    private List<String> splitScopes(String value) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(trimmed.split("[,\\s]+"))
+                .map(this::trimToNull)
+                .filter(Objects::nonNull)
+                .map(item -> item.toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
     private String trimToNull(String value) {
         String trimmed = Objects.toString(value, "").trim();
         return trimmed.isEmpty() ? null : trimmed;
@@ -960,6 +1097,9 @@ public class TenantAccessAdministrationService {
                 .oidcDisplayName(entity.getOidcDisplayName())
                 .oidcIssuerUrl(entity.getOidcIssuerUrl())
                 .oidcClientId(entity.getOidcClientId())
+                .oidcRedirectUri(entity.getOidcRedirectUri())
+                .oidcScopes(entity.getOidcScopes())
+                .oidcClientSecretRef(entity.getOidcClientSecretRef())
                 .samlEnabled(entity.isSamlEnabled())
                 .samlDisplayName(entity.getSamlDisplayName())
                 .samlEntityId(entity.getSamlEntityId())

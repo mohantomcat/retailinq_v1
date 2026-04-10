@@ -80,13 +80,7 @@ export function AuthProvider({children}) {
         setUser(sanitized)
     }, [])
 
-    const login = useCallback(async (username, password, tenantId) => {
-        const data = await authApi.login({
-            username,
-            password,
-            tenantId,
-        })
-
+    const persistLoginResponse = useCallback((data) => {
         const normalizedData = sanitizeUserPreferences(data)
 
         sessionStorage.setItem(TOKEN_KEY, normalizedData.accessToken)
@@ -97,6 +91,27 @@ export function AuthProvider({children}) {
         setUser(normalizedData)
         return normalizedData
     }, [])
+
+    const login = useCallback(async (username, password, tenantId) => {
+        const data = await authApi.login({
+            username,
+            password,
+            tenantId,
+        })
+
+        return persistLoginResponse(data)
+    }, [persistLoginResponse])
+
+    const completeOidcLogin = useCallback(async ({code, state, error, errorDescription}) => {
+        const data = await authApi.completeOidcLogin({
+            code,
+            state,
+            error,
+            errorDescription,
+        })
+
+        return persistLoginResponse(data)
+    }, [persistLoginResponse])
 
     const logout = useCallback(() => {
         sessionStorage.removeItem(TOKEN_KEY)
@@ -221,6 +236,7 @@ export function AuthProvider({children}) {
         accessToken,
         loading,
         login,
+        completeOidcLogin,
         logout,
         refreshSession,
         updateUserProfile,

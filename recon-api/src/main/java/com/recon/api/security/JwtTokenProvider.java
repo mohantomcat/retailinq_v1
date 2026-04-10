@@ -54,9 +54,15 @@ public class JwtTokenProvider {
     }
 
     public String generateRefreshToken(String userId) {
+        return generateRefreshToken(userId, "PASSWORD");
+    }
+
+    public String generateRefreshToken(String userId,
+                                       String authMode) {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("type", "refresh")
+                .claim("authMode", authMode)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(
                         System.currentTimeMillis()

@@ -32,6 +32,32 @@ export const authApi = {
         return json.data
     },
 
+    startOidcLogin: async ({tenantId}) => {
+        const res = await fetch(`${BASE}/auth/oidc/start`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tenantId}),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+            throw new Error(json.message || 'OIDC login could not be started')
+        }
+        return json.data
+    },
+
+    completeOidcLogin: async ({code, state, error, errorDescription}) => {
+        const res = await fetch(`${BASE}/auth/oidc/callback`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code, state, error, errorDescription}),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+            throw new Error(json.message || 'OIDC login failed')
+        }
+        return json.data
+    },
+
     refresh: async (refreshToken) => {
         const res = await fetch(`${BASE}/auth/refresh`, {
             method: 'POST',

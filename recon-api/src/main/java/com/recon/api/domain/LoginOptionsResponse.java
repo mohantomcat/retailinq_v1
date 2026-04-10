@@ -12,6 +12,7 @@ public class LoginOptionsResponse {
     private String preferredLoginMode;
     private boolean oidcEnabled;
     private String oidcDisplayName;
+    private String oidcRedirectUri;
     private boolean samlEnabled;
     private String samlDisplayName;
     private boolean apiKeyAuthEnabled;

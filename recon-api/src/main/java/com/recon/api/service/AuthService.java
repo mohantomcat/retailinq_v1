@@ -141,7 +141,8 @@ public class AuthService {
                 "PASSWORD");
 
         String refreshToken = tokenProvider.generateRefreshToken(
-                user.getId().toString());
+                user.getId().toString(),
+                "PASSWORD");
 
         List<RoleDto> roles = user.getRoles().stream()
                 .map(r -> RoleDto.builder()
@@ -182,11 +183,99 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional
+    public LoginResponse completeExternalLogin(UUID userId,
+                                               String authMode) {
+        String normalizedAuthMode = defaultIfBlank(authMode, "OIDC").toUpperCase();
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (!user.isActive()) {
+            throw new RuntimeException("Account is deactivated");
+        }
+
+        user.setLastLogin(LocalDateTime.now());
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastFailedLoginAt(null);
+        userRepository.save(user);
+        auditLedgerService.record(AuditLedgerWriteRequest.builder()
+                .tenantId(user.getTenantId())
+                .sourceType("SECURITY")
+                .moduleKey("SECURITY")
+                .entityType("USER_SESSION")
+                .entityKey(user.getId().toString())
+                .actionType(normalizedAuthMode + "_LOGIN_SUCCESS")
+                .title(normalizedAuthMode + " login successful")
+                .summary(user.getUsername())
+                .actor(user.getUsername())
+                .status("SUCCESS")
+                .referenceKey(user.getId().toString())
+                .controlFamily("SOX")
+                .evidenceTags(List.of("SECURITY", "LOGIN", normalizedAuthMode))
+                .build());
+
+        reconModuleService.getAllActiveModules();
+        user = userRepository.findById(user.getId()).orElse(user);
+        Set<String> permissions = user.getAllPermissions();
+        AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
+        Set<String> storeIds = new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds());
+
+        String accessToken = tokenProvider.generateAccessToken(
+                user.getId().toString(),
+                user.getUsername(),
+                user.getTenantId(),
+                permissions,
+                storeIds,
+                scopeSummary.isAllStoreAccess(),
+                normalizedAuthMode);
+
+        String refreshToken = tokenProvider.generateRefreshToken(
+                user.getId().toString(),
+                normalizedAuthMode);
+
+        List<RoleDto> roles = user.getRoles().stream()
+                .map(r -> RoleDto.builder()
+                        .id(r.getId())
+                        .name(r.getName())
+                        .description(r.getDescription())
+                        .permissionCodes(
+                                r.getPermissions().stream()
+                                        .map(Permission::getCode)
+                                        .collect(Collectors.toSet()))
+                        .build())
+                .collect(Collectors.toList());
+
+        List<ReconModuleDto> accessibleModules =
+                reconModuleService.getAccessibleModules(user.getTenantId(), permissions);
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(tokenProvider.getExpirationMs() / 1000)
+                .userId(user.getId().toString())
+                .username(user.getUsername())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .tenantId(user.getTenantId())
+                .permissions(permissions)
+                .storeIds(user.getStoreIds())
+                .effectiveStoreIds(storeIds)
+                .allStoreAccess(scopeSummary.isAllStoreAccess())
+                .accessScope(scopeSummary)
+                .authMode(normalizedAuthMode)
+                .roles(roles)
+                .accessibleModules(accessibleModules)
+                .build();
+    }
+
     public LoginResponse refresh(String refreshToken) {
         if (!tokenProvider.validateToken(refreshToken)) {
             throw new RuntimeException(
                     "Invalid refresh token");
         }
+        String authMode = defaultIfBlank(tokenProvider.getAuthModeFromToken(refreshToken), "PASSWORD");
 
         String userId = tokenProvider
                 .getUserIdFromToken(refreshToken);
@@ -213,7 +302,7 @@ public class AuthService {
                         permissions,
                         new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()),
                         scopeSummary.isAllStoreAccess(),
-                        "PASSWORD");
+                        authMode);
 
         List<ReconModuleDto> accessibleModules = reconModuleService.getAccessibleModules(user.getTenantId(), permissions);
 
@@ -227,7 +316,7 @@ public class AuthService {
                 .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
                 .accessScope(scopeSummary)
-                .authMode("PASSWORD")
+                .authMode(authMode)
                 .accessibleModules(accessibleModules)
                 .build();
     }

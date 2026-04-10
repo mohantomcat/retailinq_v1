@@ -203,6 +203,14 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    saveOidcGroupRoleMappings: async (data) => {
+        const res = await apiFetch(`${BASE}/oidc-group-role-mappings`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
     saveTenantSystemEndpointProfiles: async (data) => {
         const res = await apiFetch(`${BASE}/system-endpoint-profiles`, {
             method: 'PUT',

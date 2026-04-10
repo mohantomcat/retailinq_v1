@@ -46,6 +46,16 @@ public class TenantAuthConfigEntity {
     @Column(name = "oidc_client_id")
     private String oidcClientId;
 
+    @Column(name = "oidc_redirect_uri")
+    private String oidcRedirectUri;
+
+    @Column(name = "oidc_scopes", nullable = false)
+    @Builder.Default
+    private String oidcScopes = "openid profile email";
+
+    @Column(name = "oidc_client_secret_ref")
+    private String oidcClientSecretRef;
+
     @Column(name = "saml_enabled", nullable = false)
     @Builder.Default
     private boolean samlEnabled = false;
@@ -123,6 +133,9 @@ public class TenantAuthConfigEntity {
         }
         if (oidcGroupsClaim == null || oidcGroupsClaim.isBlank()) {
             oidcGroupsClaim = "groups";
+        }
+        if (oidcScopes == null || oidcScopes.isBlank()) {
+            oidcScopes = "openid profile email";
         }
     }
 }

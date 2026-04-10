@@ -53,6 +53,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/login-options",
+                                "/api/v1/auth/oidc/start",
+                                "/api/v1/auth/oidc/callback",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/tenant-branding/current",
                                 "/api/v1/recon/health",

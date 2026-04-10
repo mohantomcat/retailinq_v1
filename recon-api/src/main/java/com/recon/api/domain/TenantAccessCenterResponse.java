@@ -10,6 +10,8 @@ import java.util.List;
 public class TenantAccessCenterResponse {
     private TenantAuthConfigDto authConfig;
     private TenantAccessGovernanceResponse governance;
+    private List<OidcGroupRoleMappingDto> oidcGroupRoleMappings;
+    private List<RoleDto> roles;
     private List<TenantApiKeyDto> apiKeys;
     private List<String> storeCatalog;
     private List<ReconGroupSelectionDto> reconGroups;

@@ -3,6 +3,7 @@ package com.recon.api.controller;
 import com.recon.api.domain.*;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.AuthService;
+import com.recon.api.service.OidcLoginService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final OidcLoginService oidcLoginService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(
@@ -27,6 +29,32 @@ public class AuthController {
                     ApiResponse.ok(response));
         } catch (Exception e) {
             log.warn("Login failed: {}", e.getMessage());
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/oidc/start")
+    public ResponseEntity<ApiResponse<OidcLoginStartResponse>> startOidcLogin(
+            @RequestBody OidcLoginStartRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.ok(
+                    oidcLoginService.startLogin(request)));
+        } catch (Exception e) {
+            log.warn("OIDC login start failed: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/oidc/callback")
+    public ResponseEntity<ApiResponse<LoginResponse>> completeOidcLogin(
+            @RequestBody OidcLoginCallbackRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.ok(
+                    oidcLoginService.completeLogin(request)));
+        } catch (Exception e) {
+            log.warn("OIDC login failed: {}", e.getMessage());
             return ResponseEntity.status(401)
                     .body(ApiResponse.error(e.getMessage()));
         }

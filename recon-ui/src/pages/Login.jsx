@@ -18,7 +18,7 @@ import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded'
 import CompareArrowsRoundedIcon from '@mui/icons-material/CompareArrowsRounded'
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded'
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded'
-import {useNavigate} from 'react-router-dom'
+import {useLocation, useNavigate} from 'react-router-dom'
 import BrandLockup from '../components/BrandLockup'
 import {useAuth} from '../context/AuthContext'
 import {useI18n} from '../context/I18nContext'
@@ -62,8 +62,9 @@ export default function Login() {
 
     const brandTokens = useMemo(() => getBrandTokens(branding), [branding])
 
-    const {login} = useAuth()
+    const {login, completeOidcLogin} = useAuth()
     const navigate = useNavigate()
+    const location = useLocation()
 
     useEffect(() => {
         let active = true
@@ -96,6 +97,49 @@ export default function Login() {
         }
     }, [tenantId])
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const code = params.get('code')
+        const state = params.get('state')
+        const oidcError = params.get('error')
+
+        if (!code && !oidcError) {
+            return undefined
+        }
+
+        let active = true
+        const completeLogin = async () => {
+            setLoading(true)
+            setError('')
+            try {
+                await completeOidcLogin({
+                    code,
+                    state,
+                    error: oidcError,
+                    errorDescription: params.get('error_description'),
+                })
+                if (active) {
+                    navigate('/', {replace: true})
+                }
+            } catch (err) {
+                if (active) {
+                    setError(err.message || t('OIDC login failed'))
+                    navigate('/login', {replace: true})
+                }
+            } finally {
+                if (active) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        completeLogin()
+
+        return () => {
+            active = false
+        }
+    }, [completeOidcLogin, location.search, navigate, t])
+
     const handleLogin = async (e) => {
         e.preventDefault()
         if (!username.trim() || !password.trim()) {
@@ -114,6 +158,25 @@ export default function Login() {
         } catch (err) {
             setError(err.message || t('Login failed'))
         } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleOidcLogin = async () => {
+        if (!tenantId.trim()) {
+            setError(t('Organisation is required'))
+            return
+        }
+        setLoading(true)
+        setError('')
+        try {
+            const response = await authApi.startOidcLogin({tenantId})
+            if (!response?.authorizationUrl) {
+                throw new Error(t('OIDC login could not be started'))
+            }
+            window.location.assign(response.authorizationUrl)
+        } catch (err) {
+            setError(err.message || t('OIDC login could not be started'))
             setLoading(false)
         }
     }
@@ -545,6 +608,28 @@ export default function Login() {
                                         })
                                     )}
                                 </Button>
+
+                                {loginOptions?.oidcEnabled && (
+                                    <Button
+                                        type="button"
+                                        variant="outlined"
+                                        fullWidth
+                                        onClick={handleOidcLogin}
+                                        disabled={loading}
+                                        sx={{
+                                            py: 1.05,
+                                            fontSize: '0.92rem',
+                                            fontWeight: 800,
+                                            textTransform: 'none',
+                                        }}
+                                    >
+                                        {t('Continue with {provider}', {
+                                            provider:
+                                                loginOptions.oidcDisplayName ||
+                                                'Enterprise SSO',
+                                        })}
+                                    </Button>
+                                )}
                             </Box>
 
                             <Stack

@@ -64,6 +64,7 @@ export default function TenantAccessCenter() {
     const {t} = useI18n()
     const [center, setCenter] = useState(null)
     const [users, setUsers] = useState([])
+    const [roles, setRoles] = useState([])
     const [orgUnits, setOrgUnits] = useState([])
     const [selectedUserId, setSelectedUserId] = useState('')
     const [selectedOrgUnitIds, setSelectedOrgUnitIds] = useState([])
@@ -77,6 +78,9 @@ export default function TenantAccessCenter() {
         oidcDisplayName: '',
         oidcIssuerUrl: '',
         oidcClientId: '',
+        oidcRedirectUri: '',
+        oidcScopes: 'openid profile email',
+        oidcClientSecretRef: '',
         samlDisplayName: '',
         samlEntityId: '',
         samlSsoUrl: '',
@@ -88,6 +92,9 @@ export default function TenantAccessCenter() {
         samlEmailAttribute: '',
         samlGroupsAttribute: '',
     })
+    const [groupMappingForm, setGroupMappingForm] = useState([
+        {oidcGroup: '', roleId: '', active: true},
+    ])
     const [reconGroupForm, setReconGroupForm] = useState({})
     const [endpointProfileForm, setEndpointProfileForm] = useState({})
     const [keyForm, setKeyForm] = useState(EMPTY_KEY_FORM)
@@ -108,6 +115,7 @@ export default function TenantAccessCenter() {
             setCenter(accessCenter)
             setUsers(tenantUsers)
             setOrgUnits(units)
+            setRoles(accessCenter?.roles || [])
             if (accessCenter?.authConfig) {
                 setAuthForm((current) => ({...current, ...accessCenter.authConfig}))
             }
@@ -131,6 +139,21 @@ export default function TenantAccessCenter() {
             )
         )
     }, [center?.reconGroups])
+
+    useEffect(() => {
+        const mappings = Array.isArray(center?.oidcGroupRoleMappings)
+            ? center.oidcGroupRoleMappings
+            : []
+        setGroupMappingForm(
+            mappings.length
+                ? mappings.map((mapping) => ({
+                    oidcGroup: mapping.oidcGroup || '',
+                    roleId: mapping.roleId ? String(mapping.roleId) : '',
+                    active: mapping.active !== false,
+                }))
+                : [{oidcGroup: '', roleId: '', active: true}]
+        )
+    }, [center?.oidcGroupRoleMappings])
 
     useEffect(() => {
         const profiles = Array.isArray(center?.systemEndpointProfiles) ? center.systemEndpointProfiles : []
@@ -189,6 +212,47 @@ export default function TenantAccessCenter() {
         } finally {
             setSaving(false)
         }
+    }
+
+    const saveGroupRoleMappings = async () => {
+        const mappings = groupMappingForm
+            .map((mapping) => ({
+                oidcGroup: mapping.oidcGroup.trim(),
+                roleId: mapping.roleId || null,
+                active: mapping.active !== false,
+            }))
+            .filter((mapping) => mapping.oidcGroup || mapping.roleId)
+
+        if (mappings.some((mapping) => !mapping.oidcGroup || !mapping.roleId)) {
+            setError(t('Each OIDC mapping needs a group and role'))
+            return
+        }
+
+        setSaving(true)
+        try {
+            const oidcGroupRoleMappings = await adminApi.saveOidcGroupRoleMappings({mappings})
+            setCenter((current) => ({...current, oidcGroupRoleMappings}))
+            setSuccess(t('OIDC group role mappings updated'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to save OIDC group role mappings')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const addGroupMappingRow = () => {
+        setGroupMappingForm((current) => [
+            ...current,
+            {oidcGroup: '', roleId: '', active: true},
+        ])
+    }
+
+    const removeGroupMappingRow = (index) => {
+        setGroupMappingForm((current) => {
+            const next = current.filter((_, itemIndex) => itemIndex !== index)
+            return next.length ? next : [{oidcGroup: '', roleId: '', active: true}]
+        })
     }
 
     const saveUserScope = async () => {
@@ -476,6 +540,9 @@ export default function TenantAccessCenter() {
                         <TextField size="small" label={t('OIDC Display Name')} value={authForm.oidcDisplayName || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcDisplayName: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Issuer URL')} value={authForm.oidcIssuerUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcIssuerUrl: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Client Id')} value={authForm.oidcClientId || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcClientId: event.target.value}))}/>
+                        <TextField size="small" label={t('OIDC Redirect URI')} value={authForm.oidcRedirectUri || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcRedirectUri: event.target.value}))} helperText={t('Use the login callback URL registered in the identity provider')}/>
+                        <TextField size="small" label={t('OIDC Scopes')} value={authForm.oidcScopes || 'openid profile email'} onChange={(event) => setAuthForm((current) => ({...current, oidcScopes: event.target.value}))} helperText={t('openid profile email is the recommended baseline')}/>
+                        <TextField size="small" label={t('OIDC Client Secret Reference')} value={authForm.oidcClientSecretRef || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcClientSecretRef: event.target.value}))} helperText={t('Environment variable or JVM property name for confidential clients')}/>
                         <TextField size="small" label={t('OIDC Username Claim')} value={authForm.oidcUsernameClaim || 'preferred_username'} onChange={(event) => setAuthForm((current) => ({...current, oidcUsernameClaim: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Email Claim')} value={authForm.oidcEmailClaim || 'email'} onChange={(event) => setAuthForm((current) => ({...current, oidcEmailClaim: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Groups Claim')} value={authForm.oidcGroupsClaim || 'groups'} onChange={(event) => setAuthForm((current) => ({...current, oidcGroupsClaim: event.target.value}))}/>
@@ -487,6 +554,103 @@ export default function TenantAccessCenter() {
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>
+
+                        <Box sx={{pt: 1.5, mt: 0.5, borderTop: `1px solid ${palette.borderSoft}`}}>
+                            <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                                {t('OIDC Group Role Mapping')}
+                            </Typography>
+                            <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
+                                {t('Map identity provider groups or roles to application roles for SSO access.')}
+                            </Typography>
+                            <Stack spacing={1.25}>
+                                {groupMappingForm.map((mapping, index) => (
+                                    <Box
+                                        key={`oidc-mapping-${index}`}
+                                        sx={{
+                                            display: 'grid',
+                                            gridTemplateColumns: {xs: '1fr', md: 'minmax(180px, 1.4fr) minmax(180px, 1fr) auto auto'},
+                                            gap: 1,
+                                            alignItems: 'center',
+                                            p: 1.25,
+                                            borderRadius: '16px',
+                                            backgroundColor: palette.paperBgAlt,
+                                            border: `1px solid ${palette.borderSoft}`,
+                                        }}
+                                    >
+                                        <TextField
+                                            size="small"
+                                            label={t('OIDC Group')}
+                                            value={mapping.oidcGroup}
+                                            onChange={(event) =>
+                                                setGroupMappingForm((current) =>
+                                                    current.map((item, itemIndex) =>
+                                                        itemIndex === index
+                                                            ? {...item, oidcGroup: event.target.value}
+                                                            : item
+                                                    )
+                                                )
+                                            }
+                                        />
+                                        <TextField
+                                            select
+                                            size="small"
+                                            label={t('Application Role')}
+                                            value={mapping.roleId}
+                                            onChange={(event) =>
+                                                setGroupMappingForm((current) =>
+                                                    current.map((item, itemIndex) =>
+                                                        itemIndex === index
+                                                            ? {...item, roleId: event.target.value}
+                                                            : item
+                                                    )
+                                                )
+                                            }
+                                        >
+                                            <MenuItem value="">{t('Select a role')}</MenuItem>
+                                            {roles.map((role) => (
+                                                <MenuItem key={role.id} value={String(role.id)}>
+                                                    {role.name}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                        <FormControlLabel
+                                            control={
+                                                <Switch
+                                                    checked={mapping.active !== false}
+                                                    onChange={(event) =>
+                                                        setGroupMappingForm((current) =>
+                                                            current.map((item, itemIndex) =>
+                                                                itemIndex === index
+                                                                    ? {...item, active: event.target.checked}
+                                                                    : item
+                                                            )
+                                                        )
+                                                    }
+                                                />
+                                            }
+                                            label={t('Active')}
+                                        />
+                                        <Button
+                                            size="small"
+                                            variant="text"
+                                            onClick={() => removeGroupMappingRow(index)}
+                                            disabled={saving}
+                                            sx={{textTransform: 'none'}}
+                                        >
+                                            {t('Remove')}
+                                        </Button>
+                                    </Box>
+                                ))}
+                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                    <Button variant="outlined" onClick={addGroupMappingRow} disabled={saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
+                                        {t('Add Mapping')}
+                                    </Button>
+                                    <Button variant="contained" onClick={saveGroupRoleMappings} disabled={loading || saving || roles.length === 0} sx={{textTransform: 'none', borderRadius: 2.5}}>
+                                        {saving ? t('Saving...') : t('Save OIDC Mappings')}
+                                    </Button>
+                                </Stack>
+                            </Stack>
+                        </Box>
                     </Stack>
                 </Paper>
 

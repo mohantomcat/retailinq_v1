@@ -10,6 +10,9 @@ public class SaveTenantAuthConfigRequest {
     private String oidcDisplayName;
     private String oidcIssuerUrl;
     private String oidcClientId;
+    private String oidcRedirectUri;
+    private String oidcScopes;
+    private String oidcClientSecretRef;
     private Boolean samlEnabled;
     private String samlDisplayName;
     private String samlEntityId;
