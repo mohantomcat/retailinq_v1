@@ -86,6 +86,14 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    reviewUserAccess: async (userId, data) => {
+        const res = await apiFetch(`${BASE}/users/${userId}/access-review`, {
+            method: 'POST',
+            body: JSON.stringify(data || {}),
+        })
+        return await parseResponse(res)
+    },
+
     // Roles
     getRoles: async () => {
         const res = await apiFetch(`${BASE}/roles`)

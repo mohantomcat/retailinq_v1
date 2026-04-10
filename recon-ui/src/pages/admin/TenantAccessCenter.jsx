@@ -22,6 +22,7 @@ const EMPTY_KEY_FORM = {
     permissionCodes: ['RECON_VIEW'],
     allStoreAccess: true,
     allowedStoreIds: [],
+    expiresInDays: 90,
 }
 
 function normalizeSelectArray(value) {
@@ -38,6 +39,24 @@ function normalizeSelectArray(value) {
         return []
     }
     return [String(value)].filter(Boolean)
+}
+
+function formatDate(value) {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    })
+}
+
+function formatFinding(value) {
+    return String(value || '')
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 export default function TenantAccessCenter() {
@@ -61,6 +80,13 @@ export default function TenantAccessCenter() {
         samlDisplayName: '',
         samlEntityId: '',
         samlSsoUrl: '',
+        autoProvisionUsers: false,
+        allowedEmailDomains: '',
+        oidcUsernameClaim: 'preferred_username',
+        oidcEmailClaim: 'email',
+        oidcGroupsClaim: 'groups',
+        samlEmailAttribute: '',
+        samlGroupsAttribute: '',
     })
     const [reconGroupForm, setReconGroupForm] = useState({})
     const [endpointProfileForm, setEndpointProfileForm] = useState({})
@@ -269,8 +295,28 @@ export default function TenantAccessCenter() {
         }
     }
 
+    const reviewUserAccess = async (userId, decision = 'CERTIFIED') => {
+        setSaving(true)
+        try {
+            await adminApi.reviewUserAccess(userId, {
+                decision,
+                nextReviewInDays: decision === 'CERTIFIED' ? 90 : 14,
+            })
+            await loadData()
+            setSuccess(t('User access review updated'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to update access review')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const storeCatalog = center?.storeCatalog || []
     const apiKeys = center?.apiKeys || []
+    const governance = center?.governance || {}
+    const userFindings = governance.userFindings || []
+    const apiKeyFindings = governance.apiKeyFindings || []
     const reconGroups = center?.reconGroups || []
     const systemEndpointProfiles = center?.systemEndpointProfiles || []
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
@@ -296,6 +342,116 @@ export default function TenantAccessCenter() {
                 </Alert>
             )}
 
+            <Paper elevation={0} sx={{p: 2.25, mb: 2, borderRadius: 2, border: `1px solid ${palette.border}`}}>
+                <Stack spacing={1.75}>
+                    <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap'}}>
+                        <Box>
+                            <Typography sx={{fontWeight: 800, color: palette.text}}>
+                                {t('Access Governance')}
+                            </Typography>
+                            <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mt: 0.25}}>
+                                {t('Certification, high-risk access, identity source, and API key exposure.')}
+                            </Typography>
+                        </Box>
+                        <Chip
+                            label={`${t('Preferred Login Mode')}: ${governance.preferredLoginMode || authForm.preferredLoginMode || 'LOCAL'}`}
+                            sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
+                        />
+                    </Box>
+
+                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))'}, gap: 1}}>
+                        {[
+                            [t('Active Users'), governance.activeUsers ?? 0],
+                            [t('Review Due'), governance.usersDueForReview ?? 0],
+                            [t('High Privilege'), governance.highPrivilegeUsers ?? 0],
+                            [t('API Keys Expiring'), governance.apiKeysExpiringSoon ?? 0],
+                        ].map(([label, value]) => (
+                            <Box key={label} sx={{border: `1px solid ${palette.borderSoft}`, borderRadius: 2, p: 1.25}}>
+                                <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, fontWeight: 700}}>
+                                    {label}
+                                </Typography>
+                                <Typography sx={{fontSize: '1.2rem', fontWeight: 800, color: palette.text}}>
+                                    {value}
+                                </Typography>
+                            </Box>
+                        ))}
+                    </Box>
+
+                    <Stack spacing={1}>
+                        {userFindings.slice(0, 6).map((finding) => (
+                            <Box
+                                key={finding.userId}
+                                sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: {xs: '1fr', md: 'minmax(180px, 1.2fr) minmax(220px, 2fr) auto'},
+                                    gap: 1,
+                                    alignItems: 'center',
+                                    border: `1px solid ${palette.borderSoft}`,
+                                    borderRadius: 2,
+                                    p: 1.25,
+                                }}
+                            >
+                                <Box>
+                                    <Typography sx={{fontSize: '0.88rem', fontWeight: 800, color: palette.text}}>
+                                        {finding.fullName || finding.username}
+                                    </Typography>
+                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                        {finding.identityProvider || 'LOCAL'} - {t('Review due')} {formatDate(finding.accessReviewDueAt)}
+                                    </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                    {(finding.findingTypes || []).map((type) => (
+                                        <Chip
+                                            key={`${finding.userId}-${type}`}
+                                            size="small"
+                                            label={formatFinding(type)}
+                                            sx={{backgroundColor: palette.paperBgAlt, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
+                                        />
+                                    ))}
+                                </Stack>
+                                <Stack direction="row" spacing={0.75} justifyContent="flex-end">
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        onClick={() => reviewUserAccess(finding.userId, 'CERTIFIED')}
+                                        disabled={saving}
+                                        sx={{textTransform: 'none', borderRadius: 2}}
+                                    >
+                                        {t('Certify')}
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => reviewUserAccess(finding.userId, 'NEEDS_CHANGES')}
+                                        disabled={saving}
+                                        sx={{textTransform: 'none', borderRadius: 2}}
+                                    >
+                                        {t('Needs Changes')}
+                                    </Button>
+                                </Stack>
+                            </Box>
+                        ))}
+                        {userFindings.length === 0 && (
+                            <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
+                                {t('No access review findings.')}
+                            </Typography>
+                        )}
+                    </Stack>
+
+                    {apiKeyFindings.length > 0 && (
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {apiKeyFindings.slice(0, 4).map((finding) => (
+                                <Chip
+                                    key={finding.id}
+                                    label={`${finding.keyName}: ${(finding.findingTypes || []).map(formatFinding).join(', ')}`}
+                                    sx={{backgroundColor: palette.paperBgAlt, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
+                                />
+                            ))}
+                        </Stack>
+                    )}
+                </Stack>
+            </Paper>
+
             <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', xl: '1fr 1fr'}, gap: 2}}>
                 <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
                     <Typography sx={{fontWeight: 800, color: palette.text, mb: 1.5}}>
@@ -315,12 +471,19 @@ export default function TenantAccessCenter() {
                         <FormControlLabel control={<Switch checked={!!authForm.oidcEnabled} onChange={(event) => setAuthForm((current) => ({...current, oidcEnabled: event.target.checked}))}/>} label={t('Enable OIDC / SSO')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.samlEnabled} onChange={(event) => setAuthForm((current) => ({...current, samlEnabled: event.target.checked}))}/>} label={t('Enable SAML')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.apiKeyAuthEnabled} onChange={(event) => setAuthForm((current) => ({...current, apiKeyAuthEnabled: event.target.checked}))}/>} label={t('Enable Tenant API Keys')}/>
+                        <FormControlLabel control={<Switch checked={!!authForm.autoProvisionUsers} onChange={(event) => setAuthForm((current) => ({...current, autoProvisionUsers: event.target.checked}))}/>} label={t('Auto Provision SSO Users')}/>
+                        <TextField size="small" label={t('Allowed Email Domains')} value={authForm.allowedEmailDomains || ''} onChange={(event) => setAuthForm((current) => ({...current, allowedEmailDomains: event.target.value}))} helperText={t('Comma-separated domains for SSO provisioning')}/>
                         <TextField size="small" label={t('OIDC Display Name')} value={authForm.oidcDisplayName || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcDisplayName: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Issuer URL')} value={authForm.oidcIssuerUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcIssuerUrl: event.target.value}))}/>
                         <TextField size="small" label={t('OIDC Client Id')} value={authForm.oidcClientId || ''} onChange={(event) => setAuthForm((current) => ({...current, oidcClientId: event.target.value}))}/>
+                        <TextField size="small" label={t('OIDC Username Claim')} value={authForm.oidcUsernameClaim || 'preferred_username'} onChange={(event) => setAuthForm((current) => ({...current, oidcUsernameClaim: event.target.value}))}/>
+                        <TextField size="small" label={t('OIDC Email Claim')} value={authForm.oidcEmailClaim || 'email'} onChange={(event) => setAuthForm((current) => ({...current, oidcEmailClaim: event.target.value}))}/>
+                        <TextField size="small" label={t('OIDC Groups Claim')} value={authForm.oidcGroupsClaim || 'groups'} onChange={(event) => setAuthForm((current) => ({...current, oidcGroupsClaim: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Display Name')} value={authForm.samlDisplayName || ''} onChange={(event) => setAuthForm((current) => ({...current, samlDisplayName: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Entity Id')} value={authForm.samlEntityId || ''} onChange={(event) => setAuthForm((current) => ({...current, samlEntityId: event.target.value}))}/>
                         <TextField size="small" label={t('SAML SSO URL')} value={authForm.samlSsoUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, samlSsoUrl: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML Email Attribute')} value={authForm.samlEmailAttribute || ''} onChange={(event) => setAuthForm((current) => ({...current, samlEmailAttribute: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML Groups Attribute')} value={authForm.samlGroupsAttribute || ''} onChange={(event) => setAuthForm((current) => ({...current, samlGroupsAttribute: event.target.value}))}/>
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>
@@ -597,6 +760,7 @@ export default function TenantAccessCenter() {
                         <Stack spacing={1.25}>
                             <TextField size="small" label={t('Key Name')} value={keyForm.keyName} onChange={(event) => setKeyForm((current) => ({...current, keyName: event.target.value}))}/>
                             <TextField size="small" label={t('Description')} value={keyForm.description} onChange={(event) => setKeyForm((current) => ({...current, description: event.target.value}))}/>
+                            <TextField size="small" type="number" label={t('Expires In Days')} value={keyForm.expiresInDays} onChange={(event) => setKeyForm((current) => ({...current, expiresInDays: Number(event.target.value || 90)}))}/>
                             <TextField
                                 select
                                 size="small"
@@ -642,6 +806,9 @@ export default function TenantAccessCenter() {
                                                 {apiKey.keyPrefix} · {apiKey.allStoreAccess ? t('All stores') : `${(apiKey.allowedStoreIds || []).length} ${t('stores')}`}
                                             </Typography>
                                         </Box>
+                                        <Typography sx={{fontSize: '0.76rem', color: palette.textMuted, alignSelf: 'center'}}>
+                                            {t('Expires')} {formatDate(apiKey.expiresAt)}
+                                        </Typography>
                                         {apiKey.active && (
                                             <Button size="small" onClick={() => deactivateApiKey(apiKey.id)} sx={{textTransform: 'none'}}>
                                                 {t('Deactivate')}

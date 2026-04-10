@@ -1,6 +1,8 @@
 package com.recon.api.service;
 
 import com.recon.api.domain.AuditLedgerWriteRequest;
+import com.recon.api.domain.AccessGovernanceApiKeyFindingDto;
+import com.recon.api.domain.AccessGovernanceUserFindingDto;
 import com.recon.api.domain.AssignUserOrganizationScopesRequest;
 import com.recon.api.domain.CreateTenantApiKeyRequest;
 import com.recon.api.domain.CreatedTenantApiKeyResponse;
@@ -17,6 +19,7 @@ import com.recon.api.domain.SaveTenantReconGroupSelectionsRequest;
 import com.recon.api.domain.SaveTenantSystemEndpointProfilesRequest;
 import com.recon.api.domain.SystemEndpointProfileDto;
 import com.recon.api.domain.TenantAccessCenterResponse;
+import com.recon.api.domain.TenantAccessGovernanceResponse;
 import com.recon.api.domain.TenantApiKey;
 import com.recon.api.domain.TenantApiKeyDto;
 import com.recon.api.domain.TenantAuthConfigDto;
@@ -38,6 +41,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -79,9 +83,13 @@ public class TenantAccessAdministrationService {
     @Transactional
     public TenantAccessCenterResponse getAccessCenter(String tenantId) {
         accessScopeService.ensureTenantHierarchy(tenantId, "system");
+        TenantAuthConfigEntity authConfig = resolveAuthConfig(tenantId);
+        List<TenantApiKey> apiKeys = tenantApiKeyRepository.findByTenantIdOrderByUpdatedAtDesc(tenantId);
+        List<User> users = userRepository.findByTenantId(tenantId);
         return TenantAccessCenterResponse.builder()
-                .authConfig(toDto(resolveAuthConfig(tenantId)))
-                .apiKeys(tenantApiKeyRepository.findByTenantIdOrderByUpdatedAtDesc(tenantId).stream()
+                .authConfig(toDto(authConfig))
+                .governance(buildGovernance(authConfig, users, apiKeys))
+                .apiKeys(apiKeys.stream()
                         .map(this::toDto)
                         .toList())
                 .storeCatalog(accessScopeService.getTenantStoreCatalog(tenantId))
@@ -235,7 +243,17 @@ public class TenantAccessAdministrationService {
         if (safeRequest.getApiKeyAuthEnabled() != null) {
             config.setApiKeyAuthEnabled(safeRequest.getApiKeyAuthEnabled());
         }
+        if (safeRequest.getAutoProvisionUsers() != null) {
+            config.setAutoProvisionUsers(safeRequest.getAutoProvisionUsers());
+        }
+        config.setAllowedEmailDomains(normalizeCsv(safeRequest.getAllowedEmailDomains(), true));
+        config.setOidcUsernameClaim(defaultIfBlank(safeRequest.getOidcUsernameClaim(), "preferred_username"));
+        config.setOidcEmailClaim(defaultIfBlank(safeRequest.getOidcEmailClaim(), "email"));
+        config.setOidcGroupsClaim(defaultIfBlank(safeRequest.getOidcGroupsClaim(), "groups"));
+        config.setSamlEmailAttribute(trimToNull(safeRequest.getSamlEmailAttribute()));
+        config.setSamlGroupsAttribute(trimToNull(safeRequest.getSamlGroupsAttribute()));
         config.setUpdatedBy(defaultActor(actor));
+        validateAuthConfig(config);
 
         TenantAuthConfigEntity saved = tenantAuthConfigRepository.save(config);
         recordAudit(tenantId,
@@ -546,6 +564,13 @@ public class TenantAccessAdministrationService {
                 .samlEntityId(entity.getSamlEntityId())
                 .samlSsoUrl(entity.getSamlSsoUrl())
                 .apiKeyAuthEnabled(entity.isApiKeyAuthEnabled())
+                .autoProvisionUsers(entity.isAutoProvisionUsers())
+                .allowedEmailDomains(entity.getAllowedEmailDomains())
+                .oidcUsernameClaim(entity.getOidcUsernameClaim())
+                .oidcEmailClaim(entity.getOidcEmailClaim())
+                .oidcGroupsClaim(entity.getOidcGroupsClaim())
+                .samlEmailAttribute(entity.getSamlEmailAttribute())
+                .samlGroupsAttribute(entity.getSamlGroupsAttribute())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .build();
@@ -572,6 +597,181 @@ public class TenantAccessAdministrationService {
                 .build();
     }
 
+    private TenantAccessGovernanceResponse buildGovernance(TenantAuthConfigEntity authConfig,
+                                                           List<User> users,
+                                                           List<TenantApiKey> apiKeys) {
+        LocalDateTime now = LocalDateTime.now();
+        boolean ssoConfigured = authConfig.isOidcEnabled() || authConfig.isSamlEnabled();
+        boolean ssoPreferred = ssoConfigured && !"LOCAL".equalsIgnoreCase(defaultIfBlank(authConfig.getPreferredLoginMode(), "LOCAL"));
+        List<AccessGovernanceUserFindingDto> userFindings = users.stream()
+                .map(user -> buildUserFinding(user, ssoPreferred, now))
+                .filter(Objects::nonNull)
+                .limit(50)
+                .toList();
+        List<AccessGovernanceApiKeyFindingDto> apiKeyFindings = apiKeys.stream()
+                .map(apiKey -> buildApiKeyFinding(apiKey, now))
+                .filter(Objects::nonNull)
+                .limit(50)
+                .toList();
+
+        int highPrivilegeUsers = (int) users.stream().filter(this::hasHighPrivilegeAccess).count();
+        int usersWithoutRoles = (int) users.stream()
+                .filter(user -> user.isActive() && (user.getRoles() == null || user.getRoles().isEmpty()))
+                .count();
+        int usersDueForReview = (int) users.stream()
+                .filter(user -> user.isActive())
+                .filter(user -> user.getAccessReviewDueAt() == null || !user.getAccessReviewDueAt().isAfter(now))
+                .count();
+        int usersPendingReview = (int) users.stream()
+                .filter(user -> user.isActive())
+                .filter(user -> "PENDING".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .count();
+        int usersMissingExternalSubject = (int) users.stream()
+                .filter(user -> user.isActive())
+                .filter(user -> !"LOCAL".equalsIgnoreCase(defaultIfBlank(user.getIdentityProvider(), "LOCAL")))
+                .filter(user -> trimToNull(user.getExternalSubject()) == null)
+                .count();
+        int localIdentityUsers = (int) users.stream()
+                .filter(user -> "LOCAL".equalsIgnoreCase(defaultIfBlank(user.getIdentityProvider(), "LOCAL")))
+                .count();
+        int activeApiKeys = (int) apiKeys.stream().filter(TenantApiKey::isActive).count();
+        int expiredApiKeys = (int) apiKeys.stream()
+                .filter(TenantApiKey::isActive)
+                .filter(apiKey -> apiKey.getExpiresAt() != null && !apiKey.getExpiresAt().isAfter(now))
+                .count();
+        int apiKeysExpiringSoon = (int) apiKeys.stream()
+                .filter(TenantApiKey::isActive)
+                .filter(apiKey -> apiKey.getExpiresAt() != null
+                        && apiKey.getExpiresAt().isAfter(now)
+                        && !apiKey.getExpiresAt().isAfter(now.plusDays(30)))
+                .count();
+
+        return TenantAccessGovernanceResponse.builder()
+                .totalUsers(users.size())
+                .activeUsers((int) users.stream().filter(User::isActive).count())
+                .inactiveUsers((int) users.stream().filter(user -> !user.isActive()).count())
+                .localIdentityUsers(localIdentityUsers)
+                .externalIdentityUsers(users.size() - localIdentityUsers)
+                .usersDueForReview(usersDueForReview)
+                .usersPendingReview(usersPendingReview)
+                .highPrivilegeUsers(highPrivilegeUsers)
+                .usersWithoutRoles(usersWithoutRoles)
+                .usersMissingExternalSubject(usersMissingExternalSubject)
+                .activeApiKeys(activeApiKeys)
+                .apiKeysExpiringSoon(apiKeysExpiringSoon)
+                .expiredApiKeys(expiredApiKeys)
+                .ssoConfigured(ssoConfigured)
+                .ssoPreferred(ssoPreferred)
+                .preferredLoginMode(defaultIfBlank(authConfig.getPreferredLoginMode(), "LOCAL"))
+                .userFindings(userFindings)
+                .apiKeyFindings(apiKeyFindings)
+                .build();
+    }
+
+    private AccessGovernanceUserFindingDto buildUserFinding(User user,
+                                                            boolean ssoPreferred,
+                                                            LocalDateTime now) {
+        List<String> findings = new ArrayList<>();
+        String identityProvider = defaultIfBlank(user.getIdentityProvider(), "LOCAL").toUpperCase(Locale.ROOT);
+        if (user.isActive() && (user.getAccessReviewDueAt() == null || !user.getAccessReviewDueAt().isAfter(now))) {
+            findings.add("ACCESS_REVIEW_DUE");
+        }
+        if (user.isActive() && "PENDING".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))) {
+            findings.add("ACCESS_REVIEW_PENDING");
+        }
+        if (user.isActive() && hasHighPrivilegeAccess(user)) {
+            findings.add("HIGH_PRIVILEGE_ACCESS");
+        }
+        if (user.isActive() && (user.getRoles() == null || user.getRoles().isEmpty())) {
+            findings.add("NO_ROLE_ASSIGNED");
+        }
+        if (user.isActive()
+                && !"LOCAL".equals(identityProvider)
+                && trimToNull(user.getExternalSubject()) == null) {
+            findings.add("EXTERNAL_SUBJECT_MISSING");
+        }
+        if (user.isActive() && ssoPreferred && "LOCAL".equals(identityProvider)) {
+            findings.add("LOCAL_IDENTITY_WHILE_SSO_PREFERRED");
+        }
+        if (user.isActive()
+                && user.getLastLogin() != null
+                && user.getLastLogin().isBefore(now.minusDays(90))) {
+            findings.add("DORMANT_USER");
+        }
+        if (findings.isEmpty()) {
+            return null;
+        }
+
+        List<String> roleNames = user.getRoles() == null ? List.of() : user.getRoles().stream()
+                .map(role -> defaultIfBlank(role.getName(), ""))
+                .filter(name -> !name.isBlank())
+                .sorted()
+                .toList();
+        List<String> permissionCodes = user.getAllPermissions().stream()
+                .sorted()
+                .toList();
+
+        return AccessGovernanceUserFindingDto.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .active(user.isActive())
+                .identityProvider(identityProvider)
+                .externalSubject(user.getExternalSubject())
+                .accessReviewStatus(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
+                .accessReviewDueAt(user.getAccessReviewDueAt())
+                .lastAccessReviewAt(user.getLastAccessReviewAt())
+                .lastAccessReviewBy(user.getLastAccessReviewBy())
+                .lastLogin(user.getLastLogin())
+                .roleNames(roleNames)
+                .permissionCodes(permissionCodes)
+                .findingTypes(findings)
+                .build();
+    }
+
+    private AccessGovernanceApiKeyFindingDto buildApiKeyFinding(TenantApiKey apiKey,
+                                                                LocalDateTime now) {
+        if (!apiKey.isActive()) {
+            return null;
+        }
+        List<String> findings = new ArrayList<>();
+        if (apiKey.getExpiresAt() == null) {
+            findings.add("NO_EXPIRATION");
+        } else if (!apiKey.getExpiresAt().isAfter(now)) {
+            findings.add("EXPIRED");
+        } else if (!apiKey.getExpiresAt().isAfter(now.plusDays(30))) {
+            findings.add("EXPIRING_SOON");
+        }
+        if (apiKey.isAllStoreAccess()) {
+            findings.add("ALL_STORE_SCOPE");
+        }
+        if (findings.isEmpty()) {
+            return null;
+        }
+        return AccessGovernanceApiKeyFindingDto.builder()
+                .id(apiKey.getId())
+                .keyName(apiKey.getKeyName())
+                .keyPrefix(apiKey.getKeyPrefix())
+                .active(apiKey.isActive())
+                .expiresAt(apiKey.getExpiresAt())
+                .lastUsedAt(apiKey.getLastUsedAt())
+                .findingTypes(findings)
+                .build();
+    }
+
+    private boolean hasHighPrivilegeAccess(User user) {
+        return user.getAllPermissions().stream().anyMatch(this::isHighPrivilegePermission);
+    }
+
+    private boolean isHighPrivilegePermission(String permission) {
+        String normalized = normalizeUpper(permission);
+        return normalized != null
+                && (normalized.startsWith("ADMIN_")
+                || normalized.endsWith("_MANAGE")
+                || Set.of("AUDIT_EXPORT", "AUDIT_GLOBAL_VIEW", "API_ACCESS_MANAGE").contains(normalized));
+    }
+
     private int resolveApiKeyExpirationDays(Integer requestedDays) {
         int fallback = Math.max(1, defaultApiKeyExpirationDays);
         int max = Math.max(fallback, maxApiKeyExpirationDays);
@@ -583,6 +783,69 @@ public class TenantAccessAdministrationService {
             throw new IllegalArgumentException("API key expiration must not exceed " + max + " days");
         }
         return resolved;
+    }
+
+    private void validateAuthConfig(TenantAuthConfigEntity config) {
+        String preferredMode = normalizePreferredLoginMode(config.getPreferredLoginMode());
+        config.setPreferredLoginMode(preferredMode);
+
+        if (!config.isLocalLoginEnabled() && !config.isOidcEnabled() && !config.isSamlEnabled()) {
+            throw new IllegalArgumentException("At least one interactive login mode must be enabled");
+        }
+        if ("LOCAL".equals(preferredMode) && !config.isLocalLoginEnabled()) {
+            throw new IllegalArgumentException("Preferred login mode LOCAL requires local login to be enabled");
+        }
+        if ("OIDC".equals(preferredMode) && !config.isOidcEnabled()) {
+            throw new IllegalArgumentException("Preferred login mode OIDC requires OIDC to be enabled");
+        }
+        if ("SAML".equals(preferredMode) && !config.isSamlEnabled()) {
+            throw new IllegalArgumentException("Preferred login mode SAML requires SAML to be enabled");
+        }
+        if (config.isOidcEnabled()) {
+            requireHttpUrl(config.getOidcIssuerUrl(), "OIDC issuer URL");
+            requireField(config.getOidcClientId(), "OIDC client id");
+        }
+        if (config.isSamlEnabled()) {
+            requireField(config.getSamlEntityId(), "SAML entity id");
+            requireHttpUrl(config.getSamlSsoUrl(), "SAML SSO URL");
+        }
+        if (config.isAutoProvisionUsers()) {
+            if (!config.isOidcEnabled() && !config.isSamlEnabled()) {
+                throw new IllegalArgumentException("Auto provisioning requires OIDC or SAML to be enabled");
+            }
+            requireField(config.getAllowedEmailDomains(), "Allowed email domains");
+        }
+    }
+
+    private String normalizePreferredLoginMode(String value) {
+        String mode = defaultIfBlank(value, "LOCAL").toUpperCase(Locale.ROOT);
+        if (!Set.of("LOCAL", "OIDC", "SAML").contains(mode)) {
+            throw new IllegalArgumentException("Preferred login mode must be LOCAL, OIDC, or SAML");
+        }
+        return mode;
+    }
+
+    private void requireField(String value, String label) {
+        if (trimToNull(value) == null) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+    }
+
+    private void requireHttpUrl(String value, String label) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        try {
+            URI uri = URI.create(trimmed);
+            String scheme = uri.getScheme();
+            if (uri.getHost() == null
+                    || (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme))) {
+                throw new IllegalArgumentException(label + " must be an HTTP or HTTPS URL");
+            }
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(label + " must be a valid URL");
+        }
     }
 
     private void recordAudit(String tenantId,
@@ -642,9 +905,27 @@ public class TenantAccessAdministrationService {
         return trimmed == null ? null : trimmed.toUpperCase(Locale.ROOT);
     }
 
+    private String normalizeCsv(String value, boolean lowerCase) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        return java.util.Arrays.stream(trimmed.split(","))
+                .map(this::trimToNull)
+                .filter(Objects::nonNull)
+                .map(item -> lowerCase ? item.toLowerCase(Locale.ROOT) : item)
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(","));
+    }
+
     private String trimToNull(String value) {
         String trimmed = Objects.toString(value, "").trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? fallback : trimmed;
     }
 
     private String defaultActor(String actor) {
@@ -684,6 +965,13 @@ public class TenantAccessAdministrationService {
                 .samlEntityId(entity.getSamlEntityId())
                 .samlSsoUrl(entity.getSamlSsoUrl())
                 .apiKeyAuthEnabled(entity.isApiKeyAuthEnabled())
+                .autoProvisionUsers(entity.isAutoProvisionUsers())
+                .allowedEmailDomains(entity.getAllowedEmailDomains())
+                .oidcUsernameClaim(entity.getOidcUsernameClaim())
+                .oidcEmailClaim(entity.getOidcEmailClaim())
+                .oidcGroupsClaim(entity.getOidcGroupsClaim())
+                .samlEmailAttribute(entity.getSamlEmailAttribute())
+                .samlGroupsAttribute(entity.getSamlGroupsAttribute())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

@@ -9,8 +9,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +31,8 @@ public class UserService {
     private final AuditLedgerService auditLedgerService;
     private final AccessScopeService accessScopeService;
     private final ReconModuleService reconModuleService;
+
+    private static final int DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS = 90;
 
     public List<UserDto> getAllUsers(String tenantId) {
         return userRepository.findByTenantId(tenantId)
@@ -58,14 +65,27 @@ public class UserService {
                 .filter(role -> tenantId.equals(role.getTenantId()))
                 .toList())
                 : new HashSet<>();
+        String identityProvider = normalizeIdentityProvider(req.getIdentityProvider());
+        String externalSubject = normalizeExternalSubject(identityProvider, req.getExternalSubject());
+        ensureExternalSubjectAvailable(tenantId, identityProvider, externalSubject, null);
+        String password = trimToNull(req.getPassword());
+        if ("LOCAL".equals(identityProvider) && password == null) {
+            throw new RuntimeException("Password is required for local users");
+        }
 
         User user = User.builder()
                 .username(req.getUsername())
                 .email(req.getEmail())
-                .passwordHash(passwordEncoder.encode(
-                        req.getPassword()))
+                .passwordHash(passwordEncoder.encode(password != null
+                        ? password
+                        : UUID.randomUUID().toString()))
                 .fullName(req.getFullName())
                 .tenantId(tenantId)
+                .identityProvider(identityProvider)
+                .externalSubject(externalSubject)
+                .emailVerified(Boolean.TRUE.equals(req.getEmailVerified()))
+                .accessReviewStatus("PENDING")
+                .accessReviewDueAt(LocalDateTime.now().plusDays(DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS))
                 .roles(roles)
                 .storeIds(req.getStoreIds() != null
                         ? normalizeStores(req.getStoreIds()) : new HashSet<>())
@@ -99,6 +119,7 @@ public class UserService {
                 throw new RuntimeException("Email already exists");
             }
             user.setEmail(req.getEmail());
+            user.setEmailVerified(false);
         }
 
         if (req.getPassword() != null
@@ -106,6 +127,7 @@ public class UserService {
             user.setPasswordHash(passwordEncoder.encode(
                     req.getPassword()));
         }
+        updateIdentityBinding(tenantId, user, req);
 
         User saved = userRepository.save(user);
         recordSecurityAudit(saved.getTenantId(), "USER_UPDATED", "User updated", saved.getId().toString(), actorUsername, before, saved);
@@ -198,6 +220,46 @@ public class UserService {
         return toDto(saved);
     }
 
+    @Transactional
+    public UserDto reviewUserAccess(String tenantId,
+                                    UUID userId,
+                                    ReviewUserAccessRequest req,
+                                    String actorUsername) {
+        User user = userRepository.findByIdAndTenantId(userId, tenantId)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
+        ReviewUserAccessRequest safeRequest = req != null ? req : new ReviewUserAccessRequest();
+        String decision = normalizeReviewDecision(safeRequest.getDecision());
+        int nextReviewDays = resolveNextReviewDays(decision, safeRequest.getNextReviewInDays());
+        LocalDateTime now = LocalDateTime.now();
+
+        user.setAccessReviewStatus(decision);
+        user.setLastAccessReviewAt(now);
+        user.setLastAccessReviewBy(defaultActor(actorUsername));
+        user.setAccessReviewDueAt(now.plusDays(nextReviewDays));
+        if (Boolean.TRUE.equals(safeRequest.getDeactivateUser())) {
+            user.setActive(false);
+        }
+
+        User saved = userRepository.save(user);
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("user", cloneForAudit(saved));
+        after.put("decision", decision);
+        after.put("notes", trimToNull(safeRequest.getNotes()));
+        after.put("nextReviewInDays", nextReviewDays);
+        after.put("deactivated", Boolean.TRUE.equals(safeRequest.getDeactivateUser()));
+
+        recordSecurityAudit(saved.getTenantId(),
+                "USER_ACCESS_REVIEWED",
+                "User access reviewed",
+                saved.getId().toString(),
+                actorUsername,
+                before,
+                after);
+        return toDto(saved);
+    }
+
     private void recordSecurityAudit(String tenantId,
                                      String actionType,
                                      String title,
@@ -230,6 +292,13 @@ public class UserService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .tenantId(user.getTenantId())
+                .identityProvider(user.getIdentityProvider())
+                .externalSubject(user.getExternalSubject())
+                .emailVerified(user.isEmailVerified())
+                .accessReviewStatus(user.getAccessReviewStatus())
+                .lastAccessReviewAt(user.getLastAccessReviewAt())
+                .lastAccessReviewBy(user.getLastAccessReviewBy())
+                .accessReviewDueAt(user.getAccessReviewDueAt())
                 .roles(user.getRoles() != null ? new HashSet<>(user.getRoles()) : new HashSet<>())
                 .storeIds(user.getStoreIds() != null ? new HashSet<>(user.getStoreIds()) : new HashSet<>())
                 .active(user.isActive())
@@ -252,6 +321,13 @@ public class UserService {
                 .active(currentUser.isActive())
                 .createdAt(currentUser.getCreatedAt())
                 .lastLogin(currentUser.getLastLogin())
+                .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
+                .externalSubject(currentUser.getExternalSubject())
+                .emailVerified(currentUser.isEmailVerified())
+                .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
+                .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
+                .lastAccessReviewBy(currentUser.getLastAccessReviewBy())
+                .accessReviewDueAt(currentUser.getAccessReviewDueAt())
                 .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new HashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
@@ -279,5 +355,91 @@ public class UserService {
                 .filter(value -> !value.isEmpty())
                 .map(value -> value.toUpperCase(java.util.Locale.ROOT))
                 .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    private void updateIdentityBinding(String tenantId, User user, CreateUserRequest req) {
+        if (req.getIdentityProvider() == null
+                && req.getExternalSubject() == null
+                && req.getEmailVerified() == null) {
+            return;
+        }
+        String identityProvider = req.getIdentityProvider() != null
+                ? normalizeIdentityProvider(req.getIdentityProvider())
+                : defaultIfBlank(user.getIdentityProvider(), "LOCAL");
+        String externalSubject = req.getExternalSubject() != null
+                ? trimToNull(req.getExternalSubject())
+                : trimToNull(user.getExternalSubject());
+        externalSubject = normalizeExternalSubject(identityProvider, externalSubject);
+        ensureExternalSubjectAvailable(tenantId, identityProvider, externalSubject, user.getId());
+        user.setIdentityProvider(identityProvider);
+        user.setExternalSubject(externalSubject);
+        if (req.getEmailVerified() != null) {
+            user.setEmailVerified(req.getEmailVerified());
+        }
+    }
+
+    private String normalizeIdentityProvider(String value) {
+        String normalized = defaultIfBlank(value, "LOCAL").toUpperCase(Locale.ROOT);
+        if (!Set.of("LOCAL", "OIDC", "SAML").contains(normalized)) {
+            throw new RuntimeException("Identity provider must be LOCAL, OIDC, or SAML");
+        }
+        return normalized;
+    }
+
+    private String normalizeExternalSubject(String identityProvider, String externalSubject) {
+        String normalized = trimToNull(externalSubject);
+        if ("LOCAL".equals(identityProvider)) {
+            return null;
+        }
+        if (normalized == null) {
+            throw new RuntimeException("External subject is required for SSO users");
+        }
+        return normalized;
+    }
+
+    private void ensureExternalSubjectAvailable(String tenantId,
+                                                String identityProvider,
+                                                String externalSubject,
+                                                UUID currentUserId) {
+        if (externalSubject == null) {
+            return;
+        }
+        userRepository.findByTenantIdAndIdentityProviderIgnoreCaseAndExternalSubjectIgnoreCase(
+                        tenantId, identityProvider, externalSubject)
+                .filter(existing -> !Objects.equals(existing.getId(), currentUserId))
+                .ifPresent(existing -> {
+                    throw new RuntimeException("External subject is already mapped to another user");
+                });
+    }
+
+    private String normalizeReviewDecision(String decision) {
+        String normalized = defaultIfBlank(decision, "CERTIFIED").toUpperCase(Locale.ROOT);
+        if (!Set.of("CERTIFIED", "NEEDS_CHANGES", "REVOKE_REQUESTED").contains(normalized)) {
+            throw new RuntimeException("Access review decision must be CERTIFIED, NEEDS_CHANGES, or REVOKE_REQUESTED");
+        }
+        return normalized;
+    }
+
+    private int resolveNextReviewDays(String decision, Integer requestedDays) {
+        int fallback = "CERTIFIED".equals(decision) ? DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS : 14;
+        int resolved = requestedDays == null ? fallback : requestedDays;
+        if (resolved < 1 || resolved > 365) {
+            throw new RuntimeException("Next access review must be between 1 and 365 days");
+        }
+        return resolved;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = Objects.toString(value, "").trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? fallback : trimmed;
+    }
+
+    private String defaultActor(String actor) {
+        return defaultIfBlank(actor, "system");
     }
 }

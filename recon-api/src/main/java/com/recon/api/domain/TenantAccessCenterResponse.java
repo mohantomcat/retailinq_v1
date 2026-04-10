@@ -9,6 +9,7 @@ import java.util.List;
 @Builder
 public class TenantAccessCenterResponse {
     private TenantAuthConfigDto authConfig;
+    private TenantAccessGovernanceResponse governance;
     private List<TenantApiKeyDto> apiKeys;
     private List<String> storeCatalog;
     private List<ReconGroupSelectionDto> reconGroups;

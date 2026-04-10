@@ -20,6 +20,13 @@ public class TenantAuthConfigDto {
     private String samlEntityId;
     private String samlSsoUrl;
     private boolean apiKeyAuthEnabled;
+    private boolean autoProvisionUsers;
+    private String allowedEmailDomains;
+    private String oidcUsernameClaim;
+    private String oidcEmailClaim;
+    private String oidcGroupsClaim;
+    private String samlEmailAttribute;
+    private String samlGroupsAttribute;
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

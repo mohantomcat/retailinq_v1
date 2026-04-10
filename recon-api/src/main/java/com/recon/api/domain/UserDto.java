@@ -19,6 +19,13 @@ public class UserDto {
     private boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime lastLogin;
+    private String identityProvider;
+    private String externalSubject;
+    private boolean emailVerified;
+    private String accessReviewStatus;
+    private LocalDateTime lastAccessReviewAt;
+    private String lastAccessReviewBy;
+    private LocalDateTime accessReviewDueAt;
     private Set<String> storeIds;
     private Set<String> effectiveStoreIds;
     private boolean allStoreAccess;

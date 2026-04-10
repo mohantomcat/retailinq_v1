@@ -122,6 +122,17 @@ public class AdminController {
                 userService.assignStores(principal.getTenantId(), id, req, principal.getUsername())));
     }
 
+    @PostMapping("/users/{id}/access-review")
+    public ResponseEntity<ApiResponse<UserDto>> reviewUserAccess(
+            @PathVariable("id") UUID id,
+            @RequestBody(required = false) ReviewUserAccessRequest req,
+            @AuthenticationPrincipal
+            ReconUserPrincipal principal) {
+        requirePermission(principal, "ACCESS_REVIEW_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                userService.reviewUserAccess(principal.getTenantId(), id, req, principal.getUsername())));
+    }
+
     @PostMapping("/users/{id}/org-scopes")
     public ResponseEntity<ApiResponse<List<UserOrganizationScopeDto>>> assignOrganizationScopes(
             @PathVariable("id") UUID id,

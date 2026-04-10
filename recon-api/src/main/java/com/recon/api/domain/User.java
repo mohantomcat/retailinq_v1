@@ -54,6 +54,30 @@ public class User {
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "identity_provider", nullable = false)
+    @Builder.Default
+    private String identityProvider = "LOCAL";
+
+    @Column(name = "external_subject")
+    private String externalSubject;
+
+    @Column(name = "email_verified", nullable = false)
+    @Builder.Default
+    private boolean emailVerified = false;
+
+    @Column(name = "access_review_status", nullable = false)
+    @Builder.Default
+    private String accessReviewStatus = "PENDING";
+
+    @Column(name = "last_access_review_at")
+    private LocalDateTime lastAccessReviewAt;
+
+    @Column(name = "last_access_review_by")
+    private String lastAccessReviewBy;
+
+    @Column(name = "access_review_due_at")
+    private LocalDateTime accessReviewDueAt;
+
     @Column(name = "failed_login_attempts", nullable = false)
     @Builder.Default
     private int failedLoginAttempts = 0;
@@ -88,11 +112,13 @@ public class User {
     void prePersist() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        normalizeIdentityGovernanceDefaults();
     }
 
     @PreUpdate
     void preUpdate() {
         updatedAt = LocalDateTime.now();
+        normalizeIdentityGovernanceDefaults();
     }
 
     public Set<String> getAllPermissions() {
@@ -103,5 +129,19 @@ public class User {
             }
         }
         return perms;
+    }
+
+    private void normalizeIdentityGovernanceDefaults() {
+        if (identityProvider == null || identityProvider.isBlank()) {
+            identityProvider = "LOCAL";
+        }
+        identityProvider = identityProvider.trim().toUpperCase();
+        if (accessReviewStatus == null || accessReviewStatus.isBlank()) {
+            accessReviewStatus = "PENDING";
+        }
+        accessReviewStatus = accessReviewStatus.trim().toUpperCase();
+        if (accessReviewDueAt == null) {
+            accessReviewDueAt = LocalDateTime.now().plusDays(90);
+        }
     }
 }

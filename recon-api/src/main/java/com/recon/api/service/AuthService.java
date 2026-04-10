@@ -87,6 +87,12 @@ public class AuthService {
                     "Account is temporarily locked. Try again later.");
         }
 
+        if (!"LOCAL".equalsIgnoreCase(defaultIfBlank(user.getIdentityProvider(), "LOCAL"))) {
+            loginAttemptRateLimiter.recordFailure(tenantId, username);
+            recordLoginFailure(tenantId, username, "LOCAL_LOGIN_BLOCKED_FOR_EXTERNAL_IDENTITY", user);
+            throw new RuntimeException("Use enterprise SSO for this account");
+        }
+
         if (!passwordEncoder.matches(
                 password,
                 user.getPasswordHash())) {
@@ -190,6 +196,9 @@ public class AuthService {
                 .orElseThrow(() ->
                         new RuntimeException(
                                 "User not found"));
+        if (!user.isActive()) {
+            throw new RuntimeException("Account is deactivated");
+        }
 
         reconModuleService.getAllActiveModules();
         user = userRepository.findById(user.getId()).orElse(user);
@@ -383,6 +392,13 @@ public class AuthService {
                 .active(currentUser.isActive())
                 .createdAt(currentUser.getCreatedAt())
                 .lastLogin(currentUser.getLastLogin())
+                .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
+                .externalSubject(currentUser.getExternalSubject())
+                .emailVerified(currentUser.isEmailVerified())
+                .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
+                .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
+                .lastAccessReviewBy(currentUser.getLastAccessReviewBy())
+                .accessReviewDueAt(currentUser.getAccessReviewDueAt())
                 .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())

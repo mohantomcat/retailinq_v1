@@ -18,6 +18,9 @@ public interface UserRepository
 
     Optional<User> findByIdAndTenantId(UUID id, String tenantId);
 
+    Optional<User> findByTenantIdAndIdentityProviderIgnoreCaseAndExternalSubjectIgnoreCase(
+            String tenantId, String identityProvider, String externalSubject);
+
     List<User> findByTenantId(String tenantId);
 
     boolean existsByUsername(String username);

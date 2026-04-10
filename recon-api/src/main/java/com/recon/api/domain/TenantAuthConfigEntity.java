@@ -63,6 +63,31 @@ public class TenantAuthConfigEntity {
     @Builder.Default
     private boolean apiKeyAuthEnabled = false;
 
+    @Column(name = "auto_provision_users", nullable = false)
+    @Builder.Default
+    private boolean autoProvisionUsers = false;
+
+    @Column(name = "allowed_email_domains")
+    private String allowedEmailDomains;
+
+    @Column(name = "oidc_username_claim", nullable = false)
+    @Builder.Default
+    private String oidcUsernameClaim = "preferred_username";
+
+    @Column(name = "oidc_email_claim", nullable = false)
+    @Builder.Default
+    private String oidcEmailClaim = "email";
+
+    @Column(name = "oidc_groups_claim", nullable = false)
+    @Builder.Default
+    private String oidcGroupsClaim = "groups";
+
+    @Column(name = "saml_email_attribute")
+    private String samlEmailAttribute;
+
+    @Column(name = "saml_groups_attribute")
+    private String samlGroupsAttribute;
+
     @Column(name = "updated_by")
     private String updatedBy;
 
@@ -77,6 +102,7 @@ public class TenantAuthConfigEntity {
         if (preferredLoginMode == null || preferredLoginMode.isBlank()) {
             preferredLoginMode = "LOCAL";
         }
+        normalizeClaimDefaults();
     }
 
     @PreUpdate
@@ -84,6 +110,19 @@ public class TenantAuthConfigEntity {
         updatedAt = LocalDateTime.now();
         if (preferredLoginMode == null || preferredLoginMode.isBlank()) {
             preferredLoginMode = "LOCAL";
+        }
+        normalizeClaimDefaults();
+    }
+
+    private void normalizeClaimDefaults() {
+        if (oidcUsernameClaim == null || oidcUsernameClaim.isBlank()) {
+            oidcUsernameClaim = "preferred_username";
+        }
+        if (oidcEmailClaim == null || oidcEmailClaim.isBlank()) {
+            oidcEmailClaim = "email";
+        }
+        if (oidcGroupsClaim == null || oidcGroupsClaim.isBlank()) {
+            oidcGroupsClaim = "groups";
         }
     }
 }

@@ -12,6 +12,9 @@ public class CreateUserRequest {
     private String password;
     private String fullName;
     private String tenantId;
+    private String identityProvider;
+    private String externalSubject;
+    private Boolean emailVerified;
     private Set<UUID> roleIds;
     private Set<String> storeIds;
 }
