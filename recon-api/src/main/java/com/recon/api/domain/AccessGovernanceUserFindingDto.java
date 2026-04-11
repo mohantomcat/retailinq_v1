@@ -24,6 +24,10 @@ public class AccessGovernanceUserFindingDto {
     private LocalDateTime accessReviewDueAt;
     private LocalDateTime lastAccessReviewAt;
     private String lastAccessReviewBy;
+    private LocalDateTime accessReviewLastReminderAt;
+    private LocalDateTime accessReviewReminderAcknowledgedAt;
+    private String accessReviewReminderAcknowledgedBy;
+    private LocalDateTime accessReviewLastEscalatedAt;
     private LocalDateTime lastLogin;
     private boolean emergencyAccessActive;
     private LocalDateTime emergencyAccessExpiresAt;

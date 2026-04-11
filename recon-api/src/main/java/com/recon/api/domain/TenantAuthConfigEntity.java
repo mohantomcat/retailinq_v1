@@ -137,6 +137,14 @@ public class TenantAuthConfigEntity {
     @Builder.Default
     private int managerAccessReviewReminderIntervalDays = 7;
 
+    @Column(name = "governance_notification_max_attempts", nullable = false)
+    @Builder.Default
+    private int governanceNotificationMaxAttempts = 3;
+
+    @Column(name = "governance_notification_backoff_minutes", nullable = false)
+    @Builder.Default
+    private int governanceNotificationBackoffMinutes = 15;
+
     @Column(name = "manager_access_review_additional_emails")
     private String managerAccessReviewAdditionalEmails;
 
@@ -145,6 +153,23 @@ public class TenantAuthConfigEntity {
 
     @Column(name = "manager_access_review_slack_webhook_url")
     private String managerAccessReviewSlackWebhookUrl;
+
+    @Column(name = "manager_access_review_escalation_enabled", nullable = false)
+    @Builder.Default
+    private boolean managerAccessReviewEscalationEnabled = false;
+
+    @Column(name = "manager_access_review_escalation_after_days", nullable = false)
+    @Builder.Default
+    private int managerAccessReviewEscalationAfterDays = 3;
+
+    @Column(name = "manager_access_review_escalation_email_recipients")
+    private String managerAccessReviewEscalationEmailRecipients;
+
+    @Column(name = "manager_access_review_escalation_teams_webhook_url")
+    private String managerAccessReviewEscalationTeamsWebhookUrl;
+
+    @Column(name = "manager_access_review_escalation_slack_webhook_url")
+    private String managerAccessReviewEscalationSlackWebhookUrl;
 
     @Column(name = "privileged_action_alerts_enabled", nullable = false)
     @Builder.Default
@@ -158,6 +183,24 @@ public class TenantAuthConfigEntity {
 
     @Column(name = "privileged_action_alert_slack_webhook_url")
     private String privilegedActionAlertSlackWebhookUrl;
+
+    @Column(name = "manager_access_review_reminder_subject_template", columnDefinition = "text")
+    private String managerAccessReviewReminderSubjectTemplate;
+
+    @Column(name = "manager_access_review_reminder_body_template", columnDefinition = "text")
+    private String managerAccessReviewReminderBodyTemplate;
+
+    @Column(name = "manager_access_review_escalation_subject_template", columnDefinition = "text")
+    private String managerAccessReviewEscalationSubjectTemplate;
+
+    @Column(name = "manager_access_review_escalation_body_template", columnDefinition = "text")
+    private String managerAccessReviewEscalationBodyTemplate;
+
+    @Column(name = "privileged_action_alert_subject_template", columnDefinition = "text")
+    private String privilegedActionAlertSubjectTemplate;
+
+    @Column(name = "privileged_action_alert_body_template", columnDefinition = "text")
+    private String privilegedActionAlertBodyTemplate;
 
     @Column(name = "updated_by")
     private String updatedBy;
@@ -206,6 +249,15 @@ public class TenantAuthConfigEntity {
         }
         if (managerAccessReviewReminderIntervalDays < 1) {
             managerAccessReviewReminderIntervalDays = 7;
+        }
+        if (governanceNotificationMaxAttempts < 1) {
+            governanceNotificationMaxAttempts = 3;
+        }
+        if (governanceNotificationBackoffMinutes < 1) {
+            governanceNotificationBackoffMinutes = 15;
+        }
+        if (managerAccessReviewEscalationAfterDays < 1) {
+            managerAccessReviewEscalationAfterDays = 3;
         }
     }
 }

@@ -137,6 +137,20 @@ public class AdminController {
                         principal.getPermissions())));
     }
 
+    @PostMapping("/users/{id}/access-review/acknowledge")
+    public ResponseEntity<ApiResponse<UserDto>> acknowledgeAccessReviewReminder(
+            @PathVariable("id") UUID id,
+            @RequestBody(required = false) AcknowledgeAccessReviewReminderRequest req,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                userService.acknowledgeAccessReviewReminder(
+                        principal.getTenantId(),
+                        id,
+                        req,
+                        principal.getUsername(),
+                        principal.getPermissions())));
+    }
+
     @PostMapping("/users/{id}/org-scopes")
     public ResponseEntity<ApiResponse<List<UserOrganizationScopeDto>>> assignOrganizationScopes(
             @PathVariable("id") UUID id,

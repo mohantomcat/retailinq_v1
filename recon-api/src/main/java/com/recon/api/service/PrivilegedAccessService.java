@@ -149,6 +149,10 @@ public class PrivilegedAccessService {
             } else {
                 user.setAccessReviewStatus("PENDING_MANAGER");
                 user.setAccessReviewLastReminderAt(null);
+                user.setAccessReviewReminderAcknowledgedAt(null);
+                user.setAccessReviewReminderAcknowledgedBy(null);
+                user.setAccessReviewReminderAckNote(null);
+                user.setAccessReviewLastEscalatedAt(null);
                 userRepository.save(user);
                 queuedUsers++;
             }

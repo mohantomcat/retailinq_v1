@@ -128,13 +128,26 @@ export default function TenantAccessCenter() {
         scimDeprovisionPolicy: 'DEACTIVATE',
         managerAccessReviewRemindersEnabled: false,
         managerAccessReviewReminderIntervalDays: 7,
+        governanceNotificationMaxAttempts: 3,
+        governanceNotificationBackoffMinutes: 15,
         managerAccessReviewAdditionalEmails: '',
         managerAccessReviewTeamsWebhookUrl: '',
         managerAccessReviewSlackWebhookUrl: '',
+        managerAccessReviewEscalationEnabled: false,
+        managerAccessReviewEscalationAfterDays: 3,
+        managerAccessReviewEscalationEmailRecipients: '',
+        managerAccessReviewEscalationTeamsWebhookUrl: '',
+        managerAccessReviewEscalationSlackWebhookUrl: '',
         privilegedActionAlertsEnabled: false,
         privilegedActionAlertEmailRecipients: '',
         privilegedActionAlertTeamsWebhookUrl: '',
         privilegedActionAlertSlackWebhookUrl: '',
+        managerAccessReviewReminderSubjectTemplate: '',
+        managerAccessReviewReminderBodyTemplate: '',
+        managerAccessReviewEscalationSubjectTemplate: '',
+        managerAccessReviewEscalationBodyTemplate: '',
+        privilegedActionAlertSubjectTemplate: '',
+        privilegedActionAlertBodyTemplate: '',
     })
     const [groupMappingForm, setGroupMappingForm] = useState([
         {oidcGroup: '', roleId: '', active: true},
@@ -154,6 +167,12 @@ export default function TenantAccessCenter() {
         decision: 'CERTIFIED',
         notes: '',
         deactivateUser: false,
+    })
+    const [ackDialog, setAckDialog] = useState({
+        open: false,
+        userId: '',
+        userLabel: '',
+        note: '',
     })
     const [emergencyForm, setEmergencyForm] = useState({
         userId: '',
@@ -496,6 +515,45 @@ export default function TenantAccessCenter() {
         }
     }
 
+    const openAckDialog = (finding) => {
+        setAckDialog({
+            open: true,
+            userId: String(finding?.userId || ''),
+            userLabel: finding?.fullName || finding?.username || '',
+            note: '',
+        })
+    }
+
+    const submitAcknowledgeReminder = async () => {
+        if (!ackDialog.userId) {
+            setError(t('Select a user to acknowledge'))
+            return
+        }
+        if (!ackDialog.note.trim()) {
+            setError(t('Acknowledgment note is required'))
+            return
+        }
+        setSaving(true)
+        try {
+            await adminApi.acknowledgeAccessReviewReminder(ackDialog.userId, {
+                note: ackDialog.note,
+            })
+            await loadData()
+            setAckDialog({
+                open: false,
+                userId: '',
+                userLabel: '',
+                note: '',
+            })
+            setSuccess(t('Manager reminder acknowledged'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to acknowledge manager reminder')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const grantEmergencyAccess = async () => {
         if (!emergencyForm.userId) {
             setError(t('Select a user for emergency access'))
@@ -583,6 +641,7 @@ export default function TenantAccessCenter() {
     const privilegedActionAlerts = center?.privilegedActionAlerts || []
     const reconGroups = center?.reconGroups || []
     const systemEndpointProfiles = center?.systemEndpointProfiles || []
+    const templatePlaceholderHint = t('Available placeholders: {{tenantId}}, {{dashboardUrl}}, {{pendingUserCount}}, {{pendingUsersList}}, {{managerName}}, {{escalationAfterDays}}, {{alertTitle}}, {{summary}}, {{actor}}, {{severity}}.')
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
     const missingRequiredReconGroups = reconGroups
         .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
@@ -638,6 +697,8 @@ export default function TenantAccessCenter() {
                             [t('Active Users'), governance.activeUsers ?? 0],
                             [t('Review Due'), governance.usersDueForReview ?? 0],
                             [t('Pending Manager'), governance.pendingManagerReviews ?? 0],
+                            [t('Acknowledged'), governance.acknowledgedManagerReviews ?? 0],
+                            [t('Escalated'), governance.escalatedManagerReviews ?? 0],
                             [t('High Privilege'), governance.highPrivilegeUsers ?? 0],
                             [t('Emergency Access'), governance.activeEmergencyAccessUsers ?? 0],
                             [t('API Keys Expiring'), governance.apiKeysExpiringSoon ?? 0],
@@ -677,6 +738,21 @@ export default function TenantAccessCenter() {
                                     <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
                                         {t('Manager')}: {finding.managerFullName || finding.managerUsername || t('Unassigned')}
                                     </Typography>
+                                    {finding.accessReviewLastReminderAt ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                            {t('Last reminder')}: {formatDateTime(finding.accessReviewLastReminderAt)}
+                                        </Typography>
+                                    ) : null}
+                                    {finding.accessReviewReminderAcknowledgedAt ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                            {t('Acknowledged')}: {formatDateTime(finding.accessReviewReminderAcknowledgedAt)} {t('by')} {finding.accessReviewReminderAcknowledgedBy || t('manager')}
+                                        </Typography>
+                                    ) : null}
+                                    {finding.accessReviewLastEscalatedAt ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                            {t('Escalated')}: {formatDateTime(finding.accessReviewLastEscalatedAt)}
+                                        </Typography>
+                                    ) : null}
                                 </Box>
                                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                                     {(finding.findingTypes || []).map((type) => (
@@ -688,7 +764,18 @@ export default function TenantAccessCenter() {
                                         />
                                     ))}
                                 </Stack>
-                                <Stack direction="row" spacing={0.75} justifyContent="flex-end">
+                                <Stack direction="row" spacing={0.75} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+                                    {finding.accessReviewStatus === 'PENDING_MANAGER' && finding.accessReviewLastReminderAt ? (
+                                        <Button
+                                            size="small"
+                                            variant="text"
+                                            onClick={() => openAckDialog(finding)}
+                                            disabled={saving}
+                                            sx={{textTransform: 'none', borderRadius: 2}}
+                                        >
+                                            {t('Acknowledge')}
+                                        </Button>
+                                    ) : null}
                                     <Button
                                         size="small"
                                         variant="contained"
@@ -836,6 +923,36 @@ export default function TenantAccessCenter() {
                                 />
                                 <TextField
                                     size="small"
+                                    type="number"
+                                    label={t('Retry Attempts')}
+                                    value={authForm.governanceNotificationMaxAttempts ?? 3}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled && !authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            governanceNotificationMaxAttempts: Number(event.target.value || 3),
+                                        }))
+                                    }
+                                    helperText={t('Queued email and webhook deliveries retry up to this many times before they fail closed.')}
+                                    inputProps={{min: 1, max: 10}}
+                                />
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    label={t('Retry Backoff (Minutes)')}
+                                    value={authForm.governanceNotificationBackoffMinutes ?? 15}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled && !authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            governanceNotificationBackoffMinutes: Number(event.target.value || 15),
+                                        }))
+                                    }
+                                    helperText={t('Each retry waits longer using exponential backoff from this base interval.')}
+                                    inputProps={{min: 1, max: 1440}}
+                                />
+                                <TextField
+                                    size="small"
                                     label={t('Reminder Summary Emails')}
                                     value={authForm.managerAccessReviewAdditionalEmails || ''}
                                     disabled={!authForm.managerAccessReviewRemindersEnabled}
@@ -870,6 +987,129 @@ export default function TenantAccessCenter() {
                                             managerAccessReviewSlackWebhookUrl: event.target.value,
                                         }))
                                     }
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={!!authForm.managerAccessReviewEscalationEnabled}
+                                            disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                            onChange={(event) =>
+                                                setAuthForm((current) => ({
+                                                    ...current,
+                                                    managerAccessReviewEscalationEnabled: event.target.checked,
+                                                }))
+                                            }
+                                        />
+                                    }
+                                    label={t('Enable Manager Escalation')}
+                                />
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    label={t('Escalate After (Days)')}
+                                    value={authForm.managerAccessReviewEscalationAfterDays ?? 3}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationAfterDays: Number(event.target.value || 3),
+                                        }))
+                                    }
+                                    helperText={t('Escalation triggers when a reminder is not acknowledged or completed within this many days.')}
+                                    inputProps={{min: 1, max: 30}}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Escalation Emails')}
+                                    value={authForm.managerAccessReviewEscalationEmailRecipients || ''}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationEmailRecipients: event.target.value,
+                                        }))
+                                    }
+                                    helperText={t('Optional comma-separated escalation recipients for unworked manager reviews.')}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Escalation Teams Webhook URL')}
+                                    value={authForm.managerAccessReviewEscalationTeamsWebhookUrl || ''}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationTeamsWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Escalation Slack Webhook URL')}
+                                    value={authForm.managerAccessReviewEscalationSlackWebhookUrl || ''}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationSlackWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Reminder Subject Template')}
+                                    value={authForm.managerAccessReviewReminderSubjectTemplate || ''}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewReminderSubjectTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
+                                />
+                                <TextField
+                                    size="small"
+                                    multiline
+                                    minRows={4}
+                                    label={t('Reminder Body Template')}
+                                    value={authForm.managerAccessReviewReminderBodyTemplate || ''}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewReminderBodyTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Escalation Subject Template')}
+                                    value={authForm.managerAccessReviewEscalationSubjectTemplate || ''}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationSubjectTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
+                                />
+                                <TextField
+                                    size="small"
+                                    multiline
+                                    minRows={4}
+                                    label={t('Escalation Body Template')}
+                                    value={authForm.managerAccessReviewEscalationBodyTemplate || ''}
+                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewEscalationBodyTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
                                 />
                                 <FormControlLabel
                                     control={
@@ -921,6 +1161,34 @@ export default function TenantAccessCenter() {
                                             privilegedActionAlertSlackWebhookUrl: event.target.value,
                                         }))
                                     }
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Privileged Alert Subject Template')}
+                                    value={authForm.privilegedActionAlertSubjectTemplate || ''}
+                                    disabled={!authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            privilegedActionAlertSubjectTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
+                                />
+                                <TextField
+                                    size="small"
+                                    multiline
+                                    minRows={4}
+                                    label={t('Privileged Alert Body Template')}
+                                    value={authForm.privilegedActionAlertBodyTemplate || ''}
+                                    disabled={!authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            privilegedActionAlertBodyTemplate: event.target.value,
+                                        }))
+                                    }
+                                    helperText={templatePlaceholderHint}
                                 />
                             </Stack>
                         </Box>
@@ -1541,6 +1809,49 @@ export default function TenantAccessCenter() {
                     </Paper>
                 </Stack>
             </Box>
+
+            <Dialog
+                open={ackDialog.open}
+                onClose={() => setAckDialog((current) => ({...current, open: false}))}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>{t('Acknowledge Reminder')}</DialogTitle>
+                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
+                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                        {ackDialog.userLabel || t('Selected user')}
+                    </Typography>
+                    <TextField
+                        size="small"
+                        multiline
+                        minRows={3}
+                        label={t('Acknowledgment Note')}
+                        value={ackDialog.note}
+                        onChange={(event) =>
+                            setAckDialog((current) => ({
+                                ...current,
+                                note: event.target.value,
+                            }))
+                        }
+                    />
+                </DialogContent>
+                <DialogActions sx={{px: 3, pb: 3}}>
+                    <Button
+                        onClick={() => setAckDialog((current) => ({...current, open: false}))}
+                        sx={{textTransform: 'none', color: palette.textMuted}}
+                    >
+                        {t('Cancel')}
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={submitAcknowledgeReminder}
+                        disabled={saving}
+                        sx={{textTransform: 'none', borderRadius: 2}}
+                    >
+                        {saving ? t('Saving...') : t('Acknowledge')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             <Dialog
                 open={reviewDialog.open}

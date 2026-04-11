@@ -30,6 +30,10 @@ public class UserDto {
     private LocalDateTime lastAccessReviewAt;
     private String lastAccessReviewBy;
     private LocalDateTime accessReviewDueAt;
+    private LocalDateTime accessReviewLastReminderAt;
+    private LocalDateTime accessReviewReminderAcknowledgedAt;
+    private String accessReviewReminderAcknowledgedBy;
+    private LocalDateTime accessReviewLastEscalatedAt;
     private boolean emergencyAccessActive;
     private LocalDateTime emergencyAccessExpiresAt;
     private List<RoleDto> emergencyRoles;

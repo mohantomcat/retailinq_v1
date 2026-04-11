@@ -36,11 +36,24 @@ public class SaveTenantAuthConfigRequest {
     private String scimDeprovisionPolicy;
     private Boolean managerAccessReviewRemindersEnabled;
     private Integer managerAccessReviewReminderIntervalDays;
+    private Integer governanceNotificationMaxAttempts;
+    private Integer governanceNotificationBackoffMinutes;
     private String managerAccessReviewAdditionalEmails;
     private String managerAccessReviewTeamsWebhookUrl;
     private String managerAccessReviewSlackWebhookUrl;
+    private Boolean managerAccessReviewEscalationEnabled;
+    private Integer managerAccessReviewEscalationAfterDays;
+    private String managerAccessReviewEscalationEmailRecipients;
+    private String managerAccessReviewEscalationTeamsWebhookUrl;
+    private String managerAccessReviewEscalationSlackWebhookUrl;
     private Boolean privilegedActionAlertsEnabled;
     private String privilegedActionAlertEmailRecipients;
     private String privilegedActionAlertTeamsWebhookUrl;
     private String privilegedActionAlertSlackWebhookUrl;
+    private String managerAccessReviewReminderSubjectTemplate;
+    private String managerAccessReviewReminderBodyTemplate;
+    private String managerAccessReviewEscalationSubjectTemplate;
+    private String managerAccessReviewEscalationBodyTemplate;
+    private String privilegedActionAlertSubjectTemplate;
+    private String privilegedActionAlertBodyTemplate;
 }

@@ -94,6 +94,14 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    acknowledgeAccessReviewReminder: async (userId, data) => {
+        const res = await apiFetch(`${BASE}/users/${userId}/access-review/acknowledge`, {
+            method: 'POST',
+            body: JSON.stringify(data || {}),
+        })
+        return await parseResponse(res)
+    },
+
     startQuarterlyAccessReviewCycle: async () => {
         const res = await apiFetch(`${BASE}/access-reviews/quarterly-cycle`, {
             method: 'POST',

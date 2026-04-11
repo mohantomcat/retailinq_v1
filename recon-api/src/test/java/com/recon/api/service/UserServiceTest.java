@@ -1,6 +1,7 @@
 package com.recon.api.service;
 
 import com.recon.api.domain.AccessScopeSummaryDto;
+import com.recon.api.domain.AcknowledgeAccessReviewReminderRequest;
 import com.recon.api.domain.ReviewUserAccessRequest;
 import com.recon.api.domain.User;
 import com.recon.api.repository.RoleRepository;
@@ -48,6 +49,9 @@ class UserServiceTest {
     @Mock
     private PrivilegedAccessService privilegedAccessService;
 
+    @Mock
+    private AccessGovernanceNotificationService accessGovernanceNotificationService;
+
     private UserService userService;
 
     @BeforeEach
@@ -59,7 +63,8 @@ class UserServiceTest {
                 auditLedgerService,
                 accessScopeService,
                 reconModuleService,
-                privilegedAccessService);
+                privilegedAccessService,
+                accessGovernanceNotificationService);
     }
 
     @Test
@@ -153,6 +158,83 @@ class UserServiceTest {
         assertEquals("CERTIFIED", response.getAccessReviewStatus());
         assertEquals("store.manager", response.getLastAccessReviewBy());
         assertEquals("store.manager", response.getManagerUsername());
+        verify(accessGovernanceNotificationService).cancelAccessReviewNotifications(
+                "tenant-india",
+                userId,
+                "store.manager",
+                "Access review completed");
+        verify(auditLedgerService).record(any());
+    }
+
+    @Test
+    void assignedManagerCanAcknowledgeReminder() {
+        UUID userId = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        UUID managerId = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        User targetUser = User.builder()
+                .id(userId)
+                .tenantId("tenant-india")
+                .username("associate")
+                .fullName("Associate User")
+                .managerUserId(managerId)
+                .accessReviewStatus("PENDING_MANAGER")
+                .accessReviewDueAt(LocalDateTime.now().minusDays(1))
+                .accessReviewLastReminderAt(LocalDateTime.now().minusDays(2))
+                .roles(Set.of())
+                .storeIds(Set.of())
+                .active(true)
+                .build();
+        User manager = User.builder()
+                .id(managerId)
+                .tenantId("tenant-india")
+                .username("store.manager")
+                .fullName("Store Manager")
+                .active(true)
+                .roles(Set.of())
+                .storeIds(Set.of())
+                .build();
+
+        when(userRepository.findByIdAndTenantId(userId, "tenant-india"))
+                .thenReturn(Optional.of(targetUser));
+        when(userRepository.findByIdAndTenantId(managerId, "tenant-india"))
+                .thenReturn(Optional.of(manager));
+        when(userRepository.save(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, User.class));
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(targetUser));
+        when(accessScopeService.summarizeUserScope(targetUser))
+                .thenReturn(AccessScopeSummaryDto.builder()
+                        .allStoreAccess(true)
+                        .directStoreIds(List.of())
+                        .effectiveStoreIds(List.of())
+                        .organizationScopes(List.of())
+                        .accessLabel("All stores")
+                        .build());
+        when(privilegedAccessService.resolveEffectiveAccess(targetUser))
+                .thenReturn(new PrivilegedAccessService.ResolvedAccess(
+                        Set.of(),
+                        Set.of(),
+                        List.of(),
+                        false,
+                        null));
+        when(reconModuleService.getAccessibleModules("tenant-india", Set.of()))
+                .thenReturn(List.of());
+
+        AcknowledgeAccessReviewReminderRequest request = new AcknowledgeAccessReviewReminderRequest();
+        request.setNote("Store manager confirmed the reminder and will complete it today");
+
+        var response = userService.acknowledgeAccessReviewReminder(
+                "tenant-india",
+                userId,
+                request,
+                "store.manager",
+                Set.of());
+
+        assertEquals("store.manager", response.getAccessReviewReminderAcknowledgedBy());
+        verify(accessGovernanceNotificationService).cancelAccessReviewNotifications(
+                "tenant-india",
+                userId,
+                "store.manager",
+                "Reminder acknowledged");
         verify(auditLedgerService).record(any());
     }
 }

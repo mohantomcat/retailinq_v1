@@ -324,15 +324,46 @@ public class TenantAccessAdministrationService {
         if (safeRequest.getManagerAccessReviewReminderIntervalDays() != null) {
             config.setManagerAccessReviewReminderIntervalDays(safeRequest.getManagerAccessReviewReminderIntervalDays());
         }
+        if (safeRequest.getGovernanceNotificationMaxAttempts() != null) {
+            config.setGovernanceNotificationMaxAttempts(safeRequest.getGovernanceNotificationMaxAttempts());
+        }
+        if (safeRequest.getGovernanceNotificationBackoffMinutes() != null) {
+            config.setGovernanceNotificationBackoffMinutes(safeRequest.getGovernanceNotificationBackoffMinutes());
+        }
         config.setManagerAccessReviewAdditionalEmails(normalizeCsv(safeRequest.getManagerAccessReviewAdditionalEmails(), true));
         config.setManagerAccessReviewTeamsWebhookUrl(trimToNull(safeRequest.getManagerAccessReviewTeamsWebhookUrl()));
         config.setManagerAccessReviewSlackWebhookUrl(trimToNull(safeRequest.getManagerAccessReviewSlackWebhookUrl()));
+        if (safeRequest.getManagerAccessReviewEscalationEnabled() != null) {
+            config.setManagerAccessReviewEscalationEnabled(safeRequest.getManagerAccessReviewEscalationEnabled());
+        }
+        if (safeRequest.getManagerAccessReviewEscalationAfterDays() != null) {
+            config.setManagerAccessReviewEscalationAfterDays(safeRequest.getManagerAccessReviewEscalationAfterDays());
+        }
+        config.setManagerAccessReviewEscalationEmailRecipients(normalizeCsv(
+                safeRequest.getManagerAccessReviewEscalationEmailRecipients(),
+                true));
+        config.setManagerAccessReviewEscalationTeamsWebhookUrl(trimToNull(
+                safeRequest.getManagerAccessReviewEscalationTeamsWebhookUrl()));
+        config.setManagerAccessReviewEscalationSlackWebhookUrl(trimToNull(
+                safeRequest.getManagerAccessReviewEscalationSlackWebhookUrl()));
         if (safeRequest.getPrivilegedActionAlertsEnabled() != null) {
             config.setPrivilegedActionAlertsEnabled(safeRequest.getPrivilegedActionAlertsEnabled());
         }
         config.setPrivilegedActionAlertEmailRecipients(normalizeCsv(safeRequest.getPrivilegedActionAlertEmailRecipients(), true));
         config.setPrivilegedActionAlertTeamsWebhookUrl(trimToNull(safeRequest.getPrivilegedActionAlertTeamsWebhookUrl()));
         config.setPrivilegedActionAlertSlackWebhookUrl(trimToNull(safeRequest.getPrivilegedActionAlertSlackWebhookUrl()));
+        config.setManagerAccessReviewReminderSubjectTemplate(trimToNull(
+                safeRequest.getManagerAccessReviewReminderSubjectTemplate()));
+        config.setManagerAccessReviewReminderBodyTemplate(trimToNull(
+                safeRequest.getManagerAccessReviewReminderBodyTemplate()));
+        config.setManagerAccessReviewEscalationSubjectTemplate(trimToNull(
+                safeRequest.getManagerAccessReviewEscalationSubjectTemplate()));
+        config.setManagerAccessReviewEscalationBodyTemplate(trimToNull(
+                safeRequest.getManagerAccessReviewEscalationBodyTemplate()));
+        config.setPrivilegedActionAlertSubjectTemplate(trimToNull(
+                safeRequest.getPrivilegedActionAlertSubjectTemplate()));
+        config.setPrivilegedActionAlertBodyTemplate(trimToNull(
+                safeRequest.getPrivilegedActionAlertBodyTemplate()));
         config.setUpdatedBy(defaultActor(actor));
         validateAuthConfig(config);
 
@@ -730,13 +761,26 @@ public class TenantAccessAdministrationService {
                 .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
                 .managerAccessReviewRemindersEnabled(entity.isManagerAccessReviewRemindersEnabled())
                 .managerAccessReviewReminderIntervalDays(entity.getManagerAccessReviewReminderIntervalDays())
+                .governanceNotificationMaxAttempts(entity.getGovernanceNotificationMaxAttempts())
+                .governanceNotificationBackoffMinutes(entity.getGovernanceNotificationBackoffMinutes())
                 .managerAccessReviewAdditionalEmails(entity.getManagerAccessReviewAdditionalEmails())
                 .managerAccessReviewTeamsWebhookUrl(entity.getManagerAccessReviewTeamsWebhookUrl())
                 .managerAccessReviewSlackWebhookUrl(entity.getManagerAccessReviewSlackWebhookUrl())
+                .managerAccessReviewEscalationEnabled(entity.isManagerAccessReviewEscalationEnabled())
+                .managerAccessReviewEscalationAfterDays(entity.getManagerAccessReviewEscalationAfterDays())
+                .managerAccessReviewEscalationEmailRecipients(entity.getManagerAccessReviewEscalationEmailRecipients())
+                .managerAccessReviewEscalationTeamsWebhookUrl(entity.getManagerAccessReviewEscalationTeamsWebhookUrl())
+                .managerAccessReviewEscalationSlackWebhookUrl(entity.getManagerAccessReviewEscalationSlackWebhookUrl())
                 .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
                 .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
                 .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())
                 .privilegedActionAlertSlackWebhookUrl(entity.getPrivilegedActionAlertSlackWebhookUrl())
+                .managerAccessReviewReminderSubjectTemplate(entity.getManagerAccessReviewReminderSubjectTemplate())
+                .managerAccessReviewReminderBodyTemplate(entity.getManagerAccessReviewReminderBodyTemplate())
+                .managerAccessReviewEscalationSubjectTemplate(entity.getManagerAccessReviewEscalationSubjectTemplate())
+                .managerAccessReviewEscalationBodyTemplate(entity.getManagerAccessReviewEscalationBodyTemplate())
+                .privilegedActionAlertSubjectTemplate(entity.getPrivilegedActionAlertSubjectTemplate())
+                .privilegedActionAlertBodyTemplate(entity.getPrivilegedActionAlertBodyTemplate())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .build();
@@ -841,6 +885,16 @@ public class TenantAccessAdministrationService {
                 .filter(User::isActive)
                 .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
                 .count();
+        int acknowledgedManagerReviews = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .filter(this::hasAcknowledgedReminder)
+                .count();
+        int escalatedManagerReviews = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .filter(this::hasEscalatedReminder)
+                .count();
         int usersWithoutManager = (int) users.stream()
                 .filter(User::isActive)
                 .filter(user -> user.getManagerUserId() == null)
@@ -881,6 +935,8 @@ public class TenantAccessAdministrationService {
                 .usersDueForReview(usersDueForReview)
                 .usersPendingReview(usersPendingReview)
                 .pendingManagerReviews(pendingManagerReviews)
+                .acknowledgedManagerReviews(acknowledgedManagerReviews)
+                .escalatedManagerReviews(escalatedManagerReviews)
                 .usersWithoutManager(usersWithoutManager)
                 .highPrivilegeUsers(highPrivilegeUsers)
                 .activeEmergencyAccessUsers(activeEmergencyAccessUsers)
@@ -915,6 +971,16 @@ public class TenantAccessAdministrationService {
         }
         if (user.isActive() && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))) {
             findings.add("MANAGER_REVIEW_PENDING");
+        }
+        if (user.isActive()
+                && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
+                && hasAcknowledgedReminder(user)) {
+            findings.add("REVIEW_REMINDER_ACKNOWLEDGED");
+        }
+        if (user.isActive()
+                && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
+                && hasEscalatedReminder(user)) {
+            findings.add("REVIEW_REMINDER_ESCALATED");
         }
         if (user.isActive() && privilegedAccessService.hasHighPrivilegeAccess(safeResolvedAccess.effectivePermissions())) {
             findings.add("HIGH_PRIVILEGE_ACCESS");
@@ -969,6 +1035,10 @@ public class TenantAccessAdministrationService {
                 .accessReviewDueAt(user.getAccessReviewDueAt())
                 .lastAccessReviewAt(user.getLastAccessReviewAt())
                 .lastAccessReviewBy(user.getLastAccessReviewBy())
+                .accessReviewLastReminderAt(user.getAccessReviewLastReminderAt())
+                .accessReviewReminderAcknowledgedAt(user.getAccessReviewReminderAcknowledgedAt())
+                .accessReviewReminderAcknowledgedBy(user.getAccessReviewReminderAcknowledgedBy())
+                .accessReviewLastEscalatedAt(user.getAccessReviewLastEscalatedAt())
                 .lastLogin(user.getLastLogin())
                 .emergencyAccessActive(safeResolvedAccess.emergencyAccessActive())
                 .emergencyAccessExpiresAt(safeResolvedAccess.emergencyAccessExpiresAt())
@@ -1091,8 +1161,25 @@ public class TenantAccessAdministrationService {
         if (reminderIntervalDays < 1 || reminderIntervalDays > 30) {
             throw new IllegalArgumentException("Manager access review reminder interval must be between 1 and 30 days");
         }
+        int maxAttempts = config.getGovernanceNotificationMaxAttempts();
+        if (maxAttempts < 1 || maxAttempts > 10) {
+            throw new IllegalArgumentException("Governance notification max attempts must be between 1 and 10");
+        }
+        int backoffMinutes = config.getGovernanceNotificationBackoffMinutes();
+        if (backoffMinutes < 1 || backoffMinutes > 1440) {
+            throw new IllegalArgumentException("Governance notification backoff must be between 1 and 1440 minutes");
+        }
+        int escalationAfterDays = config.getManagerAccessReviewEscalationAfterDays();
+        if (escalationAfterDays < 1 || escalationAfterDays > 30) {
+            throw new IllegalArgumentException("Manager access review escalation must be between 1 and 30 days");
+        }
+        if (config.isManagerAccessReviewEscalationEnabled() && !config.isManagerAccessReviewRemindersEnabled()) {
+            throw new IllegalArgumentException("Manager access review escalation requires reminders to be enabled");
+        }
         requireHttpUrlIfPresent(config.getManagerAccessReviewTeamsWebhookUrl(), "Manager access review Teams webhook URL");
         requireHttpUrlIfPresent(config.getManagerAccessReviewSlackWebhookUrl(), "Manager access review Slack webhook URL");
+        requireHttpUrlIfPresent(config.getManagerAccessReviewEscalationTeamsWebhookUrl(), "Manager access review escalation Teams webhook URL");
+        requireHttpUrlIfPresent(config.getManagerAccessReviewEscalationSlackWebhookUrl(), "Manager access review escalation Slack webhook URL");
         requireHttpUrlIfPresent(config.getPrivilegedActionAlertTeamsWebhookUrl(), "Privileged action alert Teams webhook URL");
         requireHttpUrlIfPresent(config.getPrivilegedActionAlertSlackWebhookUrl(), "Privileged action alert Slack webhook URL");
     }
@@ -1246,6 +1333,22 @@ public class TenantAccessAdministrationService {
         return trimmed == null ? "system" : trimmed;
     }
 
+    private boolean hasAcknowledgedReminder(User user) {
+        if (user == null || user.getAccessReviewReminderAcknowledgedAt() == null) {
+            return false;
+        }
+        return user.getAccessReviewLastReminderAt() == null
+                || !user.getAccessReviewReminderAcknowledgedAt().isBefore(user.getAccessReviewLastReminderAt());
+    }
+
+    private boolean hasEscalatedReminder(User user) {
+        if (user == null || user.getAccessReviewLastEscalatedAt() == null) {
+            return false;
+        }
+        return user.getAccessReviewLastReminderAt() == null
+                || !user.getAccessReviewLastEscalatedAt().isBefore(user.getAccessReviewLastReminderAt());
+    }
+
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -1312,13 +1415,26 @@ public class TenantAccessAdministrationService {
                 .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
                 .managerAccessReviewRemindersEnabled(entity.isManagerAccessReviewRemindersEnabled())
                 .managerAccessReviewReminderIntervalDays(entity.getManagerAccessReviewReminderIntervalDays())
+                .governanceNotificationMaxAttempts(entity.getGovernanceNotificationMaxAttempts())
+                .governanceNotificationBackoffMinutes(entity.getGovernanceNotificationBackoffMinutes())
                 .managerAccessReviewAdditionalEmails(entity.getManagerAccessReviewAdditionalEmails())
                 .managerAccessReviewTeamsWebhookUrl(entity.getManagerAccessReviewTeamsWebhookUrl())
                 .managerAccessReviewSlackWebhookUrl(entity.getManagerAccessReviewSlackWebhookUrl())
+                .managerAccessReviewEscalationEnabled(entity.isManagerAccessReviewEscalationEnabled())
+                .managerAccessReviewEscalationAfterDays(entity.getManagerAccessReviewEscalationAfterDays())
+                .managerAccessReviewEscalationEmailRecipients(entity.getManagerAccessReviewEscalationEmailRecipients())
+                .managerAccessReviewEscalationTeamsWebhookUrl(entity.getManagerAccessReviewEscalationTeamsWebhookUrl())
+                .managerAccessReviewEscalationSlackWebhookUrl(entity.getManagerAccessReviewEscalationSlackWebhookUrl())
                 .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
                 .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
                 .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())
                 .privilegedActionAlertSlackWebhookUrl(entity.getPrivilegedActionAlertSlackWebhookUrl())
+                .managerAccessReviewReminderSubjectTemplate(entity.getManagerAccessReviewReminderSubjectTemplate())
+                .managerAccessReviewReminderBodyTemplate(entity.getManagerAccessReviewReminderBodyTemplate())
+                .managerAccessReviewEscalationSubjectTemplate(entity.getManagerAccessReviewEscalationSubjectTemplate())
+                .managerAccessReviewEscalationBodyTemplate(entity.getManagerAccessReviewEscalationBodyTemplate())
+                .privilegedActionAlertSubjectTemplate(entity.getPrivilegedActionAlertSubjectTemplate())
+                .privilegedActionAlertBodyTemplate(entity.getPrivilegedActionAlertBodyTemplate())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

@@ -32,8 +32,10 @@ public class UserService {
     private final AccessScopeService accessScopeService;
     private final ReconModuleService reconModuleService;
     private final PrivilegedAccessService privilegedAccessService;
+    private final AccessGovernanceNotificationService accessGovernanceNotificationService;
 
     private static final int DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS = 90;
+    private static final String PENDING_MANAGER = "PENDING_MANAGER";
 
     public List<UserDto> getAllUsers(String tenantId) {
         return userRepository.findByTenantId(tenantId)
@@ -255,11 +257,20 @@ public class UserService {
         user.setLastAccessReviewBy(defaultActor(actorUsername));
         user.setAccessReviewDueAt(now.plusDays(nextReviewDays));
         user.setAccessReviewLastReminderAt(null);
+        user.setAccessReviewReminderAcknowledgedAt(null);
+        user.setAccessReviewReminderAcknowledgedBy(null);
+        user.setAccessReviewReminderAckNote(null);
+        user.setAccessReviewLastEscalatedAt(null);
         if (Boolean.TRUE.equals(safeRequest.getDeactivateUser())) {
             user.setActive(false);
         }
 
         User saved = userRepository.save(user);
+        accessGovernanceNotificationService.cancelAccessReviewNotifications(
+                saved.getTenantId(),
+                saved.getId(),
+                actorUsername,
+                "Access review completed");
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("user", cloneForAudit(saved));
         after.put("decision", decision);
@@ -280,6 +291,48 @@ public class UserService {
                 actorUsername,
                 decision,
                 Boolean.TRUE.equals(safeRequest.getDeactivateUser()));
+        return toDto(saved);
+    }
+
+    @Transactional
+    public UserDto acknowledgeAccessReviewReminder(String tenantId,
+                                                   UUID userId,
+                                                   AcknowledgeAccessReviewReminderRequest req,
+                                                   String actorUsername,
+                                                   Set<String> actorPermissions) {
+        User user = userRepository.findByIdAndTenantId(userId, tenantId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        User before = cloneForAudit(user);
+        assertReviewAllowed(tenantId, user, actorUsername, actorPermissions);
+        String note = requireText(req != null ? req.getNote() : null, "Acknowledgment note");
+        if (!user.isActive() || !PENDING_MANAGER.equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), ""))) {
+            throw new RuntimeException("Only pending manager reviews can be acknowledged");
+        }
+        if (user.getAccessReviewLastReminderAt() == null) {
+            throw new RuntimeException("No manager reminder has been sent for this review");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        user.setAccessReviewReminderAcknowledgedAt(now);
+        user.setAccessReviewReminderAcknowledgedBy(defaultActor(actorUsername));
+        user.setAccessReviewReminderAckNote(note);
+
+        User saved = userRepository.save(user);
+        accessGovernanceNotificationService.cancelAccessReviewNotifications(
+                saved.getTenantId(),
+                saved.getId(),
+                actorUsername,
+                "Reminder acknowledged");
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("user", cloneForAudit(saved));
+        after.put("note", note);
+        recordSecurityAudit(saved.getTenantId(),
+                "USER_ACCESS_REVIEW_REMINDER_ACKNOWLEDGED",
+                "User access review reminder acknowledged",
+                saved.getId().toString(),
+                actorUsername,
+                before,
+                after);
         return toDto(saved);
     }
 
@@ -325,6 +378,10 @@ public class UserService {
                 .lastAccessReviewBy(user.getLastAccessReviewBy())
                 .accessReviewDueAt(user.getAccessReviewDueAt())
                 .accessReviewLastReminderAt(user.getAccessReviewLastReminderAt())
+                .accessReviewReminderAcknowledgedAt(user.getAccessReviewReminderAcknowledgedAt())
+                .accessReviewReminderAcknowledgedBy(user.getAccessReviewReminderAcknowledgedBy())
+                .accessReviewReminderAckNote(user.getAccessReviewReminderAckNote())
+                .accessReviewLastEscalatedAt(user.getAccessReviewLastEscalatedAt())
                 .roles(user.getRoles() != null ? new HashSet<>(user.getRoles()) : new HashSet<>())
                 .storeIds(user.getStoreIds() != null ? new HashSet<>(user.getStoreIds()) : new HashSet<>())
                 .active(user.isActive())
@@ -362,6 +419,10 @@ public class UserService {
                 .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
                 .lastAccessReviewBy(currentUser.getLastAccessReviewBy())
                 .accessReviewDueAt(currentUser.getAccessReviewDueAt())
+                .accessReviewLastReminderAt(currentUser.getAccessReviewLastReminderAt())
+                .accessReviewReminderAcknowledgedAt(currentUser.getAccessReviewReminderAcknowledgedAt())
+                .accessReviewReminderAcknowledgedBy(currentUser.getAccessReviewReminderAcknowledgedBy())
+                .accessReviewLastEscalatedAt(currentUser.getAccessReviewLastEscalatedAt())
                 .emergencyAccessActive(resolvedAccess.emergencyAccessActive())
                 .emergencyAccessExpiresAt(resolvedAccess.emergencyAccessExpiresAt())
                 .emergencyRoles(resolvedAccess.emergencyRoles())

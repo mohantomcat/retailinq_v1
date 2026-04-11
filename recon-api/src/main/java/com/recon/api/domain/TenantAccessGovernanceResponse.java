@@ -16,6 +16,8 @@ public class TenantAccessGovernanceResponse {
     private int usersDueForReview;
     private int usersPendingReview;
     private int pendingManagerReviews;
+    private int acknowledgedManagerReviews;
+    private int escalatedManagerReviews;
     private int usersWithoutManager;
     private int highPrivilegeUsers;
     private int activeEmergencyAccessUsers;

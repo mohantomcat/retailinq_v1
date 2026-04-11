@@ -87,6 +87,18 @@ public class User {
     @Column(name = "access_review_last_reminder_at")
     private LocalDateTime accessReviewLastReminderAt;
 
+    @Column(name = "access_review_reminder_acknowledged_at")
+    private LocalDateTime accessReviewReminderAcknowledgedAt;
+
+    @Column(name = "access_review_reminder_acknowledged_by")
+    private String accessReviewReminderAcknowledgedBy;
+
+    @Column(name = "access_review_reminder_ack_note")
+    private String accessReviewReminderAckNote;
+
+    @Column(name = "access_review_last_escalated_at")
+    private LocalDateTime accessReviewLastEscalatedAt;
+
     @Column(name = "failed_login_attempts", nullable = false)
     @Builder.Default
     private int failedLoginAttempts = 0;
