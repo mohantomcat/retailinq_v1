@@ -62,7 +62,7 @@ export default function Login() {
 
     const brandTokens = useMemo(() => getBrandTokens(branding), [branding])
 
-    const {login, completeOidcLogin} = useAuth()
+    const {login, completeOidcLogin, completeSsoLogin} = useAuth()
     const navigate = useNavigate()
     const location = useLocation()
 
@@ -101,9 +101,10 @@ export default function Login() {
         const params = new URLSearchParams(location.search)
         const code = params.get('code')
         const state = params.get('state')
+        const ssoCode = params.get('ssoCode')
         const oidcError = params.get('error')
 
-        if (!code && !oidcError) {
+        if (!ssoCode && !code && !oidcError) {
             return undefined
         }
 
@@ -112,18 +113,22 @@ export default function Login() {
             setLoading(true)
             setError('')
             try {
-                await completeOidcLogin({
-                    code,
-                    state,
-                    error: oidcError,
-                    errorDescription: params.get('error_description'),
-                })
+                if (ssoCode) {
+                    await completeSsoLogin({code: ssoCode})
+                } else {
+                    await completeOidcLogin({
+                        code,
+                        state,
+                        error: oidcError,
+                        errorDescription: params.get('error_description'),
+                    })
+                }
                 if (active) {
                     navigate('/', {replace: true})
                 }
             } catch (err) {
                 if (active) {
-                    setError(err.message || t('OIDC login failed'))
+                    setError(err.message || t('Enterprise login failed'))
                     navigate('/login', {replace: true})
                 }
             } finally {
@@ -138,7 +143,7 @@ export default function Login() {
         return () => {
             active = false
         }
-    }, [completeOidcLogin, location.search, navigate, t])
+    }, [completeOidcLogin, completeSsoLogin, location.search, navigate, t])
 
     const handleLogin = async (e) => {
         e.preventDefault()
@@ -177,6 +182,25 @@ export default function Login() {
             window.location.assign(response.authorizationUrl)
         } catch (err) {
             setError(err.message || t('OIDC login could not be started'))
+            setLoading(false)
+        }
+    }
+
+    const handleSamlLogin = async () => {
+        if (!tenantId.trim()) {
+            setError(t('Organisation is required'))
+            return
+        }
+        setLoading(true)
+        setError('')
+        try {
+            const response = await authApi.startSamlLogin({tenantId})
+            if (!response?.redirectUrl) {
+                throw new Error(t('SAML login could not be started'))
+            }
+            window.location.assign(response.redirectUrl)
+        } catch (err) {
+            setError(err.message || t('SAML login could not be started'))
             setLoading(false)
         }
     }
@@ -626,6 +650,28 @@ export default function Login() {
                                         {t('Continue with {provider}', {
                                             provider:
                                                 loginOptions.oidcDisplayName ||
+                                                'Enterprise SSO',
+                                        })}
+                                    </Button>
+                                )}
+
+                                {loginOptions?.samlEnabled && (
+                                    <Button
+                                        type="button"
+                                        variant="outlined"
+                                        fullWidth
+                                        onClick={handleSamlLogin}
+                                        disabled={loading}
+                                        sx={{
+                                            py: 1.05,
+                                            fontSize: '0.92rem',
+                                            fontWeight: 800,
+                                            textTransform: 'none',
+                                        }}
+                                    >
+                                        {t('Continue with {provider}', {
+                                            provider:
+                                                loginOptions.samlDisplayName ||
                                                 'Enterprise SSO',
                                         })}
                                     </Button>

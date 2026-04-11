@@ -14,6 +14,7 @@ public class CreateUserRequest {
     private String tenantId;
     private String identityProvider;
     private String externalSubject;
+    private String directoryExternalId;
     private Boolean emailVerified;
     private Set<UUID> roleIds;
     private Set<String> storeIds;

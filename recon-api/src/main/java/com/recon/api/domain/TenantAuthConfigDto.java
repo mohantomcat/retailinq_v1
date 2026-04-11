@@ -21,7 +21,11 @@ public class TenantAuthConfigDto {
     private boolean samlEnabled;
     private String samlDisplayName;
     private String samlEntityId;
+    private String samlAcsUrl;
     private String samlSsoUrl;
+    private String samlIdpEntityId;
+    private String samlIdpMetadataUrl;
+    private String samlIdpVerificationCertificate;
     private boolean apiKeyAuthEnabled;
     private boolean autoProvisionUsers;
     private String allowedEmailDomains;
@@ -30,6 +34,9 @@ public class TenantAuthConfigDto {
     private String oidcGroupsClaim;
     private String samlEmailAttribute;
     private String samlGroupsAttribute;
+    private String samlUsernameAttribute;
+    private boolean scimEnabled;
+    private String scimBearerTokenRef;
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

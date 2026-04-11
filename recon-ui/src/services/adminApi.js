@@ -211,6 +211,14 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    saveIdentityGroupRoleMappings: async (data) => {
+        const res = await apiFetch(`${BASE}/identity-group-role-mappings`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
     saveTenantSystemEndpointProfiles: async (data) => {
         const res = await apiFetch(`${BASE}/system-endpoint-profiles`, {
             method: 'PUT',

@@ -291,6 +291,18 @@ public class AdminController {
                         principal.getUsername())));
     }
 
+    @PutMapping("/identity-group-role-mappings")
+    public ResponseEntity<ApiResponse<List<OidcGroupRoleMappingDto>>> saveIdentityGroupRoleMappings(
+            @RequestBody SaveOidcGroupRoleMappingsRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.saveOidcGroupRoleMappings(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
     @PutMapping("/system-endpoint-profiles")
     public ResponseEntity<ApiResponse<List<SystemEndpointProfileDto>>> saveTenantSystemEndpointProfiles(
             @RequestBody SaveTenantSystemEndpointProfilesRequest request,

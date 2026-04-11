@@ -83,7 +83,11 @@ export default function TenantAccessCenter() {
         oidcClientSecretRef: '',
         samlDisplayName: '',
         samlEntityId: '',
+        samlAcsUrl: '',
         samlSsoUrl: '',
+        samlIdpEntityId: '',
+        samlIdpMetadataUrl: '',
+        samlIdpVerificationCertificate: '',
         autoProvisionUsers: false,
         allowedEmailDomains: '',
         oidcUsernameClaim: 'preferred_username',
@@ -91,6 +95,9 @@ export default function TenantAccessCenter() {
         oidcGroupsClaim: 'groups',
         samlEmailAttribute: '',
         samlGroupsAttribute: '',
+        samlUsernameAttribute: 'uid',
+        scimEnabled: false,
+        scimBearerTokenRef: '',
     })
     const [groupMappingForm, setGroupMappingForm] = useState([
         {oidcGroup: '', roleId: '', active: true},
@@ -224,18 +231,18 @@ export default function TenantAccessCenter() {
             .filter((mapping) => mapping.oidcGroup || mapping.roleId)
 
         if (mappings.some((mapping) => !mapping.oidcGroup || !mapping.roleId)) {
-            setError(t('Each OIDC mapping needs a group and role'))
+            setError(t('Each external mapping needs a group and role'))
             return
         }
 
         setSaving(true)
         try {
-            const oidcGroupRoleMappings = await adminApi.saveOidcGroupRoleMappings({mappings})
+            const oidcGroupRoleMappings = await adminApi.saveIdentityGroupRoleMappings({mappings})
             setCenter((current) => ({...current, oidcGroupRoleMappings}))
-            setSuccess(t('OIDC group role mappings updated'))
+            setSuccess(t('External group role mappings updated'))
             setError('')
         } catch (err) {
-            setError(err.message || 'Failed to save OIDC group role mappings')
+            setError(err.message || 'Failed to save external group role mappings')
         } finally {
             setSaving(false)
         }
@@ -534,6 +541,7 @@ export default function TenantAccessCenter() {
                         <FormControlLabel control={<Switch checked={!!authForm.localLoginEnabled} onChange={(event) => setAuthForm((current) => ({...current, localLoginEnabled: event.target.checked}))}/>} label={t('Enable Local Login')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.oidcEnabled} onChange={(event) => setAuthForm((current) => ({...current, oidcEnabled: event.target.checked}))}/>} label={t('Enable OIDC / SSO')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.samlEnabled} onChange={(event) => setAuthForm((current) => ({...current, samlEnabled: event.target.checked}))}/>} label={t('Enable SAML')}/>
+                        <FormControlLabel control={<Switch checked={!!authForm.scimEnabled} onChange={(event) => setAuthForm((current) => ({...current, scimEnabled: event.target.checked}))}/>} label={t('Enable SCIM Provisioning')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.apiKeyAuthEnabled} onChange={(event) => setAuthForm((current) => ({...current, apiKeyAuthEnabled: event.target.checked}))}/>} label={t('Enable Tenant API Keys')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.autoProvisionUsers} onChange={(event) => setAuthForm((current) => ({...current, autoProvisionUsers: event.target.checked}))}/>} label={t('Auto Provision SSO Users')}/>
                         <TextField size="small" label={t('Allowed Email Domains')} value={authForm.allowedEmailDomains || ''} onChange={(event) => setAuthForm((current) => ({...current, allowedEmailDomains: event.target.value}))} helperText={t('Comma-separated domains for SSO provisioning')}/>
@@ -548,19 +556,25 @@ export default function TenantAccessCenter() {
                         <TextField size="small" label={t('OIDC Groups Claim')} value={authForm.oidcGroupsClaim || 'groups'} onChange={(event) => setAuthForm((current) => ({...current, oidcGroupsClaim: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Display Name')} value={authForm.samlDisplayName || ''} onChange={(event) => setAuthForm((current) => ({...current, samlDisplayName: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Entity Id')} value={authForm.samlEntityId || ''} onChange={(event) => setAuthForm((current) => ({...current, samlEntityId: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML ACS URL')} value={authForm.samlAcsUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, samlAcsUrl: event.target.value}))} helperText={t('Use the ACS callback URL exposed by this application')}/>
                         <TextField size="small" label={t('SAML SSO URL')} value={authForm.samlSsoUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, samlSsoUrl: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML IdP Entity Id')} value={authForm.samlIdpEntityId || ''} onChange={(event) => setAuthForm((current) => ({...current, samlIdpEntityId: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML Metadata URL')} value={authForm.samlIdpMetadataUrl || ''} onChange={(event) => setAuthForm((current) => ({...current, samlIdpMetadataUrl: event.target.value}))} helperText={t('Optional. When set, metadata discovery is used for IdP details.')}/>
+                        <TextField size="small" multiline minRows={4} label={t('SAML Verification Certificate')} value={authForm.samlIdpVerificationCertificate || ''} onChange={(event) => setAuthForm((current) => ({...current, samlIdpVerificationCertificate: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Email Attribute')} value={authForm.samlEmailAttribute || ''} onChange={(event) => setAuthForm((current) => ({...current, samlEmailAttribute: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Groups Attribute')} value={authForm.samlGroupsAttribute || ''} onChange={(event) => setAuthForm((current) => ({...current, samlGroupsAttribute: event.target.value}))}/>
+                        <TextField size="small" label={t('SAML Username Attribute')} value={authForm.samlUsernameAttribute || 'uid'} onChange={(event) => setAuthForm((current) => ({...current, samlUsernameAttribute: event.target.value}))}/>
+                        <TextField size="small" label={t('SCIM Bearer Token Reference')} value={authForm.scimBearerTokenRef || ''} onChange={(event) => setAuthForm((current) => ({...current, scimBearerTokenRef: event.target.value}))} helperText={t('Environment variable or JVM property name used to validate SCIM bearer tokens')}/>
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>
 
                         <Box sx={{pt: 1.5, mt: 0.5, borderTop: `1px solid ${palette.borderSoft}`}}>
                             <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
-                                {t('OIDC Group Role Mapping')}
+                                {t('External Group Role Mapping')}
                             </Typography>
                             <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
-                                {t('Map identity provider groups or roles to application roles for SSO access.')}
+                                {t('Map identity provider groups or roles to application roles for OIDC, SAML, and SCIM access.')}
                             </Typography>
                             <Stack spacing={1.25}>
                                 {groupMappingForm.map((mapping, index) => (
@@ -579,7 +593,7 @@ export default function TenantAccessCenter() {
                                     >
                                         <TextField
                                             size="small"
-                                            label={t('OIDC Group')}
+                                            label={t('External Group')}
                                             value={mapping.oidcGroup}
                                             onChange={(event) =>
                                                 setGroupMappingForm((current) =>
@@ -646,7 +660,7 @@ export default function TenantAccessCenter() {
                                         {t('Add Mapping')}
                                     </Button>
                                     <Button variant="contained" onClick={saveGroupRoleMappings} disabled={loading || saving || roles.length === 0} sx={{textTransform: 'none', borderRadius: 2.5}}>
-                                        {saving ? t('Saving...') : t('Save OIDC Mappings')}
+                                        {saving ? t('Saving...') : t('Save External Mappings')}
                                     </Button>
                                 </Stack>
                             </Stack>

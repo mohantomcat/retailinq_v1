@@ -20,6 +20,8 @@ public interface UserRepository
 
     Optional<User> findByTenantIdAndEmailIgnoreCase(String tenantId, String email);
 
+    Optional<User> findByTenantIdAndDirectoryExternalIdIgnoreCase(String tenantId, String directoryExternalId);
+
     Optional<User> findByTenantIdAndIdentityProviderIgnoreCaseAndExternalSubjectIgnoreCase(
             String tenantId, String identityProvider, String externalSubject);
 

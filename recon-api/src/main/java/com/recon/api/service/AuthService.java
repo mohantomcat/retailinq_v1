@@ -483,6 +483,7 @@ public class AuthService {
                 .lastLogin(currentUser.getLastLogin())
                 .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
                 .externalSubject(currentUser.getExternalSubject())
+                .directoryExternalId(currentUser.getDirectoryExternalId())
                 .emailVerified(currentUser.isEmailVerified())
                 .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
                 .lastAccessReviewAt(currentUser.getLastAccessReviewAt())

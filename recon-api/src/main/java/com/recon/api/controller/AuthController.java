@@ -4,11 +4,14 @@ import com.recon.api.domain.*;
 import com.recon.api.security.ReconUserPrincipal;
 import com.recon.api.service.AuthService;
 import com.recon.api.service.OidcLoginService;
+import com.recon.api.service.SamlLoginService;
+import com.recon.api.service.SsoLoginCompletionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.view.RedirectView;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -18,6 +21,8 @@ public class AuthController {
 
     private final AuthService authService;
     private final OidcLoginService oidcLoginService;
+    private final SamlLoginService samlLoginService;
+    private final SsoLoginCompletionService ssoLoginCompletionService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(
@@ -58,6 +63,48 @@ public class AuthController {
             return ResponseEntity.status(401)
                     .body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    @PostMapping("/saml/start")
+    public ResponseEntity<ApiResponse<SamlLoginStartResponse>> startSamlLogin(
+            @RequestBody SamlLoginStartRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.ok(
+                    samlLoginService.startLogin(request)));
+        } catch (Exception e) {
+            log.warn("SAML login start failed: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sso/complete")
+    public ResponseEntity<ApiResponse<LoginResponse>> completeSsoLogin(
+            @RequestBody SsoCompletionRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.ok(
+                    ssoLoginCompletionService.exchange(
+                            request != null ? request.getCode() : null)));
+        } catch (Exception e) {
+            log.warn("SSO completion failed: {}", e.getMessage());
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/saml/acs/{tenantId}")
+    public RedirectView completeSamlAcs(
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam("SAMLResponse") String samlResponse,
+            @RequestParam(value = "RelayState", required = false) String relayState) {
+        RedirectView redirectView = new RedirectView();
+        redirectView.setExposeModelAttributes(false);
+        redirectView.setUrl(
+                samlLoginService.consumeAssertion(
+                        tenantId,
+                        samlResponse,
+                        relayState));
+        return redirectView;
     }
 
     @GetMapping("/login-options")

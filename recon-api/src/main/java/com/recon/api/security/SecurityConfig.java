@@ -28,6 +28,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final ScimAuthenticationFilter scimAuthenticationFilter;
     private final ApiKeyAuthenticationFilter apiKeyFilter;
     private final JwtAuthenticationFilter jwtFilter;
 
@@ -55,6 +56,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/login-options",
                                 "/api/v1/auth/oidc/start",
                                 "/api/v1/auth/oidc/callback",
+                                "/api/v1/auth/saml/start",
+                                "/api/v1/auth/saml/acs/**",
+                                "/api/v1/auth/sso/complete",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/tenant-branding/current",
                                 "/api/v1/recon/health",
@@ -62,6 +66,8 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(scimAuthenticationFilter,
+                        ApiKeyAuthenticationFilter.class)
                 .addFilterBefore(apiKeyFilter,
                         UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter,

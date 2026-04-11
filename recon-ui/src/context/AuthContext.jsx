@@ -113,6 +113,11 @@ export function AuthProvider({children}) {
         return persistLoginResponse(data)
     }, [persistLoginResponse])
 
+    const completeSsoLogin = useCallback(async ({code}) => {
+        const data = await authApi.completeSsoLogin({code})
+        return persistLoginResponse(data)
+    }, [persistLoginResponse])
+
     const logout = useCallback(() => {
         sessionStorage.removeItem(TOKEN_KEY)
         sessionStorage.removeItem(REFRESH_KEY)
@@ -237,6 +242,7 @@ export function AuthProvider({children}) {
         loading,
         login,
         completeOidcLogin,
+        completeSsoLogin,
         logout,
         refreshSession,
         updateUserProfile,

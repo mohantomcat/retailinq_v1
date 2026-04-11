@@ -45,6 +45,19 @@ export const authApi = {
         return json.data
     },
 
+    startSamlLogin: async ({tenantId}) => {
+        const res = await fetch(`${BASE}/auth/saml/start`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tenantId}),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+            throw new Error(json.message || 'SAML login could not be started')
+        }
+        return json.data
+    },
+
     completeOidcLogin: async ({code, state, error, errorDescription}) => {
         const res = await fetch(`${BASE}/auth/oidc/callback`, {
             method: 'POST',
@@ -54,6 +67,19 @@ export const authApi = {
         const json = await res.json()
         if (!res.ok) {
             throw new Error(json.message || 'OIDC login failed')
+        }
+        return json.data
+    },
+
+    completeSsoLogin: async ({code}) => {
+        const res = await fetch(`${BASE}/auth/sso/complete`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code}),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+            throw new Error(json.message || 'SSO login failed')
         }
         return json.data
     },

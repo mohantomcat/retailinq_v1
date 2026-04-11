@@ -16,7 +16,11 @@ public class SaveTenantAuthConfigRequest {
     private Boolean samlEnabled;
     private String samlDisplayName;
     private String samlEntityId;
+    private String samlAcsUrl;
     private String samlSsoUrl;
+    private String samlIdpEntityId;
+    private String samlIdpMetadataUrl;
+    private String samlIdpVerificationCertificate;
     private Boolean apiKeyAuthEnabled;
     private Boolean autoProvisionUsers;
     private String allowedEmailDomains;
@@ -25,4 +29,7 @@ public class SaveTenantAuthConfigRequest {
     private String oidcGroupsClaim;
     private String samlEmailAttribute;
     private String samlGroupsAttribute;
+    private String samlUsernameAttribute;
+    private Boolean scimEnabled;
+    private String scimBearerTokenRef;
 }

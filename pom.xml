@@ -79,5 +79,13 @@
             <id>apache-releases</id>
             <url>https://repository.apache.org/content/repositories/releases/</url>
         </repository>
+        <repository>
+            <id>shibboleth-releases</id>
+            <name>Shibboleth Releases Repository</name>
+            <url>https://build.shibboleth.net/maven/releases</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 </project>

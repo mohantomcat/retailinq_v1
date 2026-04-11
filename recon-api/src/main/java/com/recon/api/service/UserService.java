@@ -67,7 +67,9 @@ public class UserService {
                 : new HashSet<>();
         String identityProvider = normalizeIdentityProvider(req.getIdentityProvider());
         String externalSubject = normalizeExternalSubject(identityProvider, req.getExternalSubject());
+        String directoryExternalId = trimToNull(req.getDirectoryExternalId());
         ensureExternalSubjectAvailable(tenantId, identityProvider, externalSubject, null);
+        ensureDirectoryExternalIdAvailable(tenantId, directoryExternalId, null);
         String password = trimToNull(req.getPassword());
         if ("LOCAL".equals(identityProvider) && password == null) {
             throw new RuntimeException("Password is required for local users");
@@ -83,6 +85,7 @@ public class UserService {
                 .tenantId(tenantId)
                 .identityProvider(identityProvider)
                 .externalSubject(externalSubject)
+                .directoryExternalId(directoryExternalId)
                 .emailVerified(Boolean.TRUE.equals(req.getEmailVerified()))
                 .accessReviewStatus("PENDING")
                 .accessReviewDueAt(LocalDateTime.now().plusDays(DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS))
@@ -294,6 +297,7 @@ public class UserService {
                 .tenantId(user.getTenantId())
                 .identityProvider(user.getIdentityProvider())
                 .externalSubject(user.getExternalSubject())
+                .directoryExternalId(user.getDirectoryExternalId())
                 .emailVerified(user.isEmailVerified())
                 .accessReviewStatus(user.getAccessReviewStatus())
                 .lastAccessReviewAt(user.getLastAccessReviewAt())
@@ -323,6 +327,7 @@ public class UserService {
                 .lastLogin(currentUser.getLastLogin())
                 .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
                 .externalSubject(currentUser.getExternalSubject())
+                .directoryExternalId(currentUser.getDirectoryExternalId())
                 .emailVerified(currentUser.isEmailVerified())
                 .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
                 .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
@@ -369,10 +374,15 @@ public class UserService {
         String externalSubject = req.getExternalSubject() != null
                 ? trimToNull(req.getExternalSubject())
                 : trimToNull(user.getExternalSubject());
+        String directoryExternalId = req.getDirectoryExternalId() != null
+                ? trimToNull(req.getDirectoryExternalId())
+                : trimToNull(user.getDirectoryExternalId());
         externalSubject = normalizeExternalSubject(identityProvider, externalSubject);
         ensureExternalSubjectAvailable(tenantId, identityProvider, externalSubject, user.getId());
+        ensureDirectoryExternalIdAvailable(tenantId, directoryExternalId, user.getId());
         user.setIdentityProvider(identityProvider);
         user.setExternalSubject(externalSubject);
+        user.setDirectoryExternalId(directoryExternalId);
         if (req.getEmailVerified() != null) {
             user.setEmailVerified(req.getEmailVerified());
         }
@@ -380,8 +390,8 @@ public class UserService {
 
     private String normalizeIdentityProvider(String value) {
         String normalized = defaultIfBlank(value, "LOCAL").toUpperCase(Locale.ROOT);
-        if (!Set.of("LOCAL", "OIDC", "SAML").contains(normalized)) {
-            throw new RuntimeException("Identity provider must be LOCAL, OIDC, or SAML");
+        if (!Set.of("LOCAL", "OIDC", "SAML", "SCIM").contains(normalized)) {
+            throw new RuntimeException("Identity provider must be LOCAL, OIDC, SAML, or SCIM");
         }
         return normalized;
     }
@@ -395,6 +405,19 @@ public class UserService {
             throw new RuntimeException("External subject is required for SSO users");
         }
         return normalized;
+    }
+
+    private void ensureDirectoryExternalIdAvailable(String tenantId,
+                                                    String directoryExternalId,
+                                                    UUID currentUserId) {
+        if (directoryExternalId == null) {
+            return;
+        }
+        userRepository.findByTenantIdAndDirectoryExternalIdIgnoreCase(tenantId, directoryExternalId)
+                .filter(existing -> !Objects.equals(existing.getId(), currentUserId))
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Directory external id is already mapped to another user");
+                });
     }
 
     private void ensureExternalSubjectAvailable(String tenantId,

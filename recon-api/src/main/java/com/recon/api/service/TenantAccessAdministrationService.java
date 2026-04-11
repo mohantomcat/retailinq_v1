@@ -260,7 +260,11 @@ public class TenantAccessAdministrationService {
         }
         config.setSamlDisplayName(trimToNull(safeRequest.getSamlDisplayName()));
         config.setSamlEntityId(trimToNull(safeRequest.getSamlEntityId()));
+        config.setSamlAcsUrl(trimToNull(safeRequest.getSamlAcsUrl()));
         config.setSamlSsoUrl(trimToNull(safeRequest.getSamlSsoUrl()));
+        config.setSamlIdpEntityId(trimToNull(safeRequest.getSamlIdpEntityId()));
+        config.setSamlIdpMetadataUrl(trimToNull(safeRequest.getSamlIdpMetadataUrl()));
+        config.setSamlIdpVerificationCertificate(trimToNull(safeRequest.getSamlIdpVerificationCertificate()));
         if (safeRequest.getApiKeyAuthEnabled() != null) {
             config.setApiKeyAuthEnabled(safeRequest.getApiKeyAuthEnabled());
         }
@@ -273,6 +277,11 @@ public class TenantAccessAdministrationService {
         config.setOidcGroupsClaim(defaultIfBlank(safeRequest.getOidcGroupsClaim(), "groups"));
         config.setSamlEmailAttribute(trimToNull(safeRequest.getSamlEmailAttribute()));
         config.setSamlGroupsAttribute(trimToNull(safeRequest.getSamlGroupsAttribute()));
+        config.setSamlUsernameAttribute(defaultIfBlank(safeRequest.getSamlUsernameAttribute(), "uid"));
+        if (safeRequest.getScimEnabled() != null) {
+            config.setScimEnabled(safeRequest.getScimEnabled());
+        }
+        config.setScimBearerTokenRef(trimToNull(safeRequest.getScimBearerTokenRef()));
         config.setUpdatedBy(defaultActor(actor));
         validateAuthConfig(config);
 
@@ -576,7 +585,9 @@ public class TenantAccessAdministrationService {
                         .oidcEnabled(false)
                         .oidcScopes("openid profile email")
                         .samlEnabled(false)
+                        .samlUsernameAttribute("uid")
                         .apiKeyAuthEnabled(false)
+                        .scimEnabled(false)
                         .updatedBy("system")
                         .build()));
     }
@@ -643,7 +654,11 @@ public class TenantAccessAdministrationService {
                 .samlEnabled(entity.isSamlEnabled())
                 .samlDisplayName(entity.getSamlDisplayName())
                 .samlEntityId(entity.getSamlEntityId())
+                .samlAcsUrl(entity.getSamlAcsUrl())
                 .samlSsoUrl(entity.getSamlSsoUrl())
+                .samlIdpEntityId(entity.getSamlIdpEntityId())
+                .samlIdpMetadataUrl(entity.getSamlIdpMetadataUrl())
+                .samlIdpVerificationCertificate(entity.getSamlIdpVerificationCertificate())
                 .apiKeyAuthEnabled(entity.isApiKeyAuthEnabled())
                 .autoProvisionUsers(entity.isAutoProvisionUsers())
                 .allowedEmailDomains(entity.getAllowedEmailDomains())
@@ -652,6 +667,9 @@ public class TenantAccessAdministrationService {
                 .oidcGroupsClaim(entity.getOidcGroupsClaim())
                 .samlEmailAttribute(entity.getSamlEmailAttribute())
                 .samlGroupsAttribute(entity.getSamlGroupsAttribute())
+                .samlUsernameAttribute(entity.getSamlUsernameAttribute())
+                .scimEnabled(entity.isScimEnabled())
+                .scimBearerTokenRef(entity.getScimBearerTokenRef())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .build();
@@ -917,13 +935,23 @@ public class TenantAccessAdministrationService {
         }
         if (config.isSamlEnabled()) {
             requireField(config.getSamlEntityId(), "SAML entity id");
-            requireHttpUrl(config.getSamlSsoUrl(), "SAML SSO URL");
+            requireHttpUrl(config.getSamlAcsUrl(), "SAML ACS URL");
+            if (trimToNull(config.getSamlIdpMetadataUrl()) != null) {
+                requireHttpUrl(config.getSamlIdpMetadataUrl(), "SAML IdP metadata URL");
+            } else {
+                requireField(config.getSamlIdpEntityId(), "SAML IdP entity id");
+                requireHttpUrl(config.getSamlSsoUrl(), "SAML SSO URL");
+                requireField(config.getSamlIdpVerificationCertificate(), "SAML IdP verification certificate");
+            }
         }
         if (config.isAutoProvisionUsers()) {
             if (!config.isOidcEnabled() && !config.isSamlEnabled()) {
                 throw new IllegalArgumentException("Auto provisioning requires OIDC or SAML to be enabled");
             }
             requireField(config.getAllowedEmailDomains(), "Allowed email domains");
+        }
+        if (config.isScimEnabled()) {
+            requireField(config.getScimBearerTokenRef(), "SCIM bearer token reference");
         }
     }
 
@@ -1103,7 +1131,11 @@ public class TenantAccessAdministrationService {
                 .samlEnabled(entity.isSamlEnabled())
                 .samlDisplayName(entity.getSamlDisplayName())
                 .samlEntityId(entity.getSamlEntityId())
+                .samlAcsUrl(entity.getSamlAcsUrl())
                 .samlSsoUrl(entity.getSamlSsoUrl())
+                .samlIdpEntityId(entity.getSamlIdpEntityId())
+                .samlIdpMetadataUrl(entity.getSamlIdpMetadataUrl())
+                .samlIdpVerificationCertificate(entity.getSamlIdpVerificationCertificate())
                 .apiKeyAuthEnabled(entity.isApiKeyAuthEnabled())
                 .autoProvisionUsers(entity.isAutoProvisionUsers())
                 .allowedEmailDomains(entity.getAllowedEmailDomains())
@@ -1112,6 +1144,9 @@ public class TenantAccessAdministrationService {
                 .oidcGroupsClaim(entity.getOidcGroupsClaim())
                 .samlEmailAttribute(entity.getSamlEmailAttribute())
                 .samlGroupsAttribute(entity.getSamlGroupsAttribute())
+                .samlUsernameAttribute(entity.getSamlUsernameAttribute())
+                .scimEnabled(entity.isScimEnabled())
+                .scimBearerTokenRef(entity.getScimBearerTokenRef())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

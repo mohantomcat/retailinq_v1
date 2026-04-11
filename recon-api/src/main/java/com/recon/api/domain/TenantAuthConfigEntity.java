@@ -66,8 +66,20 @@ public class TenantAuthConfigEntity {
     @Column(name = "saml_entity_id")
     private String samlEntityId;
 
+    @Column(name = "saml_acs_url")
+    private String samlAcsUrl;
+
     @Column(name = "saml_sso_url")
     private String samlSsoUrl;
+
+    @Column(name = "saml_idp_entity_id")
+    private String samlIdpEntityId;
+
+    @Column(name = "saml_idp_metadata_url")
+    private String samlIdpMetadataUrl;
+
+    @Column(name = "saml_idp_verification_certificate")
+    private String samlIdpVerificationCertificate;
 
     @Column(name = "api_key_auth_enabled", nullable = false)
     @Builder.Default
@@ -97,6 +109,17 @@ public class TenantAuthConfigEntity {
 
     @Column(name = "saml_groups_attribute")
     private String samlGroupsAttribute;
+
+    @Column(name = "saml_username_attribute", nullable = false)
+    @Builder.Default
+    private String samlUsernameAttribute = "uid";
+
+    @Column(name = "scim_enabled", nullable = false)
+    @Builder.Default
+    private boolean scimEnabled = false;
+
+    @Column(name = "scim_bearer_token_ref")
+    private String scimBearerTokenRef;
 
     @Column(name = "updated_by")
     private String updatedBy;
@@ -136,6 +159,9 @@ public class TenantAuthConfigEntity {
         }
         if (oidcScopes == null || oidcScopes.isBlank()) {
             oidcScopes = "openid profile email";
+        }
+        if (samlUsernameAttribute == null || samlUsernameAttribute.isBlank()) {
+            samlUsernameAttribute = "uid";
         }
     }
 }

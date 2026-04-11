@@ -6,14 +6,10 @@ import com.recon.api.domain.OidcLoginCallbackRequest;
 import com.recon.api.domain.OidcLoginStartRequest;
 import com.recon.api.domain.OidcLoginStartResponse;
 import com.recon.api.domain.OidcLoginState;
-import com.recon.api.domain.Role;
 import com.recon.api.domain.TenantAuthConfigEntity;
-import com.recon.api.domain.TenantOidcGroupRoleMapping;
 import com.recon.api.domain.User;
 import com.recon.api.repository.OidcLoginStateRepository;
 import com.recon.api.repository.TenantAuthConfigRepository;
-import com.recon.api.repository.TenantOidcGroupRoleMappingRepository;
-import com.recon.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -21,7 +17,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -39,17 +34,14 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -64,11 +56,9 @@ public class OidcLoginService {
 
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final OidcLoginStateRepository oidcLoginStateRepository;
-    private final TenantOidcGroupRoleMappingRepository tenantOidcGroupRoleMappingRepository;
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final RestTemplateBuilder restTemplateBuilder;
     private final AuthService authService;
+    private final EnterpriseIdentityLifecycleService enterpriseIdentityLifecycleService;
     private final AuditLedgerService auditLedgerService;
 
     @Transactional
@@ -155,7 +145,17 @@ public class OidcLoginService {
 
         Jwt jwt = validateIdToken(config, metadata, idToken, loginState.getNonce());
         OidcUserClaims claims = extractClaims(config, jwt);
-        User user = resolveOrProvisionUser(config, claims);
+        User user = enterpriseIdentityLifecycleService.syncSsoIdentity(
+                config,
+                "OIDC",
+                new EnterpriseIdentityLifecycleService.ExternalIdentityProfile(
+                        claims.subject(),
+                        claims.username(),
+                        claims.email(),
+                        claims.fullName(),
+                        claims.emailVerified(),
+                        claims.groups()),
+                "oidc");
         recordSecurityAudit(config.getTenantId(),
                 "OIDC_LOGIN_ACCEPTED",
                 "OIDC login accepted",
@@ -272,11 +272,6 @@ public class OidcLoginService {
                 claimAsString(jwt, "email"),
                 claimAsString(jwt, "preferred_username"),
                 claimAsString(jwt, "upn"));
-        if (email == null || !email.contains("@")) {
-            throw new IllegalArgumentException("OIDC email claim is required");
-        }
-        validateAllowedEmailDomain(config, email);
-
         String username = firstNonBlank(
                 claimAsString(jwt, config.getOidcUsernameClaim()),
                 claimAsString(jwt, "preferred_username"),
@@ -297,131 +292,6 @@ public class OidcLoginService {
                 fullName,
                 Boolean.TRUE.equals(asBoolean(claimValue(jwt, "email_verified"))),
                 groups);
-    }
-
-    private User resolveOrProvisionUser(TenantAuthConfigEntity config,
-                                        OidcUserClaims claims) {
-        String tenantId = config.getTenantId();
-        User user = userRepository
-                .findByTenantIdAndIdentityProviderIgnoreCaseAndExternalSubjectIgnoreCase(
-                        tenantId,
-                        "OIDC",
-                        claims.subject())
-                .orElse(null);
-        boolean newUser = false;
-
-        if (user == null) {
-            user = userRepository.findByTenantIdAndEmailIgnoreCase(tenantId, claims.email()).orElse(null);
-            if (user != null
-                    && trimToNull(user.getExternalSubject()) != null
-                    && !claims.subject().equalsIgnoreCase(user.getExternalSubject())) {
-                throw new IllegalArgumentException("OIDC email is already linked to another external subject");
-            }
-        }
-
-        if (user == null) {
-            if (!config.isAutoProvisionUsers()) {
-                throw new IllegalArgumentException("SSO user is not provisioned for this tenant");
-            }
-            user = User.builder()
-                    .tenantId(tenantId)
-                    .username(nextAvailableUsername(tenantId, claims.username()))
-                    .email(claims.email())
-                    .fullName(claims.fullName())
-                    .passwordHash(passwordEncoder.encode(randomUrlToken(48)))
-                    .identityProvider("OIDC")
-                    .externalSubject(claims.subject())
-                    .emailVerified(claims.emailVerified())
-                    .active(true)
-                    .build();
-            newUser = true;
-        } else {
-            if (!user.isActive()) {
-                throw new IllegalArgumentException("Account is deactivated");
-            }
-            if (!claims.email().equalsIgnoreCase(user.getEmail())
-                    && userRepository.existsByTenantIdAndEmailIgnoreCase(tenantId, claims.email())) {
-                throw new IllegalArgumentException("OIDC email is already assigned to another user");
-            }
-            user.setEmail(claims.email());
-            user.setFullName(claims.fullName());
-            user.setIdentityProvider("OIDC");
-            user.setExternalSubject(claims.subject());
-            user.setEmailVerified(claims.emailVerified());
-        }
-
-        syncRoles(config, user, claims.groups(), newUser);
-        User saved = userRepository.save(user);
-        if (newUser) {
-            recordSecurityAudit(tenantId,
-                    "OIDC_USER_PROVISIONED",
-                    "OIDC user provisioned",
-                    saved.getId().toString(),
-                    saved.getUsername(),
-                    Map.of("email", saved.getEmail(), "subject", claims.subject()));
-        }
-        return saved;
-    }
-
-    private void syncRoles(TenantAuthConfigEntity config,
-                           User user,
-                           Set<String> groups,
-                           boolean newUser) {
-        List<TenantOidcGroupRoleMapping> mappings =
-                tenantOidcGroupRoleMappingRepository.findByTenantIdAndActiveTrue(config.getTenantId());
-        if (mappings.isEmpty()) {
-            if (newUser) {
-                throw new IllegalArgumentException(
-                        "Configure at least one active OIDC group-role mapping before auto-provisioning users");
-            }
-            return;
-        }
-
-        Set<String> normalizedGroups = groups.stream()
-                .map(this::normalizeGroup)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        Set<Role> mappedRoles = mappings.stream()
-                .filter(mapping -> normalizedGroups.contains(normalizeGroup(mapping.getOidcGroup())))
-                .map(TenantOidcGroupRoleMapping::getRole)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (mappedRoles.isEmpty()) {
-            throw new IllegalArgumentException("No application role mapping matched the OIDC groups");
-        }
-
-        Set<UUID> beforeRoleIds = user.getRoles().stream()
-                .map(Role::getId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        Set<UUID> afterRoleIds = mappedRoles.stream()
-                .map(Role::getId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        user.setRoles(mappedRoles);
-        if (!Objects.equals(beforeRoleIds, afterRoleIds)) {
-            recordSecurityAudit(config.getTenantId(),
-                    "OIDC_ROLES_SYNCED",
-                    "OIDC roles synced",
-                    user.getId() != null ? user.getId().toString() : user.getEmail(),
-                    user.getUsername(),
-                    Map.of(
-                            "groups", normalizedGroups,
-                            "beforeRoleIds", beforeRoleIds,
-                            "afterRoleIds", afterRoleIds));
-        }
-    }
-
-    private void validateAllowedEmailDomain(TenantAuthConfigEntity config,
-                                            String email) {
-        List<String> domains = splitCsv(config.getAllowedEmailDomains()).stream()
-                .map(item -> item.toLowerCase(Locale.ROOT))
-                .toList();
-        if (domains.isEmpty()) {
-            return;
-        }
-        String domain = email.substring(email.indexOf('@') + 1).toLowerCase(Locale.ROOT);
-        if (!domains.contains(domain)) {
-            throw new IllegalArgumentException("OIDC email domain is not allowed for this tenant");
-        }
     }
 
     private String resolveClientSecret(TenantAuthConfigEntity config) {
@@ -483,26 +353,9 @@ public class OidcLoginService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private String nextAvailableUsername(String tenantId, String preferredUsername) {
-        String base = sanitizeUsername(firstNonBlank(preferredUsername, "sso-user"));
-        String candidate = base;
-        int suffix = 2;
-        while (userRepository.existsByTenantIdAndUsernameIgnoreCase(tenantId, candidate)) {
-            candidate = base + "-" + suffix;
-            suffix++;
-        }
-        return candidate;
-    }
-
-    private String sanitizeUsername(String value) {
-        String sanitized = defaultIfBlank(value, "sso-user")
-                .replaceAll("[^A-Za-z0-9._-]", "-")
-                .replaceAll("-+", "-");
-        sanitized = trimToNull(sanitized);
-        if (sanitized == null || "-".equals(sanitized)) {
-            return "sso-user";
-        }
-        return sanitized.length() > 120 ? sanitized.substring(0, 120) : sanitized;
+    private String buildName(String givenName, String familyName) {
+        String combined = (defaultIfBlank(givenName, "") + " " + defaultIfBlank(familyName, "")).trim();
+        return trimToNull(combined);
     }
 
     private String normalizeIssuer(String value) {
@@ -514,11 +367,6 @@ public class OidcLoginService {
             issuer = issuer.substring(0, issuer.length() - 1);
         }
         return issuer;
-    }
-
-    private String normalizeGroup(String value) {
-        String trimmed = trimToNull(value);
-        return trimmed == null ? null : trimmed.toLowerCase(Locale.ROOT);
     }
 
     private String sha256Url(String value) {
@@ -548,22 +396,6 @@ public class OidcLoginService {
         byte[] token = new byte[bytes];
         RANDOM.nextBytes(token);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(token);
-    }
-
-    private List<String> splitCsv(String value) {
-        String trimmed = trimToNull(value);
-        if (trimmed == null) {
-            return List.of();
-        }
-        return java.util.Arrays.stream(trimmed.split(","))
-                .map(this::trimToNull)
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    private String buildName(String givenName, String familyName) {
-        String combined = (defaultIfBlank(givenName, "") + " " + defaultIfBlank(familyName, "")).trim();
-        return trimToNull(combined);
     }
 
     private String firstNonBlank(String... values) {

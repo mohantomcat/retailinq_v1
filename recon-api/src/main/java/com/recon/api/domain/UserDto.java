@@ -21,6 +21,7 @@ public class UserDto {
     private LocalDateTime lastLogin;
     private String identityProvider;
     private String externalSubject;
+    private String directoryExternalId;
     private boolean emailVerified;
     private String accessReviewStatus;
     private LocalDateTime lastAccessReviewAt;
