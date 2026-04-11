@@ -128,9 +128,13 @@ public class AdminController {
             @RequestBody(required = false) ReviewUserAccessRequest req,
             @AuthenticationPrincipal
             ReconUserPrincipal principal) {
-        requirePermission(principal, "ACCESS_REVIEW_MANAGE");
         return ResponseEntity.ok(ApiResponse.ok(
-                userService.reviewUserAccess(principal.getTenantId(), id, req, principal.getUsername())));
+                userService.reviewUserAccess(
+                        principal.getTenantId(),
+                        id,
+                        req,
+                        principal.getUsername(),
+                        principal.getPermissions())));
     }
 
     @PostMapping("/users/{id}/org-scopes")
@@ -253,6 +257,42 @@ public class AdminController {
         requirePermission(principal, "TENANT_ACCESS_MANAGE");
         return ResponseEntity.ok(ApiResponse.ok(
                 tenantAccessAdministrationService.getAccessCenter(principal.getTenantId())));
+    }
+
+    @PostMapping("/access-reviews/quarterly-cycle")
+    public ResponseEntity<ApiResponse<QuarterlyAccessReviewCycleResponse>> startQuarterlyAccessReviewCycle(
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ACCESS_REVIEW_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.startQuarterlyAccessReviewCycle(
+                        principal.getTenantId(),
+                        principal.getUsername())));
+    }
+
+    @PostMapping("/emergency-access-grants")
+    public ResponseEntity<ApiResponse<EmergencyAccessGrantDto>> grantEmergencyAccess(
+            @RequestBody GrantEmergencyAccessRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.grantEmergencyAccess(
+                        principal.getTenantId(),
+                        request,
+                        principal.getUsername())));
+    }
+
+    @PostMapping("/emergency-access-grants/{id}/revoke")
+    public ResponseEntity<ApiResponse<EmergencyAccessGrantDto>> revokeEmergencyAccess(
+            @PathVariable("id") UUID id,
+            @RequestBody(required = false) RevokeEmergencyAccessRequest request,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "TENANT_ACCESS_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.revokeEmergencyAccess(
+                        principal.getTenantId(),
+                        id,
+                        request,
+                        principal.getUsername())));
     }
 
     @PutMapping("/tenant-auth-config")

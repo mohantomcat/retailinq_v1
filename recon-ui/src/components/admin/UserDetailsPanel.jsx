@@ -115,6 +115,15 @@ export default function UserDetailsPanel({user, formatLastLogin}) {
 
     const roles = user.roles || []
     const storeIds = user.effectiveStoreIds || user.storeIds || []
+    const emergencyAccessLabel = user.emergencyAccessActive
+        ? `${t('Active until')} ${user.emergencyAccessExpiresAt ? new Date(user.emergencyAccessExpiresAt).toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        }) : '-'}`
+        : t('Inactive')
 
     return (
         <Paper
@@ -157,7 +166,7 @@ export default function UserDetailsPanel({user, formatLastLogin}) {
                         display: 'grid',
                         gridTemplateColumns: {
                             xs: '1fr',
-                            md: 'repeat(4, minmax(0, 1fr))',
+                            md: 'repeat(6, minmax(0, 1fr))',
                         },
                         gap: 2,
                         mb: 3,
@@ -229,6 +238,51 @@ export default function UserDetailsPanel({user, formatLastLogin}) {
                             }}
                         >
                             {user.email || '-'}
+                        </Typography>
+                    </Box>
+
+                    <Box>
+                        <Typography
+                            sx={{
+                                fontSize: '0.75rem',
+                                color: palette.textMuted,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.4px',
+                                mb: 0.5,
+                            }}
+                        >
+                            {t('Manager')}
+                        </Typography>
+                        <Typography
+                            sx={{
+                                fontSize: '0.95rem',
+                                color: palette.text,
+                            }}
+                        >
+                            {user.managerFullName || user.managerUsername || '-'}
+                        </Typography>
+                    </Box>
+
+                    <Box>
+                        <Typography
+                            sx={{
+                                fontSize: '0.75rem',
+                                color: palette.textMuted,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.4px',
+                                mb: 0.5,
+                            }}
+                        >
+                            {t('Emergency Access')}
+                        </Typography>
+                        <Typography
+                            sx={{
+                                fontSize: '0.9rem',
+                                color: user.emergencyAccessActive ? palette.chipRedText : palette.textMuted,
+                                fontWeight: user.emergencyAccessActive ? 700 : 500,
+                            }}
+                        >
+                            {emergencyAccessLabel}
                         </Typography>
                     </Box>
 

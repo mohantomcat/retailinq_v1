@@ -22,11 +22,17 @@ public class UserDto {
     private String identityProvider;
     private String externalSubject;
     private String directoryExternalId;
+    private UUID managerUserId;
+    private String managerUsername;
+    private String managerFullName;
     private boolean emailVerified;
     private String accessReviewStatus;
     private LocalDateTime lastAccessReviewAt;
     private String lastAccessReviewBy;
     private LocalDateTime accessReviewDueAt;
+    private boolean emergencyAccessActive;
+    private LocalDateTime emergencyAccessExpiresAt;
+    private List<RoleDto> emergencyRoles;
     private Set<String> storeIds;
     private Set<String> effectiveStoreIds;
     private boolean allStoreAccess;

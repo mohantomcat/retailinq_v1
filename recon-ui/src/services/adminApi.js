@@ -94,6 +94,29 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    startQuarterlyAccessReviewCycle: async () => {
+        const res = await apiFetch(`${BASE}/access-reviews/quarterly-cycle`, {
+            method: 'POST',
+        })
+        return await parseResponse(res)
+    },
+
+    grantEmergencyAccess: async (data) => {
+        const res = await apiFetch(`${BASE}/emergency-access-grants`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        })
+        return await parseResponse(res)
+    },
+
+    revokeEmergencyAccess: async (grantId, data) => {
+        const res = await apiFetch(`${BASE}/emergency-access-grants/${grantId}/revoke`, {
+            method: 'POST',
+            body: JSON.stringify(data || {}),
+        })
+        return await parseResponse(res)
+    },
+
     // Roles
     getRoles: async () => {
         const res = await apiFetch(`${BASE}/roles`)

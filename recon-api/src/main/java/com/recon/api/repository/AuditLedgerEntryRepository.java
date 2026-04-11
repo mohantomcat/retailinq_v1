@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface AuditLedgerEntryRepository extends JpaRepository<AuditLedgerEntry, UUID> {
     Optional<AuditLedgerEntry> findTopByTenantIdOrderByEntryNumberDesc(String tenantId);
 
+    List<AuditLedgerEntry> findTop100ByTenantIdAndSourceTypeOrderByEventAtDesc(String tenantId, String sourceType);
+
     List<AuditLedgerEntry> findTop500ByTenantIdAndEventAtBeforeOrderByEventAtAsc(String tenantId, LocalDateTime eventAt);
 
     long countByTenantId(String tenantId);

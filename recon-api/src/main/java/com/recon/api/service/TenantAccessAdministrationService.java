@@ -6,15 +6,20 @@ import com.recon.api.domain.AccessGovernanceUserFindingDto;
 import com.recon.api.domain.AssignUserOrganizationScopesRequest;
 import com.recon.api.domain.CreateTenantApiKeyRequest;
 import com.recon.api.domain.CreatedTenantApiKeyResponse;
+import com.recon.api.domain.EmergencyAccessGrantDto;
+import com.recon.api.domain.GrantEmergencyAccessRequest;
 import com.recon.api.domain.LoginOptionsResponse;
 import com.recon.api.domain.OidcGroupRoleMappingAssignmentRequest;
 import com.recon.api.domain.OidcGroupRoleMappingDto;
 import com.recon.api.domain.OrganizationUnit;
 import com.recon.api.domain.OrganizationUnitDto;
+import com.recon.api.domain.PrivilegedActionAlertDto;
+import com.recon.api.domain.QuarterlyAccessReviewCycleResponse;
 import com.recon.api.domain.ReconGroupCatalog;
 import com.recon.api.domain.ReconGroupSelectionAssignmentRequest;
 import com.recon.api.domain.ReconGroupSelectionDto;
 import com.recon.api.domain.ReconModuleDto;
+import com.recon.api.domain.RevokeEmergencyAccessRequest;
 import com.recon.api.domain.Role;
 import com.recon.api.domain.RoleDto;
 import com.recon.api.domain.SaveOidcGroupRoleMappingsRequest;
@@ -83,6 +88,7 @@ public class TenantAccessAdministrationService {
     private final ReconModuleService reconModuleService;
     private final SystemEndpointProfileService systemEndpointProfileService;
     private final AuditLedgerService auditLedgerService;
+    private final PrivilegedAccessService privilegedAccessService;
 
     @Value("${app.security.api-keys.default-expiration-days:90}")
     private int defaultApiKeyExpirationDays;
@@ -110,10 +116,36 @@ public class TenantAccessAdministrationService {
                 .apiKeys(apiKeys.stream()
                         .map(this::toDto)
                         .toList())
+                .emergencyAccessGrants(privilegedAccessService.listEmergencyAccessGrants(tenantId))
+                .privilegedActionAlerts(privilegedAccessService.listPrivilegedActionAlerts(tenantId))
                 .storeCatalog(accessScopeService.getTenantStoreCatalog(tenantId))
                 .reconGroups(reconModuleService.getTenantReconGroups(tenantId))
                 .systemEndpointProfiles(systemEndpointProfileService.getTenantProfiles(tenantId))
                 .build();
+    }
+
+    @Transactional
+    public QuarterlyAccessReviewCycleResponse startQuarterlyAccessReviewCycle(String tenantId,
+                                                                              String actor) {
+        accessScopeService.ensureTenantHierarchy(tenantId, actor);
+        return privilegedAccessService.startQuarterlyAccessReviewCycle(tenantId, actor);
+    }
+
+    @Transactional
+    public EmergencyAccessGrantDto grantEmergencyAccess(String tenantId,
+                                                        GrantEmergencyAccessRequest request,
+                                                        String actor) {
+        accessScopeService.ensureTenantHierarchy(tenantId, actor);
+        return privilegedAccessService.grantEmergencyAccess(tenantId, request, actor);
+    }
+
+    @Transactional
+    public EmergencyAccessGrantDto revokeEmergencyAccess(String tenantId,
+                                                         UUID grantId,
+                                                         RevokeEmergencyAccessRequest request,
+                                                         String actor) {
+        accessScopeService.ensureTenantHierarchy(tenantId, actor);
+        return privilegedAccessService.revokeEmergencyAccess(tenantId, grantId, request, actor);
     }
 
     @Transactional
@@ -735,8 +767,21 @@ public class TenantAccessAdministrationService {
         LocalDateTime now = LocalDateTime.now();
         boolean ssoConfigured = authConfig.isOidcEnabled() || authConfig.isSamlEnabled();
         boolean ssoPreferred = ssoConfigured && !"LOCAL".equalsIgnoreCase(defaultIfBlank(authConfig.getPreferredLoginMode(), "LOCAL"));
+        Map<UUID, User> usersById = new LinkedHashMap<>();
+        Map<UUID, PrivilegedAccessService.ResolvedAccess> resolvedAccessByUserId = new LinkedHashMap<>();
+        for (User user : users) {
+            if (user.getId() != null) {
+                usersById.put(user.getId(), user);
+                resolvedAccessByUserId.put(user.getId(), privilegedAccessService.resolveEffectiveAccess(user));
+            }
+        }
         List<AccessGovernanceUserFindingDto> userFindings = users.stream()
-                .map(user -> buildUserFinding(user, ssoPreferred, now))
+                .map(user -> buildUserFinding(
+                        user,
+                        usersById.get(user.getManagerUserId()),
+                        resolvedAccessByUserId.get(user.getId()),
+                        ssoPreferred,
+                        now))
                 .filter(Objects::nonNull)
                 .limit(50)
                 .toList();
@@ -746,7 +791,14 @@ public class TenantAccessAdministrationService {
                 .limit(50)
                 .toList();
 
-        int highPrivilegeUsers = (int) users.stream().filter(this::hasHighPrivilegeAccess).count();
+        int highPrivilegeUsers = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> privilegedAccessService.hasHighPrivilegeAccess(
+                        resolvedAccessByUserId.getOrDefault(
+                                user.getId(),
+                                new PrivilegedAccessService.ResolvedAccess(Set.of(), Set.of(), List.of(), false, null))
+                                .effectivePermissions()))
+                .count();
         int usersWithoutRoles = (int) users.stream()
                 .filter(user -> user.isActive() && (user.getRoles() == null || user.getRoles().isEmpty()))
                 .count();
@@ -757,6 +809,14 @@ public class TenantAccessAdministrationService {
         int usersPendingReview = (int) users.stream()
                 .filter(user -> user.isActive())
                 .filter(user -> "PENDING".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .count();
+        int pendingManagerReviews = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .count();
+        int usersWithoutManager = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> user.getManagerUserId() == null)
                 .count();
         int usersMissingExternalSubject = (int) users.stream()
                 .filter(user -> user.isActive())
@@ -777,6 +837,13 @@ public class TenantAccessAdministrationService {
                         && apiKey.getExpiresAt().isAfter(now)
                         && !apiKey.getExpiresAt().isAfter(now.plusDays(30)))
                 .count();
+        int activeEmergencyAccessUsers = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> resolvedAccessByUserId.getOrDefault(
+                                user.getId(),
+                                new PrivilegedAccessService.ResolvedAccess(Set.of(), Set.of(), List.of(), false, null))
+                        .emergencyAccessActive())
+                .count();
 
         return TenantAccessGovernanceResponse.builder()
                 .totalUsers(users.size())
@@ -786,7 +853,10 @@ public class TenantAccessAdministrationService {
                 .externalIdentityUsers(users.size() - localIdentityUsers)
                 .usersDueForReview(usersDueForReview)
                 .usersPendingReview(usersPendingReview)
+                .pendingManagerReviews(pendingManagerReviews)
+                .usersWithoutManager(usersWithoutManager)
                 .highPrivilegeUsers(highPrivilegeUsers)
+                .activeEmergencyAccessUsers(activeEmergencyAccessUsers)
                 .usersWithoutRoles(usersWithoutRoles)
                 .usersMissingExternalSubject(usersMissingExternalSubject)
                 .activeApiKeys(activeApiKeys)
@@ -801,21 +871,32 @@ public class TenantAccessAdministrationService {
     }
 
     private AccessGovernanceUserFindingDto buildUserFinding(User user,
+                                                            User manager,
+                                                            PrivilegedAccessService.ResolvedAccess resolvedAccess,
                                                             boolean ssoPreferred,
                                                             LocalDateTime now) {
         List<String> findings = new ArrayList<>();
         String identityProvider = defaultIfBlank(user.getIdentityProvider(), "LOCAL").toUpperCase(Locale.ROOT);
+        PrivilegedAccessService.ResolvedAccess safeResolvedAccess = resolvedAccess != null
+                ? resolvedAccess
+                : new PrivilegedAccessService.ResolvedAccess(Set.of(), Set.of(), List.of(), false, null);
         if (user.isActive() && (user.getAccessReviewDueAt() == null || !user.getAccessReviewDueAt().isAfter(now))) {
             findings.add("ACCESS_REVIEW_DUE");
         }
         if (user.isActive() && "PENDING".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))) {
             findings.add("ACCESS_REVIEW_PENDING");
         }
-        if (user.isActive() && hasHighPrivilegeAccess(user)) {
+        if (user.isActive() && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))) {
+            findings.add("MANAGER_REVIEW_PENDING");
+        }
+        if (user.isActive() && privilegedAccessService.hasHighPrivilegeAccess(safeResolvedAccess.effectivePermissions())) {
             findings.add("HIGH_PRIVILEGE_ACCESS");
         }
         if (user.isActive() && (user.getRoles() == null || user.getRoles().isEmpty())) {
             findings.add("NO_ROLE_ASSIGNED");
+        }
+        if (user.isActive() && user.getManagerUserId() == null) {
+            findings.add("MANAGER_NOT_ASSIGNED");
         }
         if (user.isActive()
                 && !"LOCAL".equals(identityProvider)
@@ -830,16 +911,19 @@ public class TenantAccessAdministrationService {
                 && user.getLastLogin().isBefore(now.minusDays(90))) {
             findings.add("DORMANT_USER");
         }
+        if (user.isActive() && safeResolvedAccess.emergencyAccessActive()) {
+            findings.add("EMERGENCY_ACCESS_ACTIVE");
+        }
         if (findings.isEmpty()) {
             return null;
         }
 
-        List<String> roleNames = user.getRoles() == null ? List.of() : user.getRoles().stream()
+        List<String> roleNames = safeResolvedAccess.effectiveRoles().stream()
                 .map(role -> defaultIfBlank(role.getName(), ""))
                 .filter(name -> !name.isBlank())
                 .sorted()
                 .toList();
-        List<String> permissionCodes = user.getAllPermissions().stream()
+        List<String> permissionCodes = safeResolvedAccess.effectivePermissions().stream()
                 .sorted()
                 .toList();
 
@@ -851,11 +935,16 @@ public class TenantAccessAdministrationService {
                 .active(user.isActive())
                 .identityProvider(identityProvider)
                 .externalSubject(user.getExternalSubject())
+                .managerUserId(user.getManagerUserId())
+                .managerUsername(manager != null ? manager.getUsername() : null)
+                .managerFullName(manager != null ? firstNonBlank(manager.getFullName(), manager.getUsername()) : null)
                 .accessReviewStatus(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
                 .accessReviewDueAt(user.getAccessReviewDueAt())
                 .lastAccessReviewAt(user.getLastAccessReviewAt())
                 .lastAccessReviewBy(user.getLastAccessReviewBy())
                 .lastLogin(user.getLastLogin())
+                .emergencyAccessActive(safeResolvedAccess.emergencyAccessActive())
+                .emergencyAccessExpiresAt(safeResolvedAccess.emergencyAccessExpiresAt())
                 .roleNames(roleNames)
                 .permissionCodes(permissionCodes)
                 .findingTypes(findings)
@@ -1114,6 +1203,19 @@ public class TenantAccessAdministrationService {
     private String defaultActor(String actor) {
         String trimmed = trimToNull(actor);
         return trimmed == null ? "system" : trimmed;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            String trimmed = trimToNull(value);
+            if (trimmed != null) {
+                return trimmed;
+            }
+        }
+        return null;
     }
 
     private OrganizationUnit cloneForAudit(OrganizationUnit unit) {

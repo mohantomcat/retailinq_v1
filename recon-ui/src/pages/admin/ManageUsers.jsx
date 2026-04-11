@@ -10,6 +10,7 @@ import {
     DialogTitle,
     Divider,
     FormControlLabel,
+    MenuItem,
     Switch,
     TextField,
     Typography,
@@ -79,6 +80,7 @@ export default function ManageUsers() {
         email: '',
         password: '',
         fullName: '',
+        managerUserId: '',
         tenantId: TENANT,
     })
     const [selectedRoles, setSelectedRoles] = useState([])
@@ -189,6 +191,7 @@ export default function ManageUsers() {
             email: '',
             password: '',
             fullName: '',
+            managerUserId: '',
             tenantId: TENANT,
         })
         setSelectedRoles([])
@@ -206,6 +209,7 @@ export default function ManageUsers() {
             email: user.email,
             fullName: user.fullName || '',
             password: '',
+            managerUserId: user.managerUserId ? String(user.managerUserId) : '',
             tenantId: user.tenantId,
         })
         setError('')
@@ -270,6 +274,7 @@ export default function ManageUsers() {
         try {
             await adminApi.createUser({
                 ...form,
+                managerUserId: form.managerUserId || null,
                 roleIds: selectedRoles,
                 storeIds: restrictStoreAccess ? selectedStores : [],
             })
@@ -285,7 +290,10 @@ export default function ManageUsers() {
     const handleEdit = async () => {
         setSaving(true)
         try {
-            await adminApi.updateUser(selected.id, form)
+            await adminApi.updateUser(selected.id, {
+                ...form,
+                managerUserId: form.managerUserId || null,
+            })
             await loadAll()
             closeDialog()
         } catch (e) {
@@ -486,6 +494,11 @@ export default function ManageUsers() {
                     : '',
             })),
         [roles]
+    )
+
+    const managerOptions = useMemo(
+        () => users.filter((user) => String(user.id) !== String(selected?.id || '')),
+        [users, selected?.id]
     )
 
     const columns = [
@@ -708,6 +721,24 @@ export default function ManageUsers() {
                         {formField('Email', 'email', {
                             type: 'email',
                         })}
+                        <TextField
+                            select
+                            label="Manager"
+                            value={form.managerUserId}
+                            onChange={(e) =>
+                                setForm((current) => ({...current, managerUserId: e.target.value}))
+                            }
+                            fullWidth
+                            size="small"
+                            sx={textFieldSx}
+                        >
+                            <MenuItem value="">No manager</MenuItem>
+                            {managerOptions.map((user) => (
+                                <MenuItem key={user.id} value={String(user.id)}>
+                                    {user.fullName || user.username}
+                                </MenuItem>
+                            ))}
+                        </TextField>
                         {formField('Password', 'password', {
                             type: 'password',
                         })}
@@ -921,6 +952,24 @@ export default function ManageUsers() {
 
                     {formField('Full Name', 'fullName')}
                     {formField('Email', 'email', {type: 'email'})}
+                    <TextField
+                        select
+                        label="Manager"
+                        value={form.managerUserId}
+                        onChange={(e) =>
+                            setForm((current) => ({...current, managerUserId: e.target.value}))
+                        }
+                        fullWidth
+                        size="small"
+                        sx={textFieldSx}
+                    >
+                        <MenuItem value="">No manager</MenuItem>
+                        {managerOptions.map((user) => (
+                            <MenuItem key={user.id} value={String(user.id)}>
+                                {user.fullName || user.username}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                     {formField(
                         'New Password (leave blank to keep)',
                         'password',

@@ -4,6 +4,10 @@ import {
     Box,
     Button,
     Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
     FormControlLabel,
     MenuItem,
     Paper,
@@ -52,11 +56,33 @@ function formatDate(value) {
     })
 }
 
+function formatDateTime(value) {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    })
+}
+
 function formatFinding(value) {
     return String(value || '')
         .replaceAll('_', ' ')
         .toLowerCase()
         .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function isHighPrivilegePermission(permission) {
+    const normalized = String(permission || '').trim().toUpperCase()
+    return Boolean(normalized) && (
+        normalized.startsWith('ADMIN_')
+        || normalized.endsWith('_MANAGE')
+        || ['AUDIT_EXPORT', 'AUDIT_GLOBAL_VIEW', 'API_ACCESS_MANAGE', 'ACCESS_REVIEW_MANAGE'].includes(normalized)
+    )
 }
 
 export default function TenantAccessCenter() {
@@ -112,6 +138,27 @@ export default function TenantAccessCenter() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const [reviewDialog, setReviewDialog] = useState({
+        open: false,
+        userId: '',
+        userLabel: '',
+        decision: 'CERTIFIED',
+        notes: '',
+        deactivateUser: false,
+    })
+    const [emergencyForm, setEmergencyForm] = useState({
+        userId: '',
+        roleIds: [],
+        expiresInHours: 4,
+        justification: '',
+        approvalNote: '',
+    })
+    const [revokeDialog, setRevokeDialog] = useState({
+        open: false,
+        grantId: '',
+        userLabel: '',
+        revokeNote: '',
+    })
 
     const loadData = async () => {
         setLoading(true)
@@ -179,6 +226,16 @@ export default function TenantAccessCenter() {
                 orgUnits.map((unit) => [String(unit.id), unit.unitName || unit.unitKey || String(unit.id)])
             ),
         [orgUnits]
+    )
+
+    const roleNameById = useMemo(
+        () => new Map(roles.map((role) => [String(role.id), role.name || String(role.id)])),
+        [roles]
+    )
+
+    const privilegedRoles = useMemo(
+        () => roles.filter((role) => (role.permissionCodes || []).some(isHighPrivilegePermission)),
+        [roles]
     )
 
     const selectedUser = useMemo(
@@ -368,18 +425,141 @@ export default function TenantAccessCenter() {
         }
     }
 
-    const reviewUserAccess = async (userId, decision = 'CERTIFIED') => {
+    const startQuarterlyAccessReviewCycle = async () => {
         setSaving(true)
         try {
-            await adminApi.reviewUserAccess(userId, {
-                decision,
-                nextReviewInDays: decision === 'CERTIFIED' ? 90 : 14,
+            const response = await adminApi.startQuarterlyAccessReviewCycle()
+            await loadData()
+            setSuccess(
+                `${t('Quarterly review cycle started')}: ${response?.queuedUsers ?? 0} ${t('users queued')}`
+            )
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to start quarterly access review cycle')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const openReviewDialog = (finding, decision = 'CERTIFIED') => {
+        setReviewDialog({
+            open: true,
+            userId: String(finding?.userId || ''),
+            userLabel: finding?.fullName || finding?.username || '',
+            decision,
+            notes: '',
+            deactivateUser: false,
+        })
+    }
+
+    const submitReviewUserAccess = async () => {
+        if (!reviewDialog.userId) {
+            setError(t('Select a user to review'))
+            return
+        }
+        if (!reviewDialog.notes.trim()) {
+            setError(t('Review note is required'))
+            return
+        }
+        setSaving(true)
+        try {
+            await adminApi.reviewUserAccess(reviewDialog.userId, {
+                decision: reviewDialog.decision,
+                notes: reviewDialog.notes,
+                deactivateUser: reviewDialog.deactivateUser,
+                nextReviewInDays: reviewDialog.decision === 'CERTIFIED' ? 90 : 14,
             })
             await loadData()
+            setReviewDialog({
+                open: false,
+                userId: '',
+                userLabel: '',
+                decision: 'CERTIFIED',
+                notes: '',
+                deactivateUser: false,
+            })
             setSuccess(t('User access review updated'))
             setError('')
         } catch (err) {
             setError(err.message || 'Failed to update access review')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const grantEmergencyAccess = async () => {
+        if (!emergencyForm.userId) {
+            setError(t('Select a user for emergency access'))
+            return
+        }
+        if ((emergencyForm.roleIds || []).length === 0) {
+            setError(t('Select at least one privileged role'))
+            return
+        }
+        if (!String(emergencyForm.justification || '').trim() || !String(emergencyForm.approvalNote || '').trim()) {
+            setError(t('Justification and approval note are required'))
+            return
+        }
+        setSaving(true)
+        try {
+            await adminApi.grantEmergencyAccess({
+                userId: emergencyForm.userId,
+                roleIds: emergencyForm.roleIds,
+                expiresInHours: Number(emergencyForm.expiresInHours || 4),
+                justification: emergencyForm.justification,
+                approvalNote: emergencyForm.approvalNote,
+            })
+            await loadData()
+            setEmergencyForm({
+                userId: '',
+                roleIds: [],
+                expiresInHours: 4,
+                justification: '',
+                approvalNote: '',
+            })
+            setSuccess(t('Emergency access granted'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to grant emergency access')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const openRevokeDialog = (grant) => {
+        setRevokeDialog({
+            open: true,
+            grantId: String(grant?.id || ''),
+            userLabel: grant?.fullName || grant?.username || '',
+            revokeNote: '',
+        })
+    }
+
+    const revokeEmergencyAccess = async () => {
+        if (!revokeDialog.grantId) {
+            setError(t('Select an emergency access grant'))
+            return
+        }
+        if (!revokeDialog.revokeNote.trim()) {
+            setError(t('Revoke note is required'))
+            return
+        }
+        setSaving(true)
+        try {
+            await adminApi.revokeEmergencyAccess(revokeDialog.grantId, {
+                revokeNote: revokeDialog.revokeNote,
+            })
+            await loadData()
+            setRevokeDialog({
+                open: false,
+                grantId: '',
+                userLabel: '',
+                revokeNote: '',
+            })
+            setSuccess(t('Emergency access revoked'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to revoke emergency access')
         } finally {
             setSaving(false)
         }
@@ -390,6 +570,8 @@ export default function TenantAccessCenter() {
     const governance = center?.governance || {}
     const userFindings = governance.userFindings || []
     const apiKeyFindings = governance.apiKeyFindings || []
+    const emergencyAccessGrants = center?.emergencyAccessGrants || []
+    const privilegedActionAlerts = center?.privilegedActionAlerts || []
     const reconGroups = center?.reconGroups || []
     const systemEndpointProfiles = center?.systemEndpointProfiles || []
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
@@ -426,17 +608,29 @@ export default function TenantAccessCenter() {
                                 {t('Certification, high-risk access, identity source, and API key exposure.')}
                             </Typography>
                         </Box>
-                        <Chip
-                            label={`${t('Preferred Login Mode')}: ${governance.preferredLoginMode || authForm.preferredLoginMode || 'LOCAL'}`}
-                            sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
-                        />
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            <Chip
+                                label={`${t('Preferred Login Mode')}: ${governance.preferredLoginMode || authForm.preferredLoginMode || 'LOCAL'}`}
+                                sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
+                            />
+                            <Button
+                                variant="outlined"
+                                onClick={startQuarterlyAccessReviewCycle}
+                                disabled={loading || saving}
+                                sx={{textTransform: 'none', borderRadius: 2}}
+                            >
+                                {saving ? t('Starting...') : t('Start Quarterly Review')}
+                            </Button>
+                        </Stack>
                     </Box>
 
-                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))'}, gap: 1}}>
+                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr 1fr', md: 'repeat(6, minmax(0, 1fr))'}, gap: 1}}>
                         {[
                             [t('Active Users'), governance.activeUsers ?? 0],
                             [t('Review Due'), governance.usersDueForReview ?? 0],
+                            [t('Pending Manager'), governance.pendingManagerReviews ?? 0],
                             [t('High Privilege'), governance.highPrivilegeUsers ?? 0],
+                            [t('Emergency Access'), governance.activeEmergencyAccessUsers ?? 0],
                             [t('API Keys Expiring'), governance.apiKeysExpiringSoon ?? 0],
                         ].map(([label, value]) => (
                             <Box key={label} sx={{border: `1px solid ${palette.borderSoft}`, borderRadius: 2, p: 1.25}}>
@@ -471,6 +665,9 @@ export default function TenantAccessCenter() {
                                     <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
                                         {finding.identityProvider || 'LOCAL'} - {t('Review due')} {formatDate(finding.accessReviewDueAt)}
                                     </Typography>
+                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                        {t('Manager')}: {finding.managerFullName || finding.managerUsername || t('Unassigned')}
+                                    </Typography>
                                 </Box>
                                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                                     {(finding.findingTypes || []).map((type) => (
@@ -486,7 +683,7 @@ export default function TenantAccessCenter() {
                                     <Button
                                         size="small"
                                         variant="contained"
-                                        onClick={() => reviewUserAccess(finding.userId, 'CERTIFIED')}
+                                        onClick={() => openReviewDialog(finding, 'CERTIFIED')}
                                         disabled={saving}
                                         sx={{textTransform: 'none', borderRadius: 2}}
                                     >
@@ -495,11 +692,21 @@ export default function TenantAccessCenter() {
                                     <Button
                                         size="small"
                                         variant="outlined"
-                                        onClick={() => reviewUserAccess(finding.userId, 'NEEDS_CHANGES')}
+                                        onClick={() => openReviewDialog(finding, 'NEEDS_CHANGES')}
                                         disabled={saving}
                                         sx={{textTransform: 'none', borderRadius: 2}}
                                     >
                                         {t('Needs Changes')}
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="warning"
+                                        onClick={() => openReviewDialog(finding, 'REVOKE_REQUESTED')}
+                                        disabled={saving}
+                                        sx={{textTransform: 'none', borderRadius: 2}}
+                                    >
+                                        {t('Request Revoke')}
                                     </Button>
                                 </Stack>
                             </Box>
@@ -740,6 +947,189 @@ export default function TenantAccessCenter() {
                             <Button variant="contained" onClick={saveUserScope} disabled={!selectedUserId || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                                 {saving ? t('Saving...') : t('Save User Scope')}
                             </Button>
+                        </Stack>
+                    </Paper>
+
+                    <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
+                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                            {t('Privileged Access')}
+                        </Typography>
+                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.5}}>
+                            {t('Grant temporary admin access with approval evidence, automatic expiry, and an audit-backed alert feed.')}
+                        </Typography>
+                        <Stack spacing={1.25}>
+                            <TextField
+                                select
+                                size="small"
+                                label={t('User')}
+                                value={emergencyForm.userId}
+                                onChange={(event) => setEmergencyForm((current) => ({...current, userId: event.target.value}))}
+                            >
+                                <MenuItem value="">{t('Select a user')}</MenuItem>
+                                {users.filter((user) => user.active).map((user) => (
+                                    <MenuItem key={user.id} value={String(user.id)}>
+                                        {user.fullName || user.username}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            <TextField
+                                select
+                                size="small"
+                                label={t('Privileged Roles')}
+                                SelectProps={{
+                                    multiple: true,
+                                    value: emergencyForm.roleIds,
+                                    renderValue: (selected) =>
+                                        normalizeSelectArray(selected)
+                                            .map((id) => roleNameById.get(id) || id)
+                                            .join(', '),
+                                }}
+                                value={emergencyForm.roleIds}
+                                onChange={(event) =>
+                                    setEmergencyForm((current) => ({
+                                        ...current,
+                                        roleIds: normalizeSelectArray(event.target.value),
+                                    }))
+                                }
+                            >
+                                {privilegedRoles.map((role) => (
+                                    <MenuItem key={role.id} value={String(role.id)}>
+                                        {role.name}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                            <TextField
+                                size="small"
+                                type="number"
+                                label={t('Expires In Hours')}
+                                value={emergencyForm.expiresInHours}
+                                onChange={(event) =>
+                                    setEmergencyForm((current) => ({
+                                        ...current,
+                                        expiresInHours: Number(event.target.value || 4),
+                                    }))
+                                }
+                                inputProps={{min: 1, max: 24}}
+                            />
+                            <TextField
+                                size="small"
+                                multiline
+                                minRows={2}
+                                label={t('Justification')}
+                                value={emergencyForm.justification}
+                                onChange={(event) => setEmergencyForm((current) => ({...current, justification: event.target.value}))}
+                            />
+                            <TextField
+                                size="small"
+                                multiline
+                                minRows={2}
+                                label={t('Approval Note')}
+                                value={emergencyForm.approvalNote}
+                                onChange={(event) => setEmergencyForm((current) => ({...current, approvalNote: event.target.value}))}
+                            />
+                            <Button
+                                variant="contained"
+                                onClick={grantEmergencyAccess}
+                                disabled={loading || saving || privilegedRoles.length === 0}
+                                sx={{textTransform: 'none', borderRadius: 2.5}}
+                            >
+                                {saving ? t('Saving...') : t('Grant Emergency Access')}
+                            </Button>
+
+                            <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
+                                <Typography sx={{fontWeight: 800, color: palette.text, mb: 1}}>
+                                    {t('Recent Emergency Grants')}
+                                </Typography>
+                                <Stack spacing={1}>
+                                    {emergencyAccessGrants.slice(0, 6).map((grant) => (
+                                        <Paper key={grant.id} elevation={0} sx={{p: 1.25, borderRadius: '16px', backgroundColor: palette.paperBgAlt, border: `1px solid ${palette.borderSoft}`}}>
+                                            <Stack spacing={0.75}>
+                                                <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap'}}>
+                                                    <Box>
+                                                        <Typography sx={{fontSize: '0.88rem', fontWeight: 700, color: palette.text}}>
+                                                            {grant.fullName || grant.username}
+                                                        </Typography>
+                                                        <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                            {(grant.roles || []).map((role) => role.name).join(', ') || t('No roles')}
+                                                        </Typography>
+                                                    </Box>
+                                                    <Stack direction="row" spacing={1} alignItems="center">
+                                                        <Chip
+                                                            size="small"
+                                                            label={grant.active ? t('Active') : t('Closed')}
+                                                            sx={{
+                                                                backgroundColor: grant.active ? palette.chipRedBg : palette.chipNeutralBg,
+                                                                color: grant.active ? palette.chipRedText : palette.chipNeutralText,
+                                                                fontWeight: 700,
+                                                            }}
+                                                        />
+                                                        {grant.active ? (
+                                                            <Button
+                                                                size="small"
+                                                                onClick={() => openRevokeDialog(grant)}
+                                                                disabled={saving}
+                                                                sx={{textTransform: 'none'}}
+                                                            >
+                                                                {t('Revoke')}
+                                                            </Button>
+                                                        ) : null}
+                                                    </Stack>
+                                                </Box>
+                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                    {t('Expires')} {formatDateTime(grant.expiresAt)} · {t('Approved by')} {grant.grantedBy}
+                                                </Typography>
+                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                    {grant.justification}
+                                                </Typography>
+                                            </Stack>
+                                        </Paper>
+                                    ))}
+                                    {emergencyAccessGrants.length === 0 ? (
+                                        <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
+                                            {t('No emergency access grants recorded.')}
+                                        </Typography>
+                                    ) : null}
+                                </Stack>
+                            </Box>
+
+                            <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
+                                <Typography sx={{fontWeight: 800, color: palette.text, mb: 1}}>
+                                    {t('Privileged Action Alerts')}
+                                </Typography>
+                                <Stack spacing={1}>
+                                    {privilegedActionAlerts.slice(0, 8).map((alertItem) => (
+                                        <Box key={alertItem.id} sx={{p: 1.25, borderRadius: '16px', backgroundColor: palette.paperBgAlt, border: `1px solid ${palette.borderSoft}`}}>
+                                            <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
+                                                <Box>
+                                                    <Typography sx={{fontSize: '0.86rem', fontWeight: 700, color: palette.text}}>
+                                                        {alertItem.title}
+                                                    </Typography>
+                                                    <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
+                                                        {alertItem.detail || alertItem.actionType}
+                                                    </Typography>
+                                                </Box>
+                                                <Chip
+                                                    size="small"
+                                                    label={alertItem.severity || 'HIGH'}
+                                                    sx={{
+                                                        backgroundColor: alertItem.severity === 'CRITICAL' ? palette.chipRedBg : palette.chipBlueBg,
+                                                        color: alertItem.severity === 'CRITICAL' ? palette.chipRedText : palette.chipBlueText,
+                                                        fontWeight: 700,
+                                                    }}
+                                                />
+                                            </Stack>
+                                            <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.75}}>
+                                                {alertItem.actor || t('system')} · {formatDateTime(alertItem.eventAt)}
+                                            </Typography>
+                                        </Box>
+                                    ))}
+                                    {privilegedActionAlerts.length === 0 ? (
+                                        <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
+                                            {t('No privileged action alerts.')}
+                                        </Typography>
+                                    ) : null}
+                                </Stack>
+                            </Box>
                         </Stack>
                     </Paper>
 
@@ -1014,6 +1404,123 @@ export default function TenantAccessCenter() {
                     </Paper>
                 </Stack>
             </Box>
+
+            <Dialog
+                open={reviewDialog.open}
+                onClose={() => setReviewDialog((current) => ({...current, open: false}))}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>{t('Review Access')}</DialogTitle>
+                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
+                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                        {reviewDialog.userLabel || t('Selected user')}
+                    </Typography>
+                    <TextField
+                        select
+                        size="small"
+                        label={t('Decision')}
+                        value={reviewDialog.decision}
+                        onChange={(event) =>
+                            setReviewDialog((current) => ({
+                                ...current,
+                                decision: event.target.value,
+                            }))
+                        }
+                    >
+                        <MenuItem value="CERTIFIED">{t('Certified')}</MenuItem>
+                        <MenuItem value="NEEDS_CHANGES">{t('Needs Changes')}</MenuItem>
+                        <MenuItem value="REVOKE_REQUESTED">{t('Revoke Requested')}</MenuItem>
+                    </TextField>
+                    <TextField
+                        size="small"
+                        multiline
+                        minRows={3}
+                        label={t('Review Note')}
+                        value={reviewDialog.notes}
+                        onChange={(event) =>
+                            setReviewDialog((current) => ({
+                                ...current,
+                                notes: event.target.value,
+                            }))
+                        }
+                    />
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={reviewDialog.deactivateUser}
+                                onChange={(event) =>
+                                    setReviewDialog((current) => ({
+                                        ...current,
+                                        deactivateUser: event.target.checked,
+                                    }))
+                                }
+                            />
+                        }
+                        label={t('Deactivate user as part of this review')}
+                    />
+                </DialogContent>
+                <DialogActions sx={{px: 3, pb: 3}}>
+                    <Button
+                        onClick={() => setReviewDialog((current) => ({...current, open: false}))}
+                        sx={{textTransform: 'none', color: palette.textMuted}}
+                    >
+                        {t('Cancel')}
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={submitReviewUserAccess}
+                        disabled={saving}
+                        sx={{textTransform: 'none', borderRadius: 2}}
+                    >
+                        {saving ? t('Saving...') : t('Save Review')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={revokeDialog.open}
+                onClose={() => setRevokeDialog((current) => ({...current, open: false}))}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>{t('Revoke Emergency Access')}</DialogTitle>
+                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
+                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                        {revokeDialog.userLabel || t('Selected user')}
+                    </Typography>
+                    <TextField
+                        size="small"
+                        multiline
+                        minRows={3}
+                        label={t('Revoke Note')}
+                        value={revokeDialog.revokeNote}
+                        onChange={(event) =>
+                            setRevokeDialog((current) => ({
+                                ...current,
+                                revokeNote: event.target.value,
+                            }))
+                        }
+                    />
+                </DialogContent>
+                <DialogActions sx={{px: 3, pb: 3}}>
+                    <Button
+                        onClick={() => setRevokeDialog((current) => ({...current, open: false}))}
+                        sx={{textTransform: 'none', color: palette.textMuted}}
+                    >
+                        {t('Cancel')}
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={revokeEmergencyAccess}
+                        disabled={saving}
+                        sx={{textTransform: 'none', borderRadius: 2}}
+                    >
+                        {saving ? t('Saving...') : t('Revoke')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     )
 }

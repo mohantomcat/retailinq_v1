@@ -15,6 +15,7 @@ public class CreateUserRequest {
     private String identityProvider;
     private String externalSubject;
     private String directoryExternalId;
+    private UUID managerUserId;
     private Boolean emailVerified;
     private Set<UUID> roleIds;
     private Set<String> storeIds;

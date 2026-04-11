@@ -64,6 +64,9 @@ public class User {
     @Column(name = "directory_external_id")
     private String directoryExternalId;
 
+    @Column(name = "manager_user_id")
+    private UUID managerUserId;
+
     @Column(name = "email_verified", nullable = false)
     @Builder.Default
     private boolean emailVerified = false;

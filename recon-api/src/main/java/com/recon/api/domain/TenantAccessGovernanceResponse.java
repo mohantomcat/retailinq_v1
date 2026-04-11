@@ -15,7 +15,10 @@ public class TenantAccessGovernanceResponse {
     private int externalIdentityUsers;
     private int usersDueForReview;
     private int usersPendingReview;
+    private int pendingManagerReviews;
+    private int usersWithoutManager;
     private int highPrivilegeUsers;
+    private int activeEmergencyAccessUsers;
     private int usersWithoutRoles;
     private int usersMissingExternalSubject;
     private int activeApiKeys;

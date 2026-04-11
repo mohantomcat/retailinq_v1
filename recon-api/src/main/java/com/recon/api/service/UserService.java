@@ -31,6 +31,7 @@ public class UserService {
     private final AuditLedgerService auditLedgerService;
     private final AccessScopeService accessScopeService;
     private final ReconModuleService reconModuleService;
+    private final PrivilegedAccessService privilegedAccessService;
 
     private static final int DEFAULT_ACCESS_REVIEW_INTERVAL_DAYS = 90;
 
@@ -83,6 +84,7 @@ public class UserService {
                         : UUID.randomUUID().toString()))
                 .fullName(req.getFullName())
                 .tenantId(tenantId)
+                .managerUserId(resolveManagerUserId(tenantId, req.getManagerUserId(), null))
                 .identityProvider(identityProvider)
                 .externalSubject(externalSubject)
                 .directoryExternalId(directoryExternalId)
@@ -109,6 +111,7 @@ public class UserService {
 
         if (req.getFullName() != null)
             user.setFullName(req.getFullName());
+        user.setManagerUserId(resolveManagerUserId(tenantId, req.getManagerUserId(), id));
 
         if (req.getEmail() != null
                 && !req.getEmail().isBlank()
@@ -196,6 +199,7 @@ public class UserService {
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
+        Set<String> beforePermissions = privilegedAccessService.resolveEffectiveAccess(user).effectivePermissions();
         Set<Role> roles = new HashSet<>(
                 roleRepository.findAllById(req.getRoleIds()).stream()
                         .filter(role -> tenantId.equals(role.getTenantId()))
@@ -203,6 +207,12 @@ public class UserService {
         user.setRoles(roles);
         User saved = userRepository.save(user);
         recordSecurityAudit(saved.getTenantId(), "USER_ROLES_ASSIGNED", "User roles assigned", saved.getId().toString(), actorUsername, before, saved);
+        privilegedAccessService.recordPrivilegedRoleChange(
+                saved.getTenantId(),
+                saved,
+                actorUsername,
+                beforePermissions,
+                privilegedAccessService.resolveEffectiveAccess(saved).effectivePermissions());
         return toDto(saved);
     }
 
@@ -227,12 +237,15 @@ public class UserService {
     public UserDto reviewUserAccess(String tenantId,
                                     UUID userId,
                                     ReviewUserAccessRequest req,
-                                    String actorUsername) {
+                                    String actorUsername,
+                                    Set<String> actorPermissions) {
         User user = userRepository.findByIdAndTenantId(userId, tenantId)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
         User before = cloneForAudit(user);
         ReviewUserAccessRequest safeRequest = req != null ? req : new ReviewUserAccessRequest();
+        String notes = requireText(safeRequest.getNotes(), "Review note");
+        assertReviewAllowed(tenantId, user, actorUsername, actorPermissions);
         String decision = normalizeReviewDecision(safeRequest.getDecision());
         int nextReviewDays = resolveNextReviewDays(decision, safeRequest.getNextReviewInDays());
         LocalDateTime now = LocalDateTime.now();
@@ -249,7 +262,7 @@ public class UserService {
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("user", cloneForAudit(saved));
         after.put("decision", decision);
-        after.put("notes", trimToNull(safeRequest.getNotes()));
+        after.put("notes", notes);
         after.put("nextReviewInDays", nextReviewDays);
         after.put("deactivated", Boolean.TRUE.equals(safeRequest.getDeactivateUser()));
 
@@ -260,6 +273,12 @@ public class UserService {
                 actorUsername,
                 before,
                 after);
+        privilegedAccessService.recordPrivilegedReviewAlert(
+                saved.getTenantId(),
+                saved,
+                actorUsername,
+                decision,
+                Boolean.TRUE.equals(safeRequest.getDeactivateUser()));
         return toDto(saved);
     }
 
@@ -295,6 +314,7 @@ public class UserService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .tenantId(user.getTenantId())
+                .managerUserId(user.getManagerUserId())
                 .identityProvider(user.getIdentityProvider())
                 .externalSubject(user.getExternalSubject())
                 .directoryExternalId(user.getDirectoryExternalId())
@@ -314,8 +334,12 @@ public class UserService {
     private UserDto toDto(User user) {
         reconModuleService.getAllActiveModules();
         User currentUser = userRepository.findById(user.getId()).orElse(user);
+        User manager = currentUser.getManagerUserId() == null
+                ? null
+                : userRepository.findByIdAndTenantId(currentUser.getManagerUserId(), currentUser.getTenantId()).orElse(null);
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(currentUser);
-        Set<String> permissions = currentUser.getAllPermissions();
+        PrivilegedAccessService.ResolvedAccess resolvedAccess = privilegedAccessService.resolveEffectiveAccess(currentUser);
+        Set<String> permissions = resolvedAccess.effectivePermissions();
         return UserDto.builder()
                 .id(currentUser.getId())
                 .username(currentUser.getUsername())
@@ -328,11 +352,17 @@ public class UserService {
                 .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
                 .externalSubject(currentUser.getExternalSubject())
                 .directoryExternalId(currentUser.getDirectoryExternalId())
+                .managerUserId(currentUser.getManagerUserId())
+                .managerUsername(manager != null ? manager.getUsername() : null)
+                .managerFullName(manager != null ? firstNonBlank(manager.getFullName(), manager.getUsername()) : null)
                 .emailVerified(currentUser.isEmailVerified())
                 .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
                 .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
                 .lastAccessReviewBy(currentUser.getLastAccessReviewBy())
                 .accessReviewDueAt(currentUser.getAccessReviewDueAt())
+                .emergencyAccessActive(resolvedAccess.emergencyAccessActive())
+                .emergencyAccessExpiresAt(resolvedAccess.emergencyAccessExpiresAt())
+                .emergencyRoles(resolvedAccess.emergencyRoles())
                 .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new HashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
@@ -340,15 +370,7 @@ public class UserService {
                 .permissions(permissions)
                 .accessibleModules(reconModuleService.getAccessibleModules(currentUser.getTenantId(), permissions))
                 .roles(currentUser.getRoles().stream()
-                        .map(r -> RoleDto.builder()
-                                .id(r.getId())
-                                .name(r.getName())
-                                .description(r.getDescription())
-                                .permissionCodes(r.getPermissions()
-                                        .stream()
-                                        .map(Permission::getCode)
-                                        .collect(Collectors.toSet()))
-                                .build())
+                        .map(this::toRoleDto)
                         .collect(Collectors.toList()))
                 .build();
     }
@@ -365,6 +387,7 @@ public class UserService {
     private void updateIdentityBinding(String tenantId, User user, CreateUserRequest req) {
         if (req.getIdentityProvider() == null
                 && req.getExternalSubject() == null
+                && req.getDirectoryExternalId() == null
                 && req.getEmailVerified() == null) {
             return;
         }
@@ -450,6 +473,75 @@ public class UserService {
             throw new RuntimeException("Next access review must be between 1 and 365 days");
         }
         return resolved;
+    }
+
+    private UUID resolveManagerUserId(String tenantId, UUID managerUserId, UUID currentUserId) {
+        if (managerUserId == null) {
+            return null;
+        }
+        if (Objects.equals(managerUserId, currentUserId)) {
+            throw new RuntimeException("User cannot be assigned as their own manager");
+        }
+        return userRepository.findByIdAndTenantId(managerUserId, tenantId)
+                .map(User::getId)
+                .orElseThrow(() -> new RuntimeException("Manager user not found"));
+    }
+
+    private void assertReviewAllowed(String tenantId,
+                                     User user,
+                                     String actorUsername,
+                                     Set<String> actorPermissions) {
+        if (hasPrivilegedReviewPermission(actorPermissions)) {
+            return;
+        }
+        UUID managerUserId = user.getManagerUserId();
+        if (managerUserId == null) {
+            throw new RuntimeException("Assign a manager before requesting manager review");
+        }
+        User manager = userRepository.findByIdAndTenantId(managerUserId, tenantId)
+                .orElseThrow(() -> new RuntimeException("Assigned manager is invalid"));
+        if (!defaultIfBlank(manager.getUsername(), "").equalsIgnoreCase(defaultIfBlank(actorUsername, ""))) {
+            throw new RuntimeException("Only the assigned manager can review this user");
+        }
+    }
+
+    private boolean hasPrivilegedReviewPermission(Set<String> actorPermissions) {
+        return actorPermissions != null
+                && (actorPermissions.contains("ACCESS_REVIEW_MANAGE")
+                || actorPermissions.contains("TENANT_ACCESS_MANAGE"));
+    }
+
+    private RoleDto toRoleDto(Role role) {
+        return RoleDto.builder()
+                .id(role.getId())
+                .name(role.getName())
+                .description(role.getDescription())
+                .permissionCodes(role.getPermissions()
+                        .stream()
+                        .map(Permission::getCode)
+                        .collect(Collectors.toSet()))
+                .build();
+    }
+
+    private String requireText(String value, String label) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            throw new RuntimeException(label + " is required");
+        }
+        return trimmed;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            String trimmed = trimToNull(value);
+            if (trimmed != null) {
+                return trimmed;
+            }
+        }
+        return null;
     }
 
     private String trimToNull(String value) {

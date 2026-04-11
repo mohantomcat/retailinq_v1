@@ -36,6 +36,7 @@ public class AuthService {
     private final AccessScopeService accessScopeService;
     private final ReconModuleService reconModuleService;
     private final LoginAttemptRateLimiter loginAttemptRateLimiter;
+    private final PrivilegedAccessService privilegedAccessService;
 
     @Value("${app.security.auth.max-failed-attempts:5}")
     private int maxFailedAttempts;
@@ -127,7 +128,8 @@ public class AuthService {
 
         reconModuleService.getAllActiveModules();
         user = userRepository.findById(user.getId()).orElse(user);
-        Set<String> permissions = user.getAllPermissions();
+        PrivilegedAccessService.ResolvedAccess resolvedAccess = privilegedAccessService.resolveEffectiveAccess(user);
+        Set<String> permissions = resolvedAccess.effectivePermissions();
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
         Set<String> storeIds = new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds());
 
@@ -144,17 +146,7 @@ public class AuthService {
                 user.getId().toString(),
                 "PASSWORD");
 
-        List<RoleDto> roles = user.getRoles().stream()
-                .map(r -> RoleDto.builder()
-                        .id(r.getId())
-                        .name(r.getName())
-                        .description(r.getDescription())
-                        .permissionCodes(
-                                r.getPermissions().stream()
-                                        .map(Permission::getCode)
-                                        .collect(Collectors.toSet()))
-                        .build())
-                .collect(Collectors.toList());
+        List<RoleDto> roles = toRoleDtos(resolvedAccess.effectiveRoles());
 
         log.info("User {} logged in with {} permissions",
                 user.getUsername(), permissions.size());
@@ -217,7 +209,8 @@ public class AuthService {
 
         reconModuleService.getAllActiveModules();
         user = userRepository.findById(user.getId()).orElse(user);
-        Set<String> permissions = user.getAllPermissions();
+        PrivilegedAccessService.ResolvedAccess resolvedAccess = privilegedAccessService.resolveEffectiveAccess(user);
+        Set<String> permissions = resolvedAccess.effectivePermissions();
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
         Set<String> storeIds = new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds());
 
@@ -234,17 +227,7 @@ public class AuthService {
                 user.getId().toString(),
                 normalizedAuthMode);
 
-        List<RoleDto> roles = user.getRoles().stream()
-                .map(r -> RoleDto.builder()
-                        .id(r.getId())
-                        .name(r.getName())
-                        .description(r.getDescription())
-                        .permissionCodes(
-                                r.getPermissions().stream()
-                                        .map(Permission::getCode)
-                                        .collect(Collectors.toSet()))
-                        .build())
-                .collect(Collectors.toList());
+        List<RoleDto> roles = toRoleDtos(resolvedAccess.effectiveRoles());
 
         List<ReconModuleDto> accessibleModules =
                 reconModuleService.getAccessibleModules(user.getTenantId(), permissions);
@@ -291,7 +274,7 @@ public class AuthService {
 
         reconModuleService.getAllActiveModules();
         user = userRepository.findById(user.getId()).orElse(user);
-        Set<String> permissions = user.getAllPermissions();
+        Set<String> permissions = privilegedAccessService.resolveEffectiveAccess(user).effectivePermissions();
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(user);
 
         String newAccessToken =
@@ -470,8 +453,12 @@ public class AuthService {
     private UserDto toUserDto(User user) {
         reconModuleService.getAllActiveModules();
         User currentUser = userRepository.findById(user.getId()).orElse(user);
+        User manager = currentUser.getManagerUserId() == null
+                ? null
+                : userRepository.findById(currentUser.getManagerUserId()).orElse(null);
         AccessScopeSummaryDto scopeSummary = accessScopeService.summarizeUserScope(currentUser);
-        Set<String> permissions = currentUser.getAllPermissions();
+        PrivilegedAccessService.ResolvedAccess resolvedAccess = privilegedAccessService.resolveEffectiveAccess(currentUser);
+        Set<String> permissions = resolvedAccess.effectivePermissions();
         return UserDto.builder()
                 .id(currentUser.getId())
                 .username(currentUser.getUsername())
@@ -484,32 +471,52 @@ public class AuthService {
                 .identityProvider(defaultIfBlank(currentUser.getIdentityProvider(), "LOCAL"))
                 .externalSubject(currentUser.getExternalSubject())
                 .directoryExternalId(currentUser.getDirectoryExternalId())
+                .managerUserId(currentUser.getManagerUserId())
+                .managerUsername(manager != null ? manager.getUsername() : null)
+                .managerFullName(manager != null ? firstNonBlank(manager.getFullName(), manager.getUsername()) : null)
                 .emailVerified(currentUser.isEmailVerified())
                 .accessReviewStatus(defaultIfBlank(currentUser.getAccessReviewStatus(), "PENDING"))
                 .lastAccessReviewAt(currentUser.getLastAccessReviewAt())
                 .lastAccessReviewBy(currentUser.getLastAccessReviewBy())
                 .accessReviewDueAt(currentUser.getAccessReviewDueAt())
+                .emergencyAccessActive(resolvedAccess.emergencyAccessActive())
+                .emergencyAccessExpiresAt(resolvedAccess.emergencyAccessExpiresAt())
+                .emergencyRoles(resolvedAccess.emergencyRoles())
                 .storeIds(currentUser.getStoreIds())
                 .effectiveStoreIds(new java.util.LinkedHashSet<>(scopeSummary.getEffectiveStoreIds()))
                 .allStoreAccess(scopeSummary.isAllStoreAccess())
                 .accessScope(scopeSummary)
                 .permissions(permissions)
                 .accessibleModules(reconModuleService.getAccessibleModules(currentUser.getTenantId(), permissions))
-                .roles(currentUser.getRoles().stream()
-                        .map(r -> RoleDto.builder()
-                                .id(r.getId())
-                                .name(r.getName())
-                                .description(
-                                        r.getDescription())
-                                .permissionCodes(
-                                        r.getPermissions()
-                                                .stream()
-                                                .map(Permission::getCode)
-                                                .collect(
-                                                        Collectors.toSet()))
-                                .build())
-                        .collect(Collectors.toList()))
+                .roles(toRoleDtos(currentUser.getRoles()))
                 .build();
+    }
+
+    private List<RoleDto> toRoleDtos(Set<Role> roles) {
+        return roles.stream()
+                .map(role -> RoleDto.builder()
+                        .id(role.getId())
+                        .name(role.getName())
+                        .description(role.getDescription())
+                        .permissionCodes(role.getPermissions()
+                                .stream()
+                                .map(Permission::getCode)
+                                .collect(Collectors.toSet()))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            String trimmed = trimToNull(value);
+            if (trimmed != null) {
+                return trimmed;
+            }
+        }
+        return null;
     }
 
     public LoginOptionsResponse getLoginOptions(String tenantId) {
