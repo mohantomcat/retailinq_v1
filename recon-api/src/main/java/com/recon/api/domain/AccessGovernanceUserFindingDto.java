@@ -28,6 +28,7 @@ public class AccessGovernanceUserFindingDto {
     private LocalDateTime accessReviewReminderAcknowledgedAt;
     private String accessReviewReminderAcknowledgedBy;
     private LocalDateTime accessReviewLastEscalatedAt;
+    private LocalDateTime accessReviewLastNextTierEscalatedAt;
     private LocalDateTime lastLogin;
     private boolean emergencyAccessActive;
     private LocalDateTime emergencyAccessExpiresAt;

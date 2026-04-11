@@ -151,6 +151,30 @@ public class AdminController {
                         principal.getPermissions())));
     }
 
+    @PostMapping("/users/{id}/access-review/remind")
+    public ResponseEntity<ApiResponse<AccessGovernanceNotificationActionResultDto>> resendAccessReviewReminder(
+            @PathVariable("id") UUID id,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ACCESS_REVIEW_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.resendManagerAccessReviewReminder(
+                        principal.getTenantId(),
+                        id,
+                        principal.getUsername())));
+    }
+
+    @PostMapping("/users/{id}/access-review/escalate")
+    public ResponseEntity<ApiResponse<AccessGovernanceNotificationActionResultDto>> escalateAccessReview(
+            @PathVariable("id") UUID id,
+            @AuthenticationPrincipal ReconUserPrincipal principal) {
+        requirePermission(principal, "ACCESS_REVIEW_MANAGE");
+        return ResponseEntity.ok(ApiResponse.ok(
+                tenantAccessAdministrationService.escalateManagerAccessReview(
+                        principal.getTenantId(),
+                        id,
+                        principal.getUsername())));
+    }
+
     @PostMapping("/users/{id}/org-scopes")
     public ResponseEntity<ApiResponse<List<UserOrganizationScopeDto>>> assignOrganizationScopes(
             @PathVariable("id") UUID id,

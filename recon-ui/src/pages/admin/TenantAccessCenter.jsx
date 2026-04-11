@@ -138,6 +138,8 @@ export default function TenantAccessCenter() {
         managerAccessReviewEscalationEmailRecipients: '',
         managerAccessReviewEscalationTeamsWebhookUrl: '',
         managerAccessReviewEscalationSlackWebhookUrl: '',
+        managerAccessReviewNextTierEscalationEnabled: false,
+        managerAccessReviewNextTierEscalationAfterDays: 3,
         privilegedActionAlertsEnabled: false,
         privilegedActionAlertEmailRecipients: '',
         privilegedActionAlertTeamsWebhookUrl: '',
@@ -554,6 +556,42 @@ export default function TenantAccessCenter() {
         }
     }
 
+    const resendManagerReminder = async (finding) => {
+        if (!finding?.userId) {
+            setError(t('Select a user to remind'))
+            return
+        }
+        setSaving(true)
+        try {
+            const result = await adminApi.resendAccessReviewReminder(finding.userId)
+            await loadData()
+            setSuccess(result?.message || t('Manager reminder queued'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to resend manager reminder')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const escalateManagerReview = async (finding) => {
+        if (!finding?.userId) {
+            setError(t('Select a user to escalate'))
+            return
+        }
+        setSaving(true)
+        try {
+            const result = await adminApi.escalateAccessReview(finding.userId)
+            await loadData()
+            setSuccess(result?.message || t('Manager review escalation queued'))
+            setError('')
+        } catch (err) {
+            setError(err.message || 'Failed to escalate manager review')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const grantEmergencyAccess = async () => {
         if (!emergencyForm.userId) {
             setError(t('Select a user for emergency access'))
@@ -639,9 +677,10 @@ export default function TenantAccessCenter() {
     const apiKeyFindings = governance.apiKeyFindings || []
     const emergencyAccessGrants = center?.emergencyAccessGrants || []
     const privilegedActionAlerts = center?.privilegedActionAlerts || []
+    const notificationHistory = center?.notificationHistory || []
     const reconGroups = center?.reconGroups || []
     const systemEndpointProfiles = center?.systemEndpointProfiles || []
-    const templatePlaceholderHint = t('Available placeholders: {{tenantId}}, {{dashboardUrl}}, {{pendingUserCount}}, {{pendingUsersList}}, {{managerName}}, {{escalationAfterDays}}, {{alertTitle}}, {{summary}}, {{actor}}, {{severity}}.')
+    const templatePlaceholderHint = t('Available placeholders: {{tenantId}}, {{dashboardUrl}}, {{pendingUserCount}}, {{pendingUsersList}}, {{managerName}}, {{originalManagerName}}, {{notificationTier}}, {{escalationAfterDays}}, {{alertTitle}}, {{summary}}, {{actor}}, {{severity}}.')
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
     const missingRequiredReconGroups = reconGroups
         .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
@@ -699,6 +738,7 @@ export default function TenantAccessCenter() {
                             [t('Pending Manager'), governance.pendingManagerReviews ?? 0],
                             [t('Acknowledged'), governance.acknowledgedManagerReviews ?? 0],
                             [t('Escalated'), governance.escalatedManagerReviews ?? 0],
+                            [t('Next Tier'), governance.nextTierEscalatedManagerReviews ?? 0],
                             [t('High Privilege'), governance.highPrivilegeUsers ?? 0],
                             [t('Emergency Access'), governance.activeEmergencyAccessUsers ?? 0],
                             [t('API Keys Expiring'), governance.apiKeysExpiringSoon ?? 0],
@@ -753,6 +793,11 @@ export default function TenantAccessCenter() {
                                             {t('Escalated')}: {formatDateTime(finding.accessReviewLastEscalatedAt)}
                                         </Typography>
                                     ) : null}
+                                    {finding.accessReviewLastNextTierEscalatedAt ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                            {t('Next-tier escalated')}: {formatDateTime(finding.accessReviewLastNextTierEscalatedAt)}
+                                        </Typography>
+                                    ) : null}
                                 </Box>
                                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                                     {(finding.findingTypes || []).map((type) => (
@@ -774,6 +819,31 @@ export default function TenantAccessCenter() {
                                             sx={{textTransform: 'none', borderRadius: 2}}
                                         >
                                             {t('Acknowledge')}
+                                        </Button>
+                                    ) : null}
+                                    {finding.accessReviewStatus === 'PENDING_MANAGER' ? (
+                                        <Button
+                                            size="small"
+                                            variant="text"
+                                            onClick={() => resendManagerReminder(finding)}
+                                            disabled={saving}
+                                            sx={{textTransform: 'none', borderRadius: 2}}
+                                        >
+                                            {t('Resend Reminder')}
+                                        </Button>
+                                    ) : null}
+                                    {finding.accessReviewStatus === 'PENDING_MANAGER'
+                                        && (authForm.managerAccessReviewEscalationEnabled
+                                            || authForm.managerAccessReviewNextTierEscalationEnabled) ? (
+                                        <Button
+                                            size="small"
+                                            variant="text"
+                                            color="warning"
+                                            onClick={() => escalateManagerReview(finding)}
+                                            disabled={saving}
+                                            sx={{textTransform: 'none', borderRadius: 2}}
+                                        >
+                                            {t('Escalate Now')}
                                         </Button>
                                     ) : null}
                                     <Button
@@ -825,6 +895,69 @@ export default function TenantAccessCenter() {
                             ))}
                         </Stack>
                     )}
+
+                    <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
+                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                            {t('Notification Delivery')}
+                        </Typography>
+                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
+                            {t('Recent reminder, escalation, and privileged alert deliveries with queue status and retry state.')}
+                        </Typography>
+                        <Stack spacing={1}>
+                            {notificationHistory.slice(0, 10).map((job) => (
+                                <Box
+                                    key={job.id}
+                                    sx={{
+                                        border: `1px solid ${palette.borderSoft}`,
+                                        borderRadius: 2,
+                                        p: 1.25,
+                                        backgroundColor: palette.paperBgAlt,
+                                    }}
+                                >
+                                    <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
+                                        <Box>
+                                            <Typography sx={{fontSize: '0.84rem', fontWeight: 800, color: palette.text}}>
+                                                {formatFinding(job.notificationType)} - {formatFinding(job.notificationTier)}
+                                            </Typography>
+                                            <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
+                                                {job.targetLabel || '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                            <Chip
+                                                size="small"
+                                                label={`${formatFinding(job.notificationStatus)} (${job.attemptCount || 0}/${job.maxAttempts || 0})`}
+                                                sx={{backgroundColor: palette.paperBg, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
+                                            />
+                                            <Chip
+                                                size="small"
+                                                label={formatFinding(job.channelType)}
+                                                sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
+                                            />
+                                        </Stack>
+                                    </Stack>
+                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.75}}>
+                                        {t('Queued')}: {formatDateTime(job.createdAt)} | {t('Delivered')}: {formatDateTime(job.deliveredAt)} | {t('Next Retry')}: {formatDateTime(job.nextAttemptAt)}
+                                    </Typography>
+                                    {(job.referenceUsers || []).length > 0 ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.35}}>
+                                            {t('Users')}: {(job.referenceUsers || []).join(', ')}
+                                        </Typography>
+                                    ) : null}
+                                    {job.lastError ? (
+                                        <Typography sx={{fontSize: '0.74rem', color: '#B45309', mt: 0.35}}>
+                                            {job.lastError}
+                                        </Typography>
+                                    ) : null}
+                                </Box>
+                            ))}
+                            {notificationHistory.length === 0 ? (
+                                <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
+                                    {t('No notification deliveries recorded yet.')}
+                                </Typography>
+                            ) : null}
+                        </Stack>
+                    </Box>
                 </Stack>
             </Paper>
 
@@ -1001,12 +1134,12 @@ export default function TenantAccessCenter() {
                                             }
                                         />
                                     }
-                                    label={t('Enable Manager Escalation')}
+                                    label={t('Enable Admin Escalation')}
                                 />
                                 <TextField
                                     size="small"
                                     type="number"
-                                    label={t('Escalate After (Days)')}
+                                    label={t('Admin Escalate After (Days)')}
                                     value={authForm.managerAccessReviewEscalationAfterDays ?? 3}
                                     disabled={!authForm.managerAccessReviewEscalationEnabled}
                                     onChange={(event) =>
@@ -1015,12 +1148,12 @@ export default function TenantAccessCenter() {
                                             managerAccessReviewEscalationAfterDays: Number(event.target.value || 3),
                                         }))
                                     }
-                                    helperText={t('Escalation triggers when a reminder is not acknowledged or completed within this many days.')}
+                                    helperText={t('Admin escalation triggers when a reminder stays unworked past this threshold.')}
                                     inputProps={{min: 1, max: 30}}
                                 />
                                 <TextField
                                     size="small"
-                                    label={t('Escalation Emails')}
+                                    label={t('Admin Escalation Emails')}
                                     value={authForm.managerAccessReviewEscalationEmailRecipients || ''}
                                     disabled={!authForm.managerAccessReviewEscalationEnabled}
                                     onChange={(event) =>
@@ -1029,11 +1162,11 @@ export default function TenantAccessCenter() {
                                             managerAccessReviewEscalationEmailRecipients: event.target.value,
                                         }))
                                     }
-                                    helperText={t('Optional comma-separated escalation recipients for unworked manager reviews.')}
+                                    helperText={t('Optional comma-separated recipients for admin escalation summaries.')}
                                 />
                                 <TextField
                                     size="small"
-                                    label={t('Escalation Teams Webhook URL')}
+                                    label={t('Admin Escalation Teams Webhook URL')}
                                     value={authForm.managerAccessReviewEscalationTeamsWebhookUrl || ''}
                                     disabled={!authForm.managerAccessReviewEscalationEnabled}
                                     onChange={(event) =>
@@ -1045,7 +1178,7 @@ export default function TenantAccessCenter() {
                                 />
                                 <TextField
                                     size="small"
-                                    label={t('Escalation Slack Webhook URL')}
+                                    label={t('Admin Escalation Slack Webhook URL')}
                                     value={authForm.managerAccessReviewEscalationSlackWebhookUrl || ''}
                                     disabled={!authForm.managerAccessReviewEscalationEnabled}
                                     onChange={(event) =>
@@ -1054,6 +1187,36 @@ export default function TenantAccessCenter() {
                                             managerAccessReviewEscalationSlackWebhookUrl: event.target.value,
                                         }))
                                     }
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={!!authForm.managerAccessReviewNextTierEscalationEnabled}
+                                            disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                            onChange={(event) =>
+                                                setAuthForm((current) => ({
+                                                    ...current,
+                                                    managerAccessReviewNextTierEscalationEnabled: event.target.checked,
+                                                }))
+                                            }
+                                        />
+                                    }
+                                    label={t('Enable Next-tier Manager Escalation')}
+                                />
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    label={t('Next-tier Escalate After (Days)')}
+                                    value={authForm.managerAccessReviewNextTierEscalationAfterDays ?? 3}
+                                    disabled={!authForm.managerAccessReviewNextTierEscalationEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewNextTierEscalationAfterDays: Number(event.target.value || 3),
+                                        }))
+                                    }
+                                    helperText={t('After the first manager acknowledges a reminder, the manager\'s manager can be notified if the review is still open.')}
+                                    inputProps={{min: 1, max: 30}}
                                 />
                                 <TextField
                                     size="small"

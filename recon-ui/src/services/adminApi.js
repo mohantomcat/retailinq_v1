@@ -102,6 +102,20 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
+    resendAccessReviewReminder: async (userId) => {
+        const res = await apiFetch(`${BASE}/users/${userId}/access-review/remind`, {
+            method: 'POST',
+        })
+        return await parseResponse(res)
+    },
+
+    escalateAccessReview: async (userId) => {
+        const res = await apiFetch(`${BASE}/users/${userId}/access-review/escalate`, {
+            method: 'POST',
+        })
+        return await parseResponse(res)
+    },
+
     startQuarterlyAccessReviewCycle: async () => {
         const res = await apiFetch(`${BASE}/access-reviews/quarterly-cycle`, {
             method: 'POST',

@@ -171,6 +171,14 @@ public class TenantAuthConfigEntity {
     @Column(name = "manager_access_review_escalation_slack_webhook_url")
     private String managerAccessReviewEscalationSlackWebhookUrl;
 
+    @Column(name = "manager_access_review_next_tier_escalation_enabled", nullable = false)
+    @Builder.Default
+    private boolean managerAccessReviewNextTierEscalationEnabled = false;
+
+    @Column(name = "manager_access_review_next_tier_escalation_after_days", nullable = false)
+    @Builder.Default
+    private int managerAccessReviewNextTierEscalationAfterDays = 3;
+
     @Column(name = "privileged_action_alerts_enabled", nullable = false)
     @Builder.Default
     private boolean privilegedActionAlertsEnabled = false;
@@ -258,6 +266,9 @@ public class TenantAuthConfigEntity {
         }
         if (managerAccessReviewEscalationAfterDays < 1) {
             managerAccessReviewEscalationAfterDays = 3;
+        }
+        if (managerAccessReviewNextTierEscalationAfterDays < 1) {
+            managerAccessReviewNextTierEscalationAfterDays = 3;
         }
     }
 }

@@ -51,6 +51,8 @@ public class TenantAuthConfigDto {
     private String managerAccessReviewEscalationEmailRecipients;
     private String managerAccessReviewEscalationTeamsWebhookUrl;
     private String managerAccessReviewEscalationSlackWebhookUrl;
+    private boolean managerAccessReviewNextTierEscalationEnabled;
+    private int managerAccessReviewNextTierEscalationAfterDays;
     private boolean privilegedActionAlertsEnabled;
     private String privilegedActionAlertEmailRecipients;
     private String privilegedActionAlertTeamsWebhookUrl;

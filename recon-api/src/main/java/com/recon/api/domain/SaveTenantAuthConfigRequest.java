@@ -46,6 +46,8 @@ public class SaveTenantAuthConfigRequest {
     private String managerAccessReviewEscalationEmailRecipients;
     private String managerAccessReviewEscalationTeamsWebhookUrl;
     private String managerAccessReviewEscalationSlackWebhookUrl;
+    private Boolean managerAccessReviewNextTierEscalationEnabled;
+    private Integer managerAccessReviewNextTierEscalationAfterDays;
     private Boolean privilegedActionAlertsEnabled;
     private String privilegedActionAlertEmailRecipients;
     private String privilegedActionAlertTeamsWebhookUrl;

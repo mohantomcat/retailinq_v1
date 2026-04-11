@@ -1,6 +1,7 @@
 package com.recon.api.service;
 
 import com.recon.api.domain.AuditLedgerWriteRequest;
+import com.recon.api.domain.AccessGovernanceNotificationActionResultDto;
 import com.recon.api.domain.AccessGovernanceApiKeyFindingDto;
 import com.recon.api.domain.AccessGovernanceUserFindingDto;
 import com.recon.api.domain.AssignUserOrganizationScopesRequest;
@@ -89,6 +90,7 @@ public class TenantAccessAdministrationService {
     private final SystemEndpointProfileService systemEndpointProfileService;
     private final AuditLedgerService auditLedgerService;
     private final PrivilegedAccessService privilegedAccessService;
+    private final AccessGovernanceNotificationService accessGovernanceNotificationService;
 
     @Value("${app.security.api-keys.default-expiration-days:90}")
     private int defaultApiKeyExpirationDays;
@@ -118,6 +120,7 @@ public class TenantAccessAdministrationService {
                         .toList())
                 .emergencyAccessGrants(privilegedAccessService.listEmergencyAccessGrants(tenantId))
                 .privilegedActionAlerts(privilegedAccessService.listPrivilegedActionAlerts(tenantId))
+                .notificationHistory(accessGovernanceNotificationService.listRecentNotificationHistory(tenantId))
                 .storeCatalog(accessScopeService.getTenantStoreCatalog(tenantId))
                 .reconGroups(reconModuleService.getTenantReconGroups(tenantId))
                 .systemEndpointProfiles(systemEndpointProfileService.getTenantProfiles(tenantId))
@@ -129,6 +132,40 @@ public class TenantAccessAdministrationService {
                                                                               String actor) {
         accessScopeService.ensureTenantHierarchy(tenantId, actor);
         return privilegedAccessService.startQuarterlyAccessReviewCycle(tenantId, actor);
+    }
+
+    @Transactional
+    public AccessGovernanceNotificationActionResultDto resendManagerAccessReviewReminder(String tenantId,
+                                                                                         UUID userId,
+                                                                                         String actor) {
+        accessScopeService.ensureTenantHierarchy(tenantId, actor);
+        AccessGovernanceNotificationActionResultDto result =
+                accessGovernanceNotificationService.resendManagerAccessReviewReminder(tenantId, userId, actor);
+        recordAudit(tenantId,
+                "ACCESS_REVIEW_REMINDER_RESENT",
+                "Manager access review reminder resent",
+                userId.toString(),
+                actor,
+                null,
+                result);
+        return result;
+    }
+
+    @Transactional
+    public AccessGovernanceNotificationActionResultDto escalateManagerAccessReview(String tenantId,
+                                                                                   UUID userId,
+                                                                                   String actor) {
+        accessScopeService.ensureTenantHierarchy(tenantId, actor);
+        AccessGovernanceNotificationActionResultDto result =
+                accessGovernanceNotificationService.escalateManagerAccessReview(tenantId, userId, actor);
+        recordAudit(tenantId,
+                "ACCESS_REVIEW_ESCALATED",
+                "Manager access review escalated",
+                userId.toString(),
+                actor,
+                null,
+                result);
+        return result;
     }
 
     @Transactional
@@ -346,6 +383,14 @@ public class TenantAccessAdministrationService {
                 safeRequest.getManagerAccessReviewEscalationTeamsWebhookUrl()));
         config.setManagerAccessReviewEscalationSlackWebhookUrl(trimToNull(
                 safeRequest.getManagerAccessReviewEscalationSlackWebhookUrl()));
+        if (safeRequest.getManagerAccessReviewNextTierEscalationEnabled() != null) {
+            config.setManagerAccessReviewNextTierEscalationEnabled(
+                    safeRequest.getManagerAccessReviewNextTierEscalationEnabled());
+        }
+        if (safeRequest.getManagerAccessReviewNextTierEscalationAfterDays() != null) {
+            config.setManagerAccessReviewNextTierEscalationAfterDays(
+                    safeRequest.getManagerAccessReviewNextTierEscalationAfterDays());
+        }
         if (safeRequest.getPrivilegedActionAlertsEnabled() != null) {
             config.setPrivilegedActionAlertsEnabled(safeRequest.getPrivilegedActionAlertsEnabled());
         }
@@ -771,6 +816,8 @@ public class TenantAccessAdministrationService {
                 .managerAccessReviewEscalationEmailRecipients(entity.getManagerAccessReviewEscalationEmailRecipients())
                 .managerAccessReviewEscalationTeamsWebhookUrl(entity.getManagerAccessReviewEscalationTeamsWebhookUrl())
                 .managerAccessReviewEscalationSlackWebhookUrl(entity.getManagerAccessReviewEscalationSlackWebhookUrl())
+                .managerAccessReviewNextTierEscalationEnabled(entity.isManagerAccessReviewNextTierEscalationEnabled())
+                .managerAccessReviewNextTierEscalationAfterDays(entity.getManagerAccessReviewNextTierEscalationAfterDays())
                 .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
                 .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
                 .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())
@@ -895,6 +942,11 @@ public class TenantAccessAdministrationService {
                 .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
                 .filter(this::hasEscalatedReminder)
                 .count();
+        int nextTierEscalatedManagerReviews = (int) users.stream()
+                .filter(User::isActive)
+                .filter(user -> "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING")))
+                .filter(this::hasNextTierEscalatedReminder)
+                .count();
         int usersWithoutManager = (int) users.stream()
                 .filter(User::isActive)
                 .filter(user -> user.getManagerUserId() == null)
@@ -937,6 +989,7 @@ public class TenantAccessAdministrationService {
                 .pendingManagerReviews(pendingManagerReviews)
                 .acknowledgedManagerReviews(acknowledgedManagerReviews)
                 .escalatedManagerReviews(escalatedManagerReviews)
+                .nextTierEscalatedManagerReviews(nextTierEscalatedManagerReviews)
                 .usersWithoutManager(usersWithoutManager)
                 .highPrivilegeUsers(highPrivilegeUsers)
                 .activeEmergencyAccessUsers(activeEmergencyAccessUsers)
@@ -981,6 +1034,11 @@ public class TenantAccessAdministrationService {
                 && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
                 && hasEscalatedReminder(user)) {
             findings.add("REVIEW_REMINDER_ESCALATED");
+        }
+        if (user.isActive()
+                && "PENDING_MANAGER".equalsIgnoreCase(defaultIfBlank(user.getAccessReviewStatus(), "PENDING"))
+                && hasNextTierEscalatedReminder(user)) {
+            findings.add("REVIEW_NEXT_TIER_ESCALATED");
         }
         if (user.isActive() && privilegedAccessService.hasHighPrivilegeAccess(safeResolvedAccess.effectivePermissions())) {
             findings.add("HIGH_PRIVILEGE_ACCESS");
@@ -1039,6 +1097,7 @@ public class TenantAccessAdministrationService {
                 .accessReviewReminderAcknowledgedAt(user.getAccessReviewReminderAcknowledgedAt())
                 .accessReviewReminderAcknowledgedBy(user.getAccessReviewReminderAcknowledgedBy())
                 .accessReviewLastEscalatedAt(user.getAccessReviewLastEscalatedAt())
+                .accessReviewLastNextTierEscalatedAt(user.getAccessReviewLastNextTierEscalatedAt())
                 .lastLogin(user.getLastLogin())
                 .emergencyAccessActive(safeResolvedAccess.emergencyAccessActive())
                 .emergencyAccessExpiresAt(safeResolvedAccess.emergencyAccessExpiresAt())
@@ -1175,6 +1234,13 @@ public class TenantAccessAdministrationService {
         }
         if (config.isManagerAccessReviewEscalationEnabled() && !config.isManagerAccessReviewRemindersEnabled()) {
             throw new IllegalArgumentException("Manager access review escalation requires reminders to be enabled");
+        }
+        int nextTierEscalationAfterDays = config.getManagerAccessReviewNextTierEscalationAfterDays();
+        if (nextTierEscalationAfterDays < 1 || nextTierEscalationAfterDays > 30) {
+            throw new IllegalArgumentException("Next-tier manager escalation must be between 1 and 30 days");
+        }
+        if (config.isManagerAccessReviewNextTierEscalationEnabled() && !config.isManagerAccessReviewRemindersEnabled()) {
+            throw new IllegalArgumentException("Next-tier manager escalation requires reminders to be enabled");
         }
         requireHttpUrlIfPresent(config.getManagerAccessReviewTeamsWebhookUrl(), "Manager access review Teams webhook URL");
         requireHttpUrlIfPresent(config.getManagerAccessReviewSlackWebhookUrl(), "Manager access review Slack webhook URL");
@@ -1342,11 +1408,23 @@ public class TenantAccessAdministrationService {
     }
 
     private boolean hasEscalatedReminder(User user) {
-        if (user == null || user.getAccessReviewLastEscalatedAt() == null) {
+        if (user == null) {
+            return false;
+        }
+        LocalDateTime lastReminderAt = user.getAccessReviewLastReminderAt();
+        boolean adminEscalated = user.getAccessReviewLastEscalatedAt() != null
+                && (lastReminderAt == null || !user.getAccessReviewLastEscalatedAt().isBefore(lastReminderAt));
+        boolean nextTierEscalated = user.getAccessReviewLastNextTierEscalatedAt() != null
+                && (lastReminderAt == null || !user.getAccessReviewLastNextTierEscalatedAt().isBefore(lastReminderAt));
+        return adminEscalated || nextTierEscalated;
+    }
+
+    private boolean hasNextTierEscalatedReminder(User user) {
+        if (user == null || user.getAccessReviewLastNextTierEscalatedAt() == null) {
             return false;
         }
         return user.getAccessReviewLastReminderAt() == null
-                || !user.getAccessReviewLastEscalatedAt().isBefore(user.getAccessReviewLastReminderAt());
+                || !user.getAccessReviewLastNextTierEscalatedAt().isBefore(user.getAccessReviewLastReminderAt());
     }
 
     private String firstNonBlank(String... values) {
@@ -1425,6 +1503,8 @@ public class TenantAccessAdministrationService {
                 .managerAccessReviewEscalationEmailRecipients(entity.getManagerAccessReviewEscalationEmailRecipients())
                 .managerAccessReviewEscalationTeamsWebhookUrl(entity.getManagerAccessReviewEscalationTeamsWebhookUrl())
                 .managerAccessReviewEscalationSlackWebhookUrl(entity.getManagerAccessReviewEscalationSlackWebhookUrl())
+                .managerAccessReviewNextTierEscalationEnabled(entity.isManagerAccessReviewNextTierEscalationEnabled())
+                .managerAccessReviewNextTierEscalationAfterDays(entity.getManagerAccessReviewNextTierEscalationAfterDays())
                 .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
                 .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
                 .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())

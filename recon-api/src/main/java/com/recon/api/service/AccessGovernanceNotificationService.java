@@ -2,6 +2,8 @@ package com.recon.api.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recon.api.domain.AccessGovernanceNotificationActionResultDto;
+import com.recon.api.domain.AccessGovernanceNotificationHistoryDto;
 import com.recon.api.domain.AccessGovernanceNotificationJob;
 import com.recon.api.domain.TenantAuthConfigEntity;
 import com.recon.api.domain.User;
@@ -45,12 +47,17 @@ public class AccessGovernanceNotificationService {
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String TYPE_MANAGER_REVIEW_REMINDER = "MANAGER_REVIEW_REMINDER";
     private static final String TYPE_MANAGER_REVIEW_ESCALATION = "MANAGER_REVIEW_ESCALATION";
+    private static final String TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION = "MANAGER_REVIEW_NEXT_TIER_ESCALATION";
     private static final String TYPE_PRIVILEGED_ACTION_ALERT = "PRIVILEGED_ACTION_ALERT";
     private static final String CHANNEL_EMAIL = "EMAIL";
     private static final String CHANNEL_MICROSOFT_TEAMS = "MICROSOFT_TEAMS";
     private static final String CHANNEL_SLACK = "SLACK";
     private static final String REMINDER_MODE_MANAGER = "MANAGER_EMAIL";
     private static final String REMINDER_MODE_SUMMARY = "SUMMARY";
+    private static final String ESCALATION_TIER_ADMIN = "ADMIN";
+    private static final String ESCALATION_TIER_MANAGER = "MANAGER";
+    private static final String ESCALATION_TIER_NEXT_MANAGER = "NEXT_MANAGER";
+    private static final String ESCALATION_TIER_ALERT = "ALERT";
     private static final Set<String> ACTIVE_JOB_STATUSES = Set.of(STATUS_PENDING, STATUS_RETRY_SCHEDULED);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH);
     private static final Pattern TEMPLATE_TOKEN_PATTERN = Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_]+)\\s*}}");
@@ -136,6 +143,113 @@ public class AccessGovernanceNotificationService {
         return dispatchManagerAccessReviewReminders(config, ignoreCadence);
     }
 
+    @Transactional(readOnly = true)
+    public List<AccessGovernanceNotificationHistoryDto> listRecentNotificationHistory(String tenantId) {
+        Map<UUID, User> usersById = loadUsersById(tenantId);
+        return accessGovernanceNotificationJobRepository.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .map(job -> toHistoryDto(job, usersById))
+                .toList();
+    }
+
+    @Transactional
+    public AccessGovernanceNotificationActionResultDto resendManagerAccessReviewReminder(String tenantId,
+                                                                                         UUID userId,
+                                                                                         String actor) {
+        TenantAuthConfigEntity config = tenantAuthConfigRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Tenant notification policy not found"));
+        if (!config.isManagerAccessReviewRemindersEnabled()) {
+            throw new IllegalArgumentException("Manager access review reminders are not enabled");
+        }
+
+        User pendingUser = requirePendingManagerReviewUser(tenantId, userId);
+        Map<UUID, User> usersById = loadUsersById(tenantId);
+        User manager = pendingUser.getManagerUserId() == null ? null : usersById.get(pendingUser.getManagerUserId());
+        if (manager == null || !manager.isActive() || trimToNull(manager.getEmail()) == null) {
+            throw new IllegalArgumentException("Assigned manager with an email address is required");
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mode", REMINDER_MODE_MANAGER);
+        payload.put("manual", true);
+        payload.put("managerUserId", manager.getId() != null ? manager.getId().toString() : null);
+        payload.put("managerName", firstNonBlank(manager.getFullName(), manager.getUsername(), "Manager"));
+        payload.put("notificationTier", ESCALATION_TIER_MANAGER);
+        boolean queued = enqueueNotificationJob(
+                config,
+                TYPE_MANAGER_REVIEW_REMINDER,
+                CHANNEL_EMAIL,
+                manager.getEmail(),
+                "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_REMINDER, tenantId, UUID.randomUUID()),
+                List.of(pendingUser.getId()),
+                payload);
+        processDueNotificationJobsForTenant(tenantId);
+        return AccessGovernanceNotificationActionResultDto.builder()
+                .actionType("RESEND_MANAGER_REVIEW_REMINDER")
+                .notificationTier(ESCALATION_TIER_MANAGER)
+                .queuedJobs(queued ? 1 : 0)
+                .targetSummary(firstNonBlank(manager.getFullName(), manager.getUsername(), manager.getEmail()))
+                .message(queued
+                        ? "Manager access review reminder queued"
+                        : "Manager access review reminder could not be queued")
+                .build();
+    }
+
+    @Transactional
+    public AccessGovernanceNotificationActionResultDto escalateManagerAccessReview(String tenantId,
+                                                                                   UUID userId,
+                                                                                   String actor) {
+        TenantAuthConfigEntity config = tenantAuthConfigRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Tenant notification policy not found"));
+        User pendingUser = requirePendingManagerReviewUser(tenantId, userId);
+        Map<UUID, User> usersById = loadUsersById(tenantId);
+
+        if (shouldUseNextTierEscalation(config, pendingUser, usersById)) {
+            User nextManager = resolveNextManager(pendingUser, usersById);
+            if (nextManager == null || trimToNull(nextManager.getEmail()) == null) {
+                throw new IllegalArgumentException("Next-tier manager email is not available for escalation");
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("manual", true);
+            payload.put("managerUserId", nextManager.getId() != null ? nextManager.getId().toString() : null);
+            payload.put("managerName", firstNonBlank(nextManager.getFullName(), nextManager.getUsername(), "Escalation manager"));
+            payload.put("originalManagerName", resolveDirectManagerName(pendingUser, usersById));
+            payload.put("notificationTier", ESCALATION_TIER_NEXT_MANAGER);
+            boolean queued = enqueueNotificationJob(
+                    config,
+                    TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION,
+                    CHANNEL_EMAIL,
+                    nextManager.getEmail(),
+                    "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION, tenantId, UUID.randomUUID()),
+                    List.of(pendingUser.getId()),
+                    payload);
+            processDueNotificationJobsForTenant(tenantId);
+            return AccessGovernanceNotificationActionResultDto.builder()
+                    .actionType("ESCALATE_MANAGER_REVIEW")
+                    .notificationTier(ESCALATION_TIER_NEXT_MANAGER)
+                    .queuedJobs(queued ? 1 : 0)
+                    .targetSummary(firstNonBlank(nextManager.getFullName(), nextManager.getUsername(), nextManager.getEmail()))
+                    .message(queued
+                            ? "Manager review escalated to the next manager tier"
+                            : "Manager review could not be escalated to the next manager tier")
+                    .build();
+        }
+
+        if (!config.isManagerAccessReviewEscalationEnabled()) {
+            throw new IllegalArgumentException("Admin escalation is not enabled");
+        }
+        int queuedJobs = queueAdminEscalationJobs(config, List.of(pendingUser), true);
+        processDueNotificationJobsForTenant(tenantId);
+        return AccessGovernanceNotificationActionResultDto.builder()
+                .actionType("ESCALATE_MANAGER_REVIEW")
+                .notificationTier(ESCALATION_TIER_ADMIN)
+                .queuedJobs(queuedJobs)
+                .targetSummary("Access administrators")
+                .message(queuedJobs > 0
+                        ? "Manager review escalated to access administrators"
+                        : "Manager review could not be escalated")
+                .build();
+    }
+
     public void notifyPrivilegedAction(String tenantId,
                                        String actionType,
                                        String title,
@@ -162,6 +276,7 @@ public class AccessGovernanceNotificationService {
         payload.put("entityKey", defaultIfBlank(entityKey, "unknown"));
         payload.put("status", defaultIfBlank(status, "RECORDED"));
         payload.put("severity", defaultIfBlank(metadata != null ? Objects.toString(metadata.get("severity"), null) : null, "HIGH"));
+        payload.put("notificationTier", ESCALATION_TIER_ALERT);
         if (afterState != null) {
             payload.put("afterState", afterState);
         }
@@ -208,7 +323,10 @@ public class AccessGovernanceNotificationService {
                         tenantId,
                         ACTIVE_JOB_STATUSES);
         for (AccessGovernanceNotificationJob job : jobs) {
-            if (!Set.of(TYPE_MANAGER_REVIEW_REMINDER, TYPE_MANAGER_REVIEW_ESCALATION).contains(job.getNotificationType())) {
+            if (!Set.of(
+                    TYPE_MANAGER_REVIEW_REMINDER,
+                    TYPE_MANAGER_REVIEW_ESCALATION,
+                    TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION).contains(job.getNotificationType())) {
                 continue;
             }
             List<UUID> currentUserIds = parseUserIds(job.getReferenceUserIds());
@@ -273,9 +391,9 @@ public class AccessGovernanceNotificationService {
         List<User> escalationCandidates = tenantUsers.stream()
                 .filter(User::isActive)
                 .filter(user -> !reminderUserIds.contains(user.getId()))
-                .filter(user -> escalationDue(config, user, now))
                 .toList();
-        queueEscalationJobs(config, escalationCandidates);
+        queueAdminEscalationJobs(config, escalationCandidates, false, usersById, now);
+        queueNextTierEscalationJobs(config, usersById, escalationCandidates, false, now);
         processDueNotificationJobsForTenant(config.getTenantId());
 
         return new ReminderDispatchResult(
@@ -302,6 +420,7 @@ public class AccessGovernanceNotificationService {
             payload.put("mode", REMINDER_MODE_MANAGER);
             payload.put("managerUserId", manager.getId() != null ? manager.getId().toString() : null);
             payload.put("managerName", firstNonBlank(manager.getFullName(), manager.getUsername(), "Manager"));
+            payload.put("notificationTier", ESCALATION_TIER_MANAGER);
             if (enqueueNotificationJob(
                     config,
                     TYPE_MANAGER_REVIEW_REMINDER,
@@ -326,7 +445,9 @@ public class AccessGovernanceNotificationService {
         }
 
         int broadcastJobs = 0;
-        Map<String, Object> summaryPayload = Map.of("mode", REMINDER_MODE_SUMMARY);
+        Map<String, Object> summaryPayload = Map.of(
+                "mode", REMINDER_MODE_SUMMARY,
+                "notificationTier", ESCALATION_TIER_MANAGER);
         for (String recipientEmail : splitCsv(config.getManagerAccessReviewAdditionalEmails())) {
             if (enqueueNotificationJob(
                     config,
@@ -362,11 +483,30 @@ public class AccessGovernanceNotificationService {
         return broadcastJobs;
     }
 
-    private int queueEscalationJobs(TenantAuthConfigEntity config, List<User> escalationCandidates) {
+    private int queueAdminEscalationJobs(TenantAuthConfigEntity config,
+                                         List<User> escalationCandidates,
+                                         boolean forceDispatch) {
+        if (config == null) {
+            return 0;
+        }
+        return queueAdminEscalationJobs(
+                config,
+                escalationCandidates,
+                forceDispatch,
+                loadUsersById(config.getTenantId()),
+                LocalDateTime.now());
+    }
+
+    private int queueAdminEscalationJobs(TenantAuthConfigEntity config,
+                                         List<User> escalationCandidates,
+                                         boolean forceDispatch,
+                                         Map<UUID, User> usersById,
+                                         LocalDateTime now) {
         if (config == null || !config.isManagerAccessReviewEscalationEnabled() || escalationCandidates.isEmpty()) {
             return 0;
         }
         List<UUID> escalationUserIds = escalationCandidates.stream()
+                .filter(user -> forceDispatch || adminEscalationDue(config, user, usersById, now))
                 .map(User::getId)
                 .filter(Objects::nonNull)
                 .toList();
@@ -375,14 +515,21 @@ public class AccessGovernanceNotificationService {
         }
 
         int queuedJobs = 0;
-        Map<String, Object> payload = Map.of("mode", REMINDER_MODE_SUMMARY);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mode", REMINDER_MODE_SUMMARY);
+        payload.put("notificationTier", ESCALATION_TIER_ADMIN);
+        if (forceDispatch) {
+            payload.put("manual", true);
+        }
         for (String recipientEmail : splitCsv(config.getManagerAccessReviewEscalationEmailRecipients())) {
             if (enqueueNotificationJob(
                     config,
                     TYPE_MANAGER_REVIEW_ESCALATION,
                     CHANNEL_EMAIL,
                     recipientEmail,
-                    "%s:%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_EMAIL, recipientEmail),
+                    forceDispatch
+                            ? "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), UUID.randomUUID())
+                            : "%s:%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_EMAIL, recipientEmail),
                     escalationUserIds,
                     payload)) {
                 queuedJobs++;
@@ -393,7 +540,9 @@ public class AccessGovernanceNotificationService {
                 TYPE_MANAGER_REVIEW_ESCALATION,
                 CHANNEL_MICROSOFT_TEAMS,
                 config.getManagerAccessReviewEscalationTeamsWebhookUrl(),
-                "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_MICROSOFT_TEAMS),
+                forceDispatch
+                        ? "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), UUID.randomUUID())
+                        : "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_MICROSOFT_TEAMS),
                 escalationUserIds,
                 payload)) {
             queuedJobs++;
@@ -403,10 +552,65 @@ public class AccessGovernanceNotificationService {
                 TYPE_MANAGER_REVIEW_ESCALATION,
                 CHANNEL_SLACK,
                 config.getManagerAccessReviewEscalationSlackWebhookUrl(),
-                "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_SLACK),
+                forceDispatch
+                        ? "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), UUID.randomUUID())
+                        : "%s:%s:%s".formatted(TYPE_MANAGER_REVIEW_ESCALATION, config.getTenantId(), CHANNEL_SLACK),
                 escalationUserIds,
                 payload)) {
             queuedJobs++;
+        }
+        return queuedJobs;
+    }
+
+    private int queueNextTierEscalationJobs(TenantAuthConfigEntity config,
+                                            Map<UUID, User> usersById,
+                                            List<User> escalationCandidates,
+                                            boolean forceDispatch,
+                                            LocalDateTime now) {
+        if (config == null
+                || !config.isManagerAccessReviewNextTierEscalationEnabled()
+                || escalationCandidates == null
+                || escalationCandidates.isEmpty()) {
+            return 0;
+        }
+
+        Map<User, List<User>> escalationByNextManager = new LinkedHashMap<>();
+        for (User pendingUser : escalationCandidates) {
+            if (!(forceDispatch || nextTierEscalationDue(config, pendingUser, usersById, now))) {
+                continue;
+            }
+            User nextManager = resolveNextManager(pendingUser, usersById);
+            if (nextManager == null || !nextManager.isActive() || trimToNull(nextManager.getEmail()) == null) {
+                continue;
+            }
+            escalationByNextManager.computeIfAbsent(nextManager, ignored -> new ArrayList<>()).add(pendingUser);
+        }
+
+        int queuedJobs = 0;
+        for (Map.Entry<User, List<User>> entry : escalationByNextManager.entrySet()) {
+            User nextManager = entry.getKey();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("managerUserId", nextManager.getId() != null ? nextManager.getId().toString() : null);
+            payload.put("managerName", firstNonBlank(nextManager.getFullName(), nextManager.getUsername(), "Escalation manager"));
+            payload.put("originalManagerName", resolveDirectManagerName(entry.getValue().get(0), usersById));
+            payload.put("notificationTier", ESCALATION_TIER_NEXT_MANAGER);
+            if (forceDispatch) {
+                payload.put("manual", true);
+            }
+            if (enqueueNotificationJob(
+                    config,
+                    TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION,
+                    CHANNEL_EMAIL,
+                    nextManager.getEmail(),
+                    "%s:%s:%s:%s".formatted(
+                            TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION,
+                            config.getTenantId(),
+                            CHANNEL_EMAIL,
+                            nextManager.getId()),
+                    entry.getValue().stream().map(User::getId).filter(Objects::nonNull).toList(),
+                    payload)) {
+                queuedJobs++;
+            }
         }
         return queuedJobs;
     }
@@ -474,6 +678,7 @@ public class AccessGovernanceNotificationService {
         return switch (defaultIfBlank(job.getNotificationType(), "").toUpperCase(Locale.ROOT)) {
             case TYPE_MANAGER_REVIEW_REMINDER -> buildManagerReminderMessage(job, config);
             case TYPE_MANAGER_REVIEW_ESCALATION -> buildManagerEscalationMessage(job, config);
+            case TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION -> buildNextTierEscalationMessage(job, config);
             case TYPE_PRIVILEGED_ACTION_ALERT -> buildPrivilegedActionMessage(job, config);
             default -> null;
         };
@@ -523,6 +728,8 @@ public class AccessGovernanceNotificationService {
                 usersWithoutManager,
                 config.getManagerAccessReviewReminderIntervalDays(),
                 0);
+        tokens.put("notificationTier", ESCALATION_TIER_MANAGER);
+        tokens.put("originalManagerName", tokens.get("managerName"));
         String subject = renderTemplate(
                 defaultIfBlank(config.getManagerAccessReviewReminderSubjectTemplate(), DEFAULT_MANAGER_REMINDER_SUBJECT_TEMPLATE),
                 tokens);
@@ -537,12 +744,13 @@ public class AccessGovernanceNotificationService {
         if (!config.isManagerAccessReviewEscalationEnabled()) {
             return null;
         }
+        Map<String, Object> payload = readPayload(job.getPayloadData());
         Map<UUID, User> usersById = loadUsersById(job.getTenantId());
         List<User> escalationUsers = parseUserIds(job.getReferenceUserIds()).stream()
                 .map(usersById::get)
                 .filter(Objects::nonNull)
                 .filter(User::isActive)
-                .filter(user -> escalationDue(config, user, LocalDateTime.now()))
+                .filter(user -> isForceDispatch(payload) || adminEscalationDue(config, user, usersById, LocalDateTime.now()))
                 .toList();
         if (escalationUsers.isEmpty()) {
             return null;
@@ -558,6 +766,59 @@ public class AccessGovernanceNotificationService {
                 usersWithoutManager,
                 config.getManagerAccessReviewReminderIntervalDays(),
                 config.getManagerAccessReviewEscalationAfterDays());
+        tokens.put("notificationTier", ESCALATION_TIER_ADMIN);
+        tokens.put("originalManagerName", "Assigned manager");
+        String subject = renderTemplate(
+                defaultIfBlank(config.getManagerAccessReviewEscalationSubjectTemplate(), DEFAULT_MANAGER_ESCALATION_SUBJECT_TEMPLATE),
+                tokens);
+        String body = renderTemplate(
+                defaultIfBlank(config.getManagerAccessReviewEscalationBodyTemplate(), DEFAULT_MANAGER_ESCALATION_BODY_TEMPLATE),
+                tokens);
+        return new NotificationMessage(job.getTargetKey(), job.getChannelType(), subject, body, escalationUsers, "C62828");
+    }
+
+    private NotificationMessage buildNextTierEscalationMessage(AccessGovernanceNotificationJob job,
+                                                               TenantAuthConfigEntity config) {
+        if (!config.isManagerAccessReviewNextTierEscalationEnabled()) {
+            return null;
+        }
+        Map<String, Object> payload = readPayload(job.getPayloadData());
+        Map<UUID, User> usersById = loadUsersById(job.getTenantId());
+        User nextManager = usersById.get(parseUuid(payload.get("managerUserId")));
+        if (nextManager == null || !nextManager.isActive() || trimToNull(nextManager.getEmail()) == null) {
+            return null;
+        }
+
+        List<User> escalationUsers = parseUserIds(job.getReferenceUserIds()).stream()
+                .map(usersById::get)
+                .filter(Objects::nonNull)
+                .filter(User::isActive)
+                .filter(this::isPendingManagerReview)
+                .filter(user -> isForceDispatch(payload) || nextTierEscalationDue(config, user, usersById, LocalDateTime.now()))
+                .filter(user -> Objects.equals(resolveNextManager(user, usersById), nextManager))
+                .toList();
+        if (escalationUsers.isEmpty()) {
+            return null;
+        }
+
+        long usersWithoutManager = escalationUsers.stream()
+                .filter(user -> user.getManagerUserId() == null || usersById.get(user.getManagerUserId()) == null)
+                .count();
+        Map<String, String> tokens = buildReminderTokens(
+                config.getTenantId(),
+                firstNonBlank(
+                        Objects.toString(payload.get("managerName"), null),
+                        nextManager.getFullName(),
+                        nextManager.getUsername(),
+                        "Escalation manager"),
+                escalationUsers,
+                usersWithoutManager,
+                config.getManagerAccessReviewReminderIntervalDays(),
+                config.getManagerAccessReviewNextTierEscalationAfterDays());
+        tokens.put("notificationTier", ESCALATION_TIER_NEXT_MANAGER);
+        tokens.put("originalManagerName", defaultIfBlank(
+                Objects.toString(payload.get("originalManagerName"), null),
+                resolveDirectManagerName(escalationUsers.get(0), usersById)));
         String subject = renderTemplate(
                 defaultIfBlank(config.getManagerAccessReviewEscalationSubjectTemplate(), DEFAULT_MANAGER_ESCALATION_SUBJECT_TEMPLATE),
                 tokens);
@@ -584,6 +845,7 @@ public class AccessGovernanceNotificationService {
         tokens.put("entityKey", defaultIfBlank(Objects.toString(payload.get("entityKey"), null), "unknown"));
         tokens.put("status", defaultIfBlank(Objects.toString(payload.get("status"), null), "RECORDED"));
         tokens.put("severity", defaultIfBlank(Objects.toString(payload.get("severity"), null), "HIGH"));
+        tokens.put("notificationTier", ESCALATION_TIER_ALERT);
         String subject = renderTemplate(
                 defaultIfBlank(config.getPrivilegedActionAlertSubjectTemplate(), DEFAULT_PRIVILEGED_ALERT_SUBJECT_TEMPLATE),
                 tokens);
@@ -627,6 +889,7 @@ public class AccessGovernanceNotificationService {
                 user.setAccessReviewReminderAcknowledgedBy(null);
                 user.setAccessReviewReminderAckNote(null);
                 user.setAccessReviewLastEscalatedAt(null);
+                user.setAccessReviewLastNextTierEscalatedAt(null);
             }
             userRepository.saveAll(affectedUsers);
             return;
@@ -634,6 +897,13 @@ public class AccessGovernanceNotificationService {
         if (TYPE_MANAGER_REVIEW_ESCALATION.equalsIgnoreCase(job.getNotificationType())) {
             for (User user : affectedUsers) {
                 user.setAccessReviewLastEscalatedAt(deliveredAt);
+            }
+            userRepository.saveAll(affectedUsers);
+            return;
+        }
+        if (TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION.equalsIgnoreCase(job.getNotificationType())) {
+            for (User user : affectedUsers) {
+                user.setAccessReviewLastNextTierEscalatedAt(deliveredAt);
             }
             userRepository.saveAll(affectedUsers);
         }
@@ -739,6 +1009,42 @@ public class AccessGovernanceNotificationService {
         };
     }
 
+    private AccessGovernanceNotificationHistoryDto toHistoryDto(AccessGovernanceNotificationJob job,
+                                                                Map<UUID, User> usersById) {
+        Map<String, Object> payload = readPayload(job.getPayloadData());
+        return AccessGovernanceNotificationHistoryDto.builder()
+                .id(job.getId())
+                .notificationType(defaultIfBlank(job.getNotificationType(), "UNKNOWN"))
+                .notificationTier(resolveNotificationTier(job, payload))
+                .channelType(defaultIfBlank(job.getChannelType(), CHANNEL_EMAIL))
+                .targetLabel(resolveTargetLabel(job, payload, usersById))
+                .notificationStatus(defaultIfBlank(job.getNotificationStatus(), STATUS_PENDING))
+                .attemptCount(job.getAttemptCount())
+                .maxAttempts(job.getMaxAttempts())
+                .nextAttemptAt(job.getNextAttemptAt())
+                .lastAttemptAt(job.getLastAttemptAt())
+                .deliveredAt(job.getDeliveredAt())
+                .createdAt(job.getCreatedAt())
+                .lastError(job.getLastError())
+                .referenceUsers(parseUserIds(job.getReferenceUserIds()).stream()
+                        .map(usersById::get)
+                        .map(this::formatUserLabel)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .limit(6)
+                        .toList())
+                .build();
+    }
+
+    private User requirePendingManagerReviewUser(String tenantId, UUID userId) {
+        User user = userRepository.findByIdAndTenantId(userId, tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!user.isActive() || !isPendingManagerReview(user)) {
+            throw new IllegalArgumentException("User is not pending manager review");
+        }
+        return user;
+    }
+
     private Map<String, String> buildReminderTokens(String tenantId,
                                                     String managerName,
                                                     List<User> users,
@@ -756,6 +1062,8 @@ public class AccessGovernanceNotificationService {
         tokens.put("reminderIntervalDays", String.valueOf(Math.max(1, reminderIntervalDays)));
         tokens.put("escalationAfterDays", String.valueOf(Math.max(0, escalationAfterDays)));
         tokens.put("pendingUsersList", buildPendingUsersList(users));
+        tokens.put("notificationTier", "");
+        tokens.put("originalManagerName", "");
         return tokens;
     }
 
@@ -804,20 +1112,62 @@ public class AccessGovernanceNotificationService {
         return lastReminderAt == null || !lastReminderAt.isAfter(now.minusDays(reminderIntervalDays));
     }
 
-    private boolean escalationDue(TenantAuthConfigEntity config, User user, LocalDateTime now) {
+    private boolean adminEscalationDue(TenantAuthConfigEntity config,
+                                       User user,
+                                       Map<UUID, User> usersById,
+                                       LocalDateTime now) {
         if (config == null || !config.isManagerAccessReviewEscalationEnabled() || user == null || !isPendingManagerReview(user)) {
             return false;
         }
-        LocalDateTime lastReminderAt = user.getAccessReviewLastReminderAt();
-        if (lastReminderAt == null || lastReminderAt.isAfter(now.minusDays(Math.max(1, config.getManagerAccessReviewEscalationAfterDays())))) {
+        LocalDateTime referenceAt = resolveAcknowledgedAt(user);
+        if (referenceAt == null) {
+            referenceAt = user.getAccessReviewLastReminderAt();
+        }
+        if (referenceAt == null
+                || referenceAt.isAfter(now.minusDays(Math.max(1, config.getManagerAccessReviewEscalationAfterDays())))) {
             return false;
         }
-        LocalDateTime acknowledgedAt = user.getAccessReviewReminderAcknowledgedAt();
-        if (acknowledgedAt != null && !acknowledgedAt.isBefore(lastReminderAt)) {
+        if (resolveAcknowledgedAt(user) != null && shouldUseNextTierEscalation(config, user, usersById)) {
             return false;
         }
         LocalDateTime lastEscalatedAt = user.getAccessReviewLastEscalatedAt();
-        return lastEscalatedAt == null || lastEscalatedAt.isBefore(lastReminderAt);
+        return lastEscalatedAt == null || lastEscalatedAt.isBefore(referenceAt);
+    }
+
+    private boolean nextTierEscalationDue(TenantAuthConfigEntity config,
+                                          User user,
+                                          Map<UUID, User> usersById,
+                                          LocalDateTime now) {
+        if (config == null
+                || !config.isManagerAccessReviewNextTierEscalationEnabled()
+                || user == null
+                || !isPendingManagerReview(user)) {
+            return false;
+        }
+        LocalDateTime acknowledgedAt = resolveAcknowledgedAt(user);
+        if (acknowledgedAt == null
+                || acknowledgedAt.isAfter(now.minusDays(Math.max(1, config.getManagerAccessReviewNextTierEscalationAfterDays())))) {
+            return false;
+        }
+        User nextManager = resolveNextManager(user, usersById);
+        if (nextManager == null || !nextManager.isActive() || trimToNull(nextManager.getEmail()) == null) {
+            return false;
+        }
+        LocalDateTime lastEscalatedAt = user.getAccessReviewLastNextTierEscalatedAt();
+        return lastEscalatedAt == null || lastEscalatedAt.isBefore(acknowledgedAt);
+    }
+
+    private boolean shouldUseNextTierEscalation(TenantAuthConfigEntity config,
+                                                User user,
+                                                Map<UUID, User> usersById) {
+        if (config == null || !config.isManagerAccessReviewNextTierEscalationEnabled()) {
+            return false;
+        }
+        if (resolveAcknowledgedAt(user) == null) {
+            return false;
+        }
+        User nextManager = resolveNextManager(user, usersById);
+        return nextManager != null && nextManager.isActive() && trimToNull(nextManager.getEmail()) != null;
     }
 
     private boolean isPendingManagerReview(User user) {
@@ -840,6 +1190,84 @@ public class AccessGovernanceNotificationService {
                         user -> user,
                         (left, right) -> left,
                         LinkedHashMap::new));
+    }
+
+    private LocalDateTime resolveAcknowledgedAt(User user) {
+        if (user == null || user.getAccessReviewReminderAcknowledgedAt() == null) {
+            return null;
+        }
+        LocalDateTime lastReminderAt = user.getAccessReviewLastReminderAt();
+        if (lastReminderAt == null || !user.getAccessReviewReminderAcknowledgedAt().isBefore(lastReminderAt)) {
+            return user.getAccessReviewReminderAcknowledgedAt();
+        }
+        return null;
+    }
+
+    private User resolveNextManager(User user, Map<UUID, User> usersById) {
+        if (user == null || usersById == null || user.getManagerUserId() == null) {
+            return null;
+        }
+        User directManager = usersById.get(user.getManagerUserId());
+        if (directManager == null || directManager.getManagerUserId() == null) {
+            return null;
+        }
+        return usersById.get(directManager.getManagerUserId());
+    }
+
+    private String resolveDirectManagerName(User user, Map<UUID, User> usersById) {
+        if (user == null || usersById == null || user.getManagerUserId() == null) {
+            return "Assigned manager";
+        }
+        User manager = usersById.get(user.getManagerUserId());
+        return firstNonBlank(
+                manager != null ? manager.getFullName() : null,
+                manager != null ? manager.getUsername() : null,
+                "Assigned manager");
+    }
+
+    private String resolveNotificationTier(AccessGovernanceNotificationJob job, Map<String, Object> payload) {
+        String explicitTier = trimToNull(Objects.toString(payload.get("notificationTier"), null));
+        if (explicitTier != null) {
+            return explicitTier.toUpperCase(Locale.ROOT);
+        }
+        return switch (defaultIfBlank(job.getNotificationType(), "").toUpperCase(Locale.ROOT)) {
+            case TYPE_MANAGER_REVIEW_REMINDER -> ESCALATION_TIER_MANAGER;
+            case TYPE_MANAGER_REVIEW_ESCALATION -> ESCALATION_TIER_ADMIN;
+            case TYPE_MANAGER_REVIEW_NEXT_TIER_ESCALATION -> ESCALATION_TIER_NEXT_MANAGER;
+            default -> ESCALATION_TIER_ALERT;
+        };
+    }
+
+    private String resolveTargetLabel(AccessGovernanceNotificationJob job,
+                                      Map<String, Object> payload,
+                                      Map<UUID, User> usersById) {
+        String channelType = defaultIfBlank(job.getChannelType(), CHANNEL_EMAIL).toUpperCase(Locale.ROOT);
+        if (!CHANNEL_EMAIL.equals(channelType)) {
+            return switch (channelType) {
+                case CHANNEL_MICROSOFT_TEAMS -> "Microsoft Teams webhook";
+                case CHANNEL_SLACK -> "Slack webhook";
+                default -> defaultIfBlank(job.getTargetKey(), "Webhook");
+            };
+        }
+
+        User manager = usersById.get(parseUuid(payload.get("managerUserId")));
+        if (manager != null) {
+            return "%s <%s>".formatted(
+                    firstNonBlank(manager.getFullName(), manager.getUsername(), "User"),
+                    defaultIfBlank(job.getTargetKey(), manager.getEmail()));
+        }
+        return defaultIfBlank(job.getTargetKey(), "Email recipient");
+    }
+
+    private String formatUserLabel(User user) {
+        if (user == null) {
+            return null;
+        }
+        return firstNonBlank(user.getFullName(), user.getUsername(), user.getEmail());
+    }
+
+    private boolean isForceDispatch(Map<String, Object> payload) {
+        return Boolean.parseBoolean(Objects.toString(payload.get("manual"), "false"));
     }
 
     private Map<String, Object> readPayload(String payloadData) {

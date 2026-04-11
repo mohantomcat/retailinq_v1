@@ -99,6 +99,9 @@ public class User {
     @Column(name = "access_review_last_escalated_at")
     private LocalDateTime accessReviewLastEscalatedAt;
 
+    @Column(name = "access_review_last_next_tier_escalated_at")
+    private LocalDateTime accessReviewLastNextTierEscalatedAt;
+
     @Column(name = "failed_login_attempts", nullable = false)
     @Builder.Default
     private int failedLoginAttempts = 0;

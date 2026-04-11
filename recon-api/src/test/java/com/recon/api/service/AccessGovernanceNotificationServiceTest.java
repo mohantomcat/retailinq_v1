@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -120,6 +121,15 @@ class AccessGovernanceNotificationServiceTest {
                             .filter(job -> tenantId.equals(job.getTenantId()))
                             .filter(job -> statuses.contains(job.getNotificationStatus()))
                             .sorted(Comparator.comparing(AccessGovernanceNotificationJob::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
+                            .toList();
+                });
+        when(accessGovernanceNotificationJobRepository.findTop50ByTenantIdOrderByCreatedAtDesc(anyString()))
+                .thenAnswer(invocation -> {
+                    String tenantId = invocation.getArgument(0, String.class);
+                    return storedJobs.stream()
+                            .filter(job -> tenantId.equals(job.getTenantId()))
+                            .sorted(Comparator.comparing(AccessGovernanceNotificationJob::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
+                            .limit(50)
                             .toList();
                 });
         when(userRepository.saveAll(any()))
@@ -226,5 +236,127 @@ class AccessGovernanceNotificationServiceTest {
         assertEquals(1, job.getAttemptCount());
         assertTrue(job.getNextAttemptAt().isAfter(LocalDateTime.now().plusMinutes(10)));
         assertNotNull(job.getLastError());
+    }
+
+    @Test
+    void resendManagerAccessReviewReminderQueuesSingleManagerDeliveryAndHistory() {
+        UUID managerId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID userId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        TenantAuthConfigEntity config = TenantAuthConfigEntity.builder()
+                .tenantId("tenant-india")
+                .managerAccessReviewRemindersEnabled(true)
+                .managerAccessReviewReminderIntervalDays(7)
+                .governanceNotificationMaxAttempts(3)
+                .governanceNotificationBackoffMinutes(15)
+                .build();
+        User manager = User.builder()
+                .id(managerId)
+                .tenantId("tenant-india")
+                .username("store.manager")
+                .fullName("Store Manager")
+                .email("manager@example.com")
+                .active(true)
+                .build();
+        User pendingUser = User.builder()
+                .id(userId)
+                .tenantId("tenant-india")
+                .username("associate")
+                .fullName("Associate User")
+                .email("associate@example.com")
+                .active(true)
+                .managerUserId(managerId)
+                .accessReviewStatus("PENDING_MANAGER")
+                .accessReviewDueAt(LocalDateTime.now().minusDays(1))
+                .build();
+
+        when(tenantAuthConfigRepository.findById("tenant-india")).thenReturn(Optional.of(config));
+        when(userRepository.findByIdAndTenantId(userId, "tenant-india")).thenReturn(Optional.of(pendingUser));
+        when(userRepository.findByTenantId("tenant-india")).thenReturn(List.of(manager, pendingUser));
+        when(alertEmailNotificationService.sendDirectEmail(anyString(), anyString(), any(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        var result = accessGovernanceNotificationService.resendManagerAccessReviewReminder(
+                "tenant-india",
+                userId,
+                "security.admin");
+
+        assertEquals("MANAGER", result.getNotificationTier());
+        assertEquals(1, result.getQueuedJobs());
+        assertNotNull(pendingUser.getAccessReviewLastReminderAt());
+        verify(alertEmailNotificationService).sendDirectEmail(
+                eq("tenant-india"),
+                eq("SECURITY"),
+                any(),
+                eq("manager@example.com"),
+                anyString(),
+                anyString());
+
+        var history = accessGovernanceNotificationService.listRecentNotificationHistory("tenant-india");
+        assertEquals(1, history.size());
+        assertTrue(history.get(0).getTargetLabel().contains("Store Manager"));
+        assertEquals(List.of("Associate User"), history.get(0).getReferenceUsers());
+    }
+
+    @Test
+    void dispatchManagerAccessReviewRemindersEscalatesToNextManagerAfterAcknowledgement() {
+        UUID regionalManagerId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        UUID managerId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        UUID userId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        TenantAuthConfigEntity config = TenantAuthConfigEntity.builder()
+                .tenantId("tenant-india")
+                .managerAccessReviewRemindersEnabled(true)
+                .managerAccessReviewReminderIntervalDays(30)
+                .managerAccessReviewNextTierEscalationEnabled(true)
+                .managerAccessReviewNextTierEscalationAfterDays(2)
+                .governanceNotificationMaxAttempts(3)
+                .governanceNotificationBackoffMinutes(15)
+                .build();
+        User regionalManager = User.builder()
+                .id(regionalManagerId)
+                .tenantId("tenant-india")
+                .username("regional.manager")
+                .fullName("Regional Manager")
+                .email("regional@example.com")
+                .active(true)
+                .build();
+        User manager = User.builder()
+                .id(managerId)
+                .tenantId("tenant-india")
+                .username("store.manager")
+                .fullName("Store Manager")
+                .email("manager@example.com")
+                .managerUserId(regionalManagerId)
+                .active(true)
+                .build();
+        User pendingUser = User.builder()
+                .id(userId)
+                .tenantId("tenant-india")
+                .username("associate")
+                .fullName("Associate User")
+                .email("associate@example.com")
+                .active(true)
+                .managerUserId(managerId)
+                .accessReviewStatus("PENDING_MANAGER")
+                .accessReviewDueAt(LocalDateTime.now().minusDays(1))
+                .accessReviewLastReminderAt(LocalDateTime.now().minusDays(5))
+                .accessReviewReminderAcknowledgedAt(LocalDateTime.now().minusDays(4))
+                .accessReviewReminderAcknowledgedBy("store.manager")
+                .build();
+
+        when(tenantAuthConfigRepository.findById("tenant-india")).thenReturn(Optional.of(config));
+        when(userRepository.findByTenantId("tenant-india")).thenReturn(List.of(regionalManager, manager, pendingUser));
+        when(alertEmailNotificationService.sendDirectEmail(anyString(), anyString(), any(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        accessGovernanceNotificationService.dispatchManagerAccessReviewRemindersForTenant("tenant-india", false);
+
+        assertNotNull(pendingUser.getAccessReviewLastNextTierEscalatedAt());
+        verify(alertEmailNotificationService).sendDirectEmail(
+                eq("tenant-india"),
+                eq("SECURITY"),
+                any(),
+                eq("regional@example.com"),
+                anyString(),
+                anyString());
     }
 }

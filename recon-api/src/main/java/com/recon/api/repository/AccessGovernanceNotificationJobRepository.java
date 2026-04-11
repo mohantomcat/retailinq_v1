@@ -23,6 +23,8 @@ public interface AccessGovernanceNotificationJobRepository extends JpaRepository
             String tenantId,
             Collection<String> statuses);
 
+    List<AccessGovernanceNotificationJob> findTop50ByTenantIdOrderByCreatedAtDesc(String tenantId);
+
     boolean existsByNotificationContextKeyAndNotificationStatusIn(
             String notificationContextKey,
             Collection<String> statuses);
