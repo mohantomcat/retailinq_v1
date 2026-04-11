@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.recon.api.domain.AuditLedgerWriteRequest;
 import com.recon.api.domain.ScimEmail;
 import com.recon.api.domain.ScimGroupReference;
+import com.recon.api.domain.ScimGroupResource;
 import com.recon.api.domain.ScimListResponse;
 import com.recon.api.domain.ScimMeta;
 import com.recon.api.domain.ScimName;
@@ -53,6 +54,7 @@ public class ScimProvisioningService {
     private final TenantAuthConfigRepository tenantAuthConfigRepository;
     private final UserRepository userRepository;
     private final EnterpriseIdentityLifecycleService enterpriseIdentityLifecycleService;
+    private final ScimGroupPushService scimGroupPushService;
     private final AuditLedgerService auditLedgerService;
     private final ObjectMapper objectMapper;
 
@@ -74,7 +76,7 @@ public class ScimProvisioningService {
     }
 
     public Map<String, Object> getSchemas(String tenantId) {
-        resolveConfig(tenantId);
+        TenantAuthConfigEntity config = resolveConfig(tenantId);
         List<Map<String, Object>> resources = new ArrayList<>();
         resources.add(Map.of(
                 "schemas", List.of(SCHEMA_SCHEMA),
@@ -87,7 +89,18 @@ public class ScimProvisioningService {
                         attribute("displayName", "string", false, false, "readWrite"),
                         attribute("active", "boolean", false, false, "readWrite"),
                         attribute("emails", "complex", false, true, "readWrite"),
+                        attribute("groups", "complex", false, true, "readWrite"),
                         attribute("name", "complex", false, false, "readWrite"))));
+        if (config.isScimGroupPushEnabled()) {
+            resources.add(Map.of(
+                    "schemas", List.of(SCHEMA_SCHEMA),
+                    "id", "urn:ietf:params:scim:schemas:core:2.0:Group",
+                    "name", "Group",
+                    "description", "Group",
+                    "attributes", List.of(
+                            attribute("displayName", "string", true, false, "readWrite"),
+                            attribute("members", "complex", false, true, "readWrite"))));
+        }
         resources.add(Map.of(
                 "schemas", List.of(SCHEMA_SCHEMA),
                 "id", SCHEMA_PATCH_OP,
@@ -102,26 +115,35 @@ public class ScimProvisioningService {
     }
 
     public Map<String, Object> getResourceTypes(String tenantId) {
-        resolveConfig(tenantId);
-        Map<String, Object> userResourceType = Map.of(
+        TenantAuthConfigEntity config = resolveConfig(tenantId);
+        List<Map<String, Object>> resources = new ArrayList<>();
+        resources.add(Map.of(
                 "schemas", List.of(SCHEMA_RESOURCE_TYPE),
                 "id", "User",
                 "name", "User",
                 "endpoint", "/Users",
-                "schema", "urn:ietf:params:scim:schemas:core:2.0:User");
+                "schema", "urn:ietf:params:scim:schemas:core:2.0:User"));
+        if (config.isScimGroupPushEnabled()) {
+            resources.add(Map.of(
+                    "schemas", List.of(SCHEMA_RESOURCE_TYPE),
+                    "id", "Group",
+                    "name", "Group",
+                    "endpoint", "/Groups",
+                    "schema", "urn:ietf:params:scim:schemas:core:2.0:Group"));
+        }
         return Map.of(
                 "schemas", List.of(SCHEMA_LIST_RESPONSE),
-                "totalResults", 1,
+                "totalResults", resources.size(),
                 "startIndex", 1,
-                "itemsPerPage", 1,
-                "Resources", List.of(userResourceType));
+                "itemsPerPage", resources.size(),
+                "Resources", resources);
     }
 
     public ScimListResponse<ScimUserResource> listUsers(String tenantId,
                                                         String filter,
                                                         Integer startIndex,
                                                         Integer count) {
-        resolveConfig(tenantId);
+        TenantAuthConfigEntity config = resolveConfig(tenantId);
         ScimFilterSpec filterSpec = parseFilter(filter);
         List<User> users = userRepository.findByTenantId(tenantId).stream()
                 .filter(user -> matchesFilter(user, filterSpec))
@@ -137,7 +159,7 @@ public class ScimProvisioningService {
         int fromIndex = Math.min(users.size(), resolvedStartIndex - 1);
         int toIndex = Math.min(users.size(), fromIndex + resolvedCount);
         List<ScimUserResource> resources = users.subList(fromIndex, toIndex).stream()
-                .map(user -> toResource(tenantId, user))
+                .map(user -> toResource(config, user))
                 .toList();
 
         return ScimListResponse.<ScimUserResource>builder()
@@ -150,8 +172,20 @@ public class ScimProvisioningService {
 
     public ScimUserResource getUser(String tenantId,
                                     String userId) {
-        resolveConfig(tenantId);
-        return toResource(tenantId, resolveUser(tenantId, userId));
+        TenantAuthConfigEntity config = resolveConfig(tenantId);
+        return toResource(config, resolveUser(tenantId, userId));
+    }
+
+    public ScimListResponse<ScimGroupResource> listGroups(String tenantId,
+                                                          String filter,
+                                                          Integer startIndex,
+                                                          Integer count) {
+        return scimGroupPushService.listGroups(tenantId, filter, startIndex, count);
+    }
+
+    public ScimGroupResource getGroup(String tenantId,
+                                      String groupId) {
+        return scimGroupPushService.getGroup(tenantId, groupId);
     }
 
     @Transactional
@@ -168,9 +202,15 @@ public class ScimProvisioningService {
                         input.email(),
                         input.fullName(),
                         input.active(),
-                        input.groupsProvided() ? input.groups() : null),
+                        config.isScimGroupPushEnabled() ? null : (input.groupsProvided() ? input.groups() : null)),
                 defaultActor(actor));
-        return toResource(tenantId, user);
+        if (config.isScimGroupPushEnabled() && input.groupsProvided()) {
+            user = scimGroupPushService.syncUserGroups(config, user, input.groups(), defaultActor(actor));
+        }
+        if (!input.active()) {
+            user = scimGroupPushService.deprovisionUser(config, user, defaultActor(actor), "SCIM_USER_INACTIVE", false);
+        }
+        return toResource(config, user);
     }
 
     @Transactional
@@ -190,7 +230,22 @@ public class ScimProvisioningService {
                 actor,
                 before,
                 cloneForAudit(saved));
-        return toResource(tenantId, saved);
+        return toResource(config, saved);
+    }
+
+    @Transactional
+    public ScimGroupResource createGroup(String tenantId,
+                                         ScimGroupResource request,
+                                         String actor) {
+        return scimGroupPushService.createGroup(tenantId, request, defaultActor(actor));
+    }
+
+    @Transactional
+    public ScimGroupResource replaceGroup(String tenantId,
+                                          String groupId,
+                                          ScimGroupResource request,
+                                          String actor) {
+        return scimGroupPushService.replaceGroup(tenantId, groupId, request, defaultActor(actor));
     }
 
     private User applyUserUpdate(TenantAuthConfigEntity config,
@@ -237,18 +292,26 @@ public class ScimProvisioningService {
             user.setExternalSubject(defaultIfBlank(user.getExternalSubject(), userName));
         }
 
+        User saved = userRepository.save(user);
         if (input.groupsProvided()) {
-            enterpriseIdentityLifecycleService.syncMappedRoles(
-                    tenantId,
-                    user,
-                    input.groups(),
-                    "SCIM",
-                    actor,
-                    true,
-                    false);
+            if (config.isScimGroupPushEnabled()) {
+                saved = scimGroupPushService.syncUserGroups(config, saved, input.groups(), actor);
+            } else {
+                enterpriseIdentityLifecycleService.syncMappedRoles(
+                        tenantId,
+                        saved,
+                        input.groups(),
+                        "SCIM",
+                        actor,
+                        true,
+                        false);
+                saved = userRepository.save(saved);
+            }
         }
-
-        return userRepository.save(user);
+        if (!input.active()) {
+            saved = scimGroupPushService.deprovisionUser(config, saved, actor, "SCIM_USER_INACTIVE", false);
+        }
+        return saved;
     }
 
     private User resolveUser(String tenantId,
@@ -333,25 +396,31 @@ public class ScimProvisioningService {
                 actor,
                 before,
                 cloneForAudit(saved));
-        return toResource(tenantId, saved);
+        return toResource(config, saved);
+    }
+
+    @Transactional
+    public ScimGroupResource patchGroup(String tenantId,
+                                        String groupId,
+                                        ScimPatchRequest request,
+                                        String actor) {
+        return scimGroupPushService.patchGroup(tenantId, groupId, request, defaultActor(actor));
     }
 
     @Transactional
     public void deactivateUser(String tenantId,
                                String userId,
                                String actor) {
-        resolveConfig(tenantId);
+        TenantAuthConfigEntity config = resolveConfig(tenantId);
         User user = resolveUser(tenantId, userId);
-        User before = cloneForAudit(user);
-        user.setActive(false);
-        User saved = userRepository.save(user);
-        recordAudit(saved.getTenantId(),
-                "SCIM_USER_DEACTIVATED",
-                "SCIM user deactivated",
-                saved.getId().toString(),
-                actor,
-                before,
-                cloneForAudit(saved));
+        scimGroupPushService.deprovisionUser(config, user, defaultActor(actor), "SCIM_USER_DELETE", true);
+    }
+
+    @Transactional
+    public void deleteGroup(String tenantId,
+                            String groupId,
+                            String actor) {
+        scimGroupPushService.deleteGroup(tenantId, groupId, defaultActor(actor));
     }
 
     private ResolvedScimUserInput resolvePatchedInput(User user,
@@ -554,8 +623,9 @@ public class ScimProvisioningService {
                         .orElse(null));
     }
 
-    private ScimUserResource toResource(String tenantId,
+    private ScimUserResource toResource(TenantAuthConfigEntity config,
                                         User user) {
+        String tenantId = config.getTenantId();
         String fullName = firstNonBlank(user.getFullName(), user.getUsername());
         return ScimUserResource.builder()
                 .id(user.getId().toString())
@@ -573,6 +643,9 @@ public class ScimProvisioningService {
                         .type("work")
                         .primary(true)
                         .build()))
+                .groups(config.isScimGroupPushEnabled()
+                        ? scimGroupPushService.listUserGroups(tenantId, user.getId())
+                        : null)
                 .meta(ScimMeta.builder()
                         .resourceType("User")
                         .created(toIso(user.getCreatedAt()))

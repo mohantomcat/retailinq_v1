@@ -37,6 +37,8 @@ public class TenantAuthConfigDto {
     private String samlUsernameAttribute;
     private boolean scimEnabled;
     private String scimBearerTokenRef;
+    private boolean scimGroupPushEnabled;
+    private String scimDeprovisionPolicy;
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

@@ -121,6 +121,14 @@ public class TenantAuthConfigEntity {
     @Column(name = "scim_bearer_token_ref")
     private String scimBearerTokenRef;
 
+    @Column(name = "scim_group_push_enabled", nullable = false)
+    @Builder.Default
+    private boolean scimGroupPushEnabled = false;
+
+    @Column(name = "scim_deprovision_policy", nullable = false)
+    @Builder.Default
+    private String scimDeprovisionPolicy = "DEACTIVATE";
+
     @Column(name = "updated_by")
     private String updatedBy;
 
@@ -162,6 +170,9 @@ public class TenantAuthConfigEntity {
         }
         if (samlUsernameAttribute == null || samlUsernameAttribute.isBlank()) {
             samlUsernameAttribute = "uid";
+        }
+        if (scimDeprovisionPolicy == null || scimDeprovisionPolicy.isBlank()) {
+            scimDeprovisionPolicy = "DEACTIVATE";
         }
     }
 }

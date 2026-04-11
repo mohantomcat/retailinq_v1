@@ -195,20 +195,7 @@ public class EnterpriseIdentityLifecycleService {
                                 String actor,
                                 boolean requireActiveMappings,
                                 boolean allowExistingRolesWhenMissingGroups) {
-        List<TenantOidcGroupRoleMapping> mappings =
-                tenantOidcGroupRoleMappingRepository.findByTenantIdAndActiveTrue(tenantId);
-        Set<String> normalizedGroups = groups == null ? Set.of() : groups.stream()
-                .map(this::normalizeGroup)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        if (mappings.isEmpty()) {
-            if (requireActiveMappings) {
-                throw new IllegalArgumentException(
-                        "Configure at least one active external group-role mapping before enabling " + source + " access");
-            }
-            return;
-        }
+        Set<String> normalizedGroups = normalizeGroups(groups);
         if (normalizedGroups.isEmpty()) {
             if (allowExistingRolesWhenMissingGroups) {
                 return;
@@ -216,22 +203,54 @@ public class EnterpriseIdentityLifecycleService {
             throw new IllegalArgumentException(source + " identity did not provide any mapped groups");
         }
 
-        Set<Role> mappedRoles = mappings.stream()
-                .filter(mapping -> normalizedGroups.contains(normalizeGroup(mapping.getOidcGroup())))
-                .map(TenantOidcGroupRoleMapping::getRole)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Role> mappedRoles = resolveMappedRoles(tenantId, normalizedGroups, source, requireActiveMappings);
         if (mappedRoles.isEmpty()) {
             throw new IllegalArgumentException("No application role mapping matched the " + source + " groups");
         }
 
+        applyMappedRoles(tenantId, user, mappedRoles, normalizedGroups, source, actor);
+    }
+
+    public Set<Role> resolveMappedRoles(String tenantId,
+                                        Set<String> groups,
+                                        String source,
+                                        boolean requireActiveMappings) {
+        List<TenantOidcGroupRoleMapping> mappings =
+                tenantOidcGroupRoleMappingRepository.findByTenantIdAndActiveTrue(tenantId);
+        if (mappings.isEmpty()) {
+            if (requireActiveMappings) {
+                throw new IllegalArgumentException(
+                        "Configure at least one active external group-role mapping before enabling " + source + " access");
+            }
+            return Set.of();
+        }
+
+        Set<String> normalizedGroups = normalizeGroups(groups);
+        if (normalizedGroups.isEmpty()) {
+            return Set.of();
+        }
+
+        return mappings.stream()
+                .filter(mapping -> normalizedGroups.contains(normalizeGroup(mapping.getOidcGroup())))
+                .map(TenantOidcGroupRoleMapping::getRole)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    public void applyMappedRoles(String tenantId,
+                                 User user,
+                                 Set<Role> mappedRoles,
+                                 Set<String> groups,
+                                 String source,
+                                 String actor) {
+        Set<String> normalizedGroups = normalizeGroups(groups);
         Set<UUID> beforeRoleIds = user.getRoles() == null
                 ? Set.of()
                 : user.getRoles().stream().map(Role::getId).collect(Collectors.toCollection(LinkedHashSet::new));
-        Set<UUID> afterRoleIds = mappedRoles.stream()
+        Set<UUID> afterRoleIds = (mappedRoles == null ? Set.<Role>of() : mappedRoles).stream()
                 .map(Role::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        user.setRoles(mappedRoles);
+        user.setRoles(mappedRoles == null ? new LinkedHashSet<>() : new LinkedHashSet<>(mappedRoles));
         if (!Objects.equals(beforeRoleIds, afterRoleIds)) {
             recordAudit(tenantId,
                     source + "_ROLES_SYNCED",
@@ -243,6 +262,13 @@ public class EnterpriseIdentityLifecycleService {
                             "beforeRoleIds", beforeRoleIds,
                             "afterRoleIds", afterRoleIds));
         }
+    }
+
+    public Set<String> normalizeGroups(Set<String> groups) {
+        return groups == null ? Set.of() : groups.stream()
+                .map(this::normalizeGroup)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private User resolveScimUser(String tenantId,

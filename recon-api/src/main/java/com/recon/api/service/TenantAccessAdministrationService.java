@@ -282,6 +282,10 @@ public class TenantAccessAdministrationService {
             config.setScimEnabled(safeRequest.getScimEnabled());
         }
         config.setScimBearerTokenRef(trimToNull(safeRequest.getScimBearerTokenRef()));
+        if (safeRequest.getScimGroupPushEnabled() != null) {
+            config.setScimGroupPushEnabled(safeRequest.getScimGroupPushEnabled());
+        }
+        config.setScimDeprovisionPolicy(defaultIfBlank(safeRequest.getScimDeprovisionPolicy(), "DEACTIVATE"));
         config.setUpdatedBy(defaultActor(actor));
         validateAuthConfig(config);
 
@@ -588,6 +592,8 @@ public class TenantAccessAdministrationService {
                         .samlUsernameAttribute("uid")
                         .apiKeyAuthEnabled(false)
                         .scimEnabled(false)
+                        .scimGroupPushEnabled(false)
+                        .scimDeprovisionPolicy("DEACTIVATE")
                         .updatedBy("system")
                         .build()));
     }
@@ -670,6 +676,8 @@ public class TenantAccessAdministrationService {
                 .samlUsernameAttribute(entity.getSamlUsernameAttribute())
                 .scimEnabled(entity.isScimEnabled())
                 .scimBearerTokenRef(entity.getScimBearerTokenRef())
+                .scimGroupPushEnabled(entity.isScimGroupPushEnabled())
+                .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .build();
@@ -952,6 +960,16 @@ public class TenantAccessAdministrationService {
         }
         if (config.isScimEnabled()) {
             requireField(config.getScimBearerTokenRef(), "SCIM bearer token reference");
+            String policy = defaultIfBlank(config.getScimDeprovisionPolicy(), "DEACTIVATE").toUpperCase(Locale.ROOT);
+            if (!Set.of("DEACTIVATE", "REMOVE_ACCESS").contains(policy)) {
+                throw new IllegalArgumentException("SCIM deprovision policy must be DEACTIVATE or REMOVE_ACCESS");
+            }
+            config.setScimDeprovisionPolicy(policy);
+            if (config.isScimGroupPushEnabled() && !config.isScimEnabled()) {
+                throw new IllegalArgumentException("SCIM group push requires SCIM provisioning to be enabled");
+            }
+        } else if (config.isScimGroupPushEnabled()) {
+            throw new IllegalArgumentException("SCIM group push requires SCIM provisioning to be enabled");
         }
     }
 
@@ -1147,6 +1165,8 @@ public class TenantAccessAdministrationService {
                 .samlUsernameAttribute(entity.getSamlUsernameAttribute())
                 .scimEnabled(entity.isScimEnabled())
                 .scimBearerTokenRef(entity.getScimBearerTokenRef())
+                .scimGroupPushEnabled(entity.isScimGroupPushEnabled())
+                .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

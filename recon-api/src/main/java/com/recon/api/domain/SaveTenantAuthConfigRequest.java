@@ -32,4 +32,6 @@ public class SaveTenantAuthConfigRequest {
     private String samlUsernameAttribute;
     private Boolean scimEnabled;
     private String scimBearerTokenRef;
+    private Boolean scimGroupPushEnabled;
+    private String scimDeprovisionPolicy;
 }

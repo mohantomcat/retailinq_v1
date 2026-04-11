@@ -98,6 +98,8 @@ export default function TenantAccessCenter() {
         samlUsernameAttribute: 'uid',
         scimEnabled: false,
         scimBearerTokenRef: '',
+        scimGroupPushEnabled: false,
+        scimDeprovisionPolicy: 'DEACTIVATE',
     })
     const [groupMappingForm, setGroupMappingForm] = useState([
         {oidcGroup: '', roleId: '', active: true},
@@ -541,7 +543,7 @@ export default function TenantAccessCenter() {
                         <FormControlLabel control={<Switch checked={!!authForm.localLoginEnabled} onChange={(event) => setAuthForm((current) => ({...current, localLoginEnabled: event.target.checked}))}/>} label={t('Enable Local Login')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.oidcEnabled} onChange={(event) => setAuthForm((current) => ({...current, oidcEnabled: event.target.checked}))}/>} label={t('Enable OIDC / SSO')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.samlEnabled} onChange={(event) => setAuthForm((current) => ({...current, samlEnabled: event.target.checked}))}/>} label={t('Enable SAML')}/>
-                        <FormControlLabel control={<Switch checked={!!authForm.scimEnabled} onChange={(event) => setAuthForm((current) => ({...current, scimEnabled: event.target.checked}))}/>} label={t('Enable SCIM Provisioning')}/>
+                        <FormControlLabel control={<Switch checked={!!authForm.scimEnabled} onChange={(event) => setAuthForm((current) => ({...current, scimEnabled: event.target.checked, scimGroupPushEnabled: event.target.checked ? current.scimGroupPushEnabled : false}))}/>} label={t('Enable SCIM Provisioning')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.apiKeyAuthEnabled} onChange={(event) => setAuthForm((current) => ({...current, apiKeyAuthEnabled: event.target.checked}))}/>} label={t('Enable Tenant API Keys')}/>
                         <FormControlLabel control={<Switch checked={!!authForm.autoProvisionUsers} onChange={(event) => setAuthForm((current) => ({...current, autoProvisionUsers: event.target.checked}))}/>} label={t('Auto Provision SSO Users')}/>
                         <TextField size="small" label={t('Allowed Email Domains')} value={authForm.allowedEmailDomains || ''} onChange={(event) => setAuthForm((current) => ({...current, allowedEmailDomains: event.target.value}))} helperText={t('Comma-separated domains for SSO provisioning')}/>
@@ -565,6 +567,19 @@ export default function TenantAccessCenter() {
                         <TextField size="small" label={t('SAML Groups Attribute')} value={authForm.samlGroupsAttribute || ''} onChange={(event) => setAuthForm((current) => ({...current, samlGroupsAttribute: event.target.value}))}/>
                         <TextField size="small" label={t('SAML Username Attribute')} value={authForm.samlUsernameAttribute || 'uid'} onChange={(event) => setAuthForm((current) => ({...current, samlUsernameAttribute: event.target.value}))}/>
                         <TextField size="small" label={t('SCIM Bearer Token Reference')} value={authForm.scimBearerTokenRef || ''} onChange={(event) => setAuthForm((current) => ({...current, scimBearerTokenRef: event.target.value}))} helperText={t('Environment variable or JVM property name used to validate SCIM bearer tokens')}/>
+                        <FormControlLabel control={<Switch checked={!!authForm.scimGroupPushEnabled} disabled={!authForm.scimEnabled} onChange={(event) => setAuthForm((current) => ({...current, scimGroupPushEnabled: event.target.checked}))}/>} label={t('Enable SCIM Group Push')}/>
+                        <TextField
+                            select
+                            size="small"
+                            label={t('SCIM Deprovision Policy')}
+                            value={authForm.scimDeprovisionPolicy || 'DEACTIVATE'}
+                            disabled={!authForm.scimEnabled}
+                            onChange={(event) => setAuthForm((current) => ({...current, scimDeprovisionPolicy: event.target.value}))}
+                            helperText={t('Deactivate keeps role assignments. Remove access also clears mapped application roles.')}
+                        >
+                            <MenuItem value="DEACTIVATE">{t('Deactivate')}</MenuItem>
+                            <MenuItem value="REMOVE_ACCESS">{t('Remove Access')}</MenuItem>
+                        </TextField>
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>

@@ -1,6 +1,7 @@
 package com.recon.api.controller;
 
 import com.recon.api.domain.ScimErrorResponse;
+import com.recon.api.domain.ScimGroupResource;
 import com.recon.api.domain.ScimPatchRequest;
 import com.recon.api.domain.ScimUserRequest;
 import com.recon.api.domain.ScimUserResource;
@@ -69,6 +70,22 @@ public class ScimController {
         return handle(tenantId, principal, () -> scimProvisioningService.getUser(tenantId, userId), HttpStatus.OK);
     }
 
+    @GetMapping("/Groups")
+    public ResponseEntity<?> listGroups(@PathVariable("tenantId") String tenantId,
+                                        @RequestParam(value = "filter", required = false) String filter,
+                                        @RequestParam(value = "startIndex", required = false) Integer startIndex,
+                                        @RequestParam(value = "count", required = false) Integer count,
+                                        @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return handle(tenantId, principal, () -> scimProvisioningService.listGroups(tenantId, filter, startIndex, count), HttpStatus.OK);
+    }
+
+    @GetMapping("/Groups/{groupId}")
+    public ResponseEntity<?> getGroup(@PathVariable("tenantId") String tenantId,
+                                      @PathVariable("groupId") String groupId,
+                                      @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return handle(tenantId, principal, () -> scimProvisioningService.getGroup(tenantId, groupId), HttpStatus.OK);
+    }
+
     @PostMapping(path = "/Users", consumes = {"application/scim+json", MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<?> createUser(@PathVariable("tenantId") String tenantId,
                                         @RequestBody ScimUserRequest request,
@@ -91,6 +108,28 @@ public class ScimController {
                 principal != null ? principal.getUsername() : "scim"), HttpStatus.OK);
     }
 
+    @PostMapping(path = "/Groups", consumes = {"application/scim+json", MediaType.APPLICATION_JSON_VALUE})
+    public ResponseEntity<?> createGroup(@PathVariable("tenantId") String tenantId,
+                                         @RequestBody ScimGroupResource request,
+                                         @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return handle(tenantId, principal, () -> scimProvisioningService.createGroup(
+                tenantId,
+                request,
+                principal != null ? principal.getUsername() : "scim"), HttpStatus.CREATED);
+    }
+
+    @PutMapping(path = "/Groups/{groupId}", consumes = {"application/scim+json", MediaType.APPLICATION_JSON_VALUE})
+    public ResponseEntity<?> replaceGroup(@PathVariable("tenantId") String tenantId,
+                                          @PathVariable("groupId") String groupId,
+                                          @RequestBody ScimGroupResource request,
+                                          @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return handle(tenantId, principal, () -> scimProvisioningService.replaceGroup(
+                tenantId,
+                groupId,
+                request,
+                principal != null ? principal.getUsername() : "scim"), HttpStatus.OK);
+    }
+
     @PatchMapping(path = "/Users/{userId}", consumes = {"application/scim+json", MediaType.APPLICATION_JSON_VALUE})
     public ResponseEntity<?> patchUser(@PathVariable("tenantId") String tenantId,
                                        @PathVariable("userId") String userId,
@@ -99,6 +138,18 @@ public class ScimController {
         return handle(tenantId, principal, () -> scimProvisioningService.patchUser(
                 tenantId,
                 userId,
+                request,
+                principal != null ? principal.getUsername() : "scim"), HttpStatus.OK);
+    }
+
+    @PatchMapping(path = "/Groups/{groupId}", consumes = {"application/scim+json", MediaType.APPLICATION_JSON_VALUE})
+    public ResponseEntity<?> patchGroup(@PathVariable("tenantId") String tenantId,
+                                        @PathVariable("groupId") String groupId,
+                                        @RequestBody ScimPatchRequest request,
+                                        @AuthenticationPrincipal ReconUserPrincipal principal) {
+        return handle(tenantId, principal, () -> scimProvisioningService.patchGroup(
+                tenantId,
+                groupId,
                 request,
                 principal != null ? principal.getUsername() : "scim"), HttpStatus.OK);
     }
@@ -122,6 +173,25 @@ public class ScimController {
         }
     }
 
+    @DeleteMapping("/Groups/{groupId}")
+    public ResponseEntity<?> deleteGroup(@PathVariable("tenantId") String tenantId,
+                                         @PathVariable("groupId") String groupId,
+                                         @AuthenticationPrincipal ReconUserPrincipal principal) {
+        try {
+            assertScimPrincipal(principal, tenantId);
+            scimProvisioningService.deleteGroup(tenantId, groupId, principal != null ? principal.getUsername() : "scim");
+            return ResponseEntity.noContent()
+                    .header(HttpHeaders.CONTENT_TYPE, SCIM_MEDIA_TYPE.toString())
+                    .build();
+        } catch (NoSuchElementException ex) {
+            return error(HttpStatus.NOT_FOUND, ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            return error(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (Exception ex) {
+            return error(HttpStatus.INTERNAL_SERVER_ERROR, "SCIM request failed");
+        }
+    }
+
     private ResponseEntity<?> handle(String tenantId,
                                      ReconUserPrincipal principal,
                                      Supplier<Object> supplier,
@@ -131,11 +201,9 @@ public class ScimController {
             Object body = supplier.get();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(SCIM_MEDIA_TYPE);
-            if (successStatus == HttpStatus.CREATED
-                    && body instanceof ScimUserResource resource
-                    && resource.getMeta() != null
-                    && resource.getMeta().getLocation() != null) {
-                headers.set(HttpHeaders.LOCATION, resource.getMeta().getLocation());
+            String location = resolveLocation(body);
+            if (successStatus == HttpStatus.CREATED && location != null) {
+                headers.set(HttpHeaders.LOCATION, location);
             }
             return new ResponseEntity<>(body, headers, successStatus);
         } catch (NoSuchElementException ex) {
@@ -165,5 +233,19 @@ public class ScimController {
                         .detail(detail)
                         .status(Integer.toString(status.value()))
                         .build());
+    }
+
+    private String resolveLocation(Object body) {
+        if (body instanceof ScimUserResource userResource
+                && userResource.getMeta() != null
+                && userResource.getMeta().getLocation() != null) {
+            return userResource.getMeta().getLocation();
+        }
+        if (body instanceof ScimGroupResource groupResource
+                && groupResource.getMeta() != null
+                && groupResource.getMeta().getLocation() != null) {
+            return groupResource.getMeta().getLocation();
+        }
+        return null;
     }
 }

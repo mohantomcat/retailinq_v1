@@ -1,7 +1,6 @@
 package com.recon.api.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,21 +13,13 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ScimUserResource {
+public class ScimGroupResource {
 
     @Builder.Default
-    private List<String> schemas = List.of("urn:ietf:params:scim:schemas:core:2.0:User");
+    private List<String> schemas = List.of("urn:ietf:params:scim:schemas:core:2.0:Group");
 
     private String id;
-    private String externalId;
-
-    @JsonProperty("userName")
-    private String userName;
-
     private String displayName;
-    private Boolean active;
-    private ScimName name;
-    private List<ScimEmail> emails;
-    private List<ScimGroupReference> groups;
+    private List<ScimGroupReference> members;
     private ScimMeta meta;
 }
