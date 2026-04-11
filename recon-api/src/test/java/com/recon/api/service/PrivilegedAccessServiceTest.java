@@ -47,6 +47,9 @@ class PrivilegedAccessServiceTest {
     @Mock
     private AuditLedgerService auditLedgerService;
 
+    @Mock
+    private AccessGovernanceNotificationService accessGovernanceNotificationService;
+
     private PrivilegedAccessService privilegedAccessService;
 
     @BeforeEach
@@ -56,7 +59,8 @@ class PrivilegedAccessServiceTest {
                 userRepository,
                 roleRepository,
                 auditLedgerEntryRepository,
-                auditLedgerService);
+                auditLedgerService,
+                accessGovernanceNotificationService);
     }
 
     @Test
@@ -166,6 +170,8 @@ class PrivilegedAccessServiceTest {
         assertEquals(2, response.getUsersMissingManager());
         assertEquals("PENDING_MANAGER", dueUser.getAccessReviewStatus());
         verify(auditLedgerService).record(any());
+        verify(accessGovernanceNotificationService)
+                .dispatchManagerAccessReviewRemindersForTenant("tenant-india", true);
     }
 
     private GrantEmergencyAccessRequest buildGrantRequest(UUID userId, UUID roleId) {

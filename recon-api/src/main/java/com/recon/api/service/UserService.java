@@ -254,6 +254,7 @@ public class UserService {
         user.setLastAccessReviewAt(now);
         user.setLastAccessReviewBy(defaultActor(actorUsername));
         user.setAccessReviewDueAt(now.plusDays(nextReviewDays));
+        user.setAccessReviewLastReminderAt(null);
         if (Boolean.TRUE.equals(safeRequest.getDeactivateUser())) {
             user.setActive(false);
         }
@@ -323,6 +324,7 @@ public class UserService {
                 .lastAccessReviewAt(user.getLastAccessReviewAt())
                 .lastAccessReviewBy(user.getLastAccessReviewBy())
                 .accessReviewDueAt(user.getAccessReviewDueAt())
+                .accessReviewLastReminderAt(user.getAccessReviewLastReminderAt())
                 .roles(user.getRoles() != null ? new HashSet<>(user.getRoles()) : new HashSet<>())
                 .storeIds(user.getStoreIds() != null ? new HashSet<>(user.getStoreIds()) : new HashSet<>())
                 .active(user.isActive())

@@ -318,6 +318,21 @@ public class TenantAccessAdministrationService {
             config.setScimGroupPushEnabled(safeRequest.getScimGroupPushEnabled());
         }
         config.setScimDeprovisionPolicy(defaultIfBlank(safeRequest.getScimDeprovisionPolicy(), "DEACTIVATE"));
+        if (safeRequest.getManagerAccessReviewRemindersEnabled() != null) {
+            config.setManagerAccessReviewRemindersEnabled(safeRequest.getManagerAccessReviewRemindersEnabled());
+        }
+        if (safeRequest.getManagerAccessReviewReminderIntervalDays() != null) {
+            config.setManagerAccessReviewReminderIntervalDays(safeRequest.getManagerAccessReviewReminderIntervalDays());
+        }
+        config.setManagerAccessReviewAdditionalEmails(normalizeCsv(safeRequest.getManagerAccessReviewAdditionalEmails(), true));
+        config.setManagerAccessReviewTeamsWebhookUrl(trimToNull(safeRequest.getManagerAccessReviewTeamsWebhookUrl()));
+        config.setManagerAccessReviewSlackWebhookUrl(trimToNull(safeRequest.getManagerAccessReviewSlackWebhookUrl()));
+        if (safeRequest.getPrivilegedActionAlertsEnabled() != null) {
+            config.setPrivilegedActionAlertsEnabled(safeRequest.getPrivilegedActionAlertsEnabled());
+        }
+        config.setPrivilegedActionAlertEmailRecipients(normalizeCsv(safeRequest.getPrivilegedActionAlertEmailRecipients(), true));
+        config.setPrivilegedActionAlertTeamsWebhookUrl(trimToNull(safeRequest.getPrivilegedActionAlertTeamsWebhookUrl()));
+        config.setPrivilegedActionAlertSlackWebhookUrl(trimToNull(safeRequest.getPrivilegedActionAlertSlackWebhookUrl()));
         config.setUpdatedBy(defaultActor(actor));
         validateAuthConfig(config);
 
@@ -626,6 +641,9 @@ public class TenantAccessAdministrationService {
                         .scimEnabled(false)
                         .scimGroupPushEnabled(false)
                         .scimDeprovisionPolicy("DEACTIVATE")
+                        .managerAccessReviewRemindersEnabled(false)
+                        .managerAccessReviewReminderIntervalDays(7)
+                        .privilegedActionAlertsEnabled(false)
                         .updatedBy("system")
                         .build()));
     }
@@ -710,6 +728,15 @@ public class TenantAccessAdministrationService {
                 .scimBearerTokenRef(entity.getScimBearerTokenRef())
                 .scimGroupPushEnabled(entity.isScimGroupPushEnabled())
                 .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
+                .managerAccessReviewRemindersEnabled(entity.isManagerAccessReviewRemindersEnabled())
+                .managerAccessReviewReminderIntervalDays(entity.getManagerAccessReviewReminderIntervalDays())
+                .managerAccessReviewAdditionalEmails(entity.getManagerAccessReviewAdditionalEmails())
+                .managerAccessReviewTeamsWebhookUrl(entity.getManagerAccessReviewTeamsWebhookUrl())
+                .managerAccessReviewSlackWebhookUrl(entity.getManagerAccessReviewSlackWebhookUrl())
+                .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
+                .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
+                .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())
+                .privilegedActionAlertSlackWebhookUrl(entity.getPrivilegedActionAlertSlackWebhookUrl())
                 .updatedAt(entity.getUpdatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .build();
@@ -1060,6 +1087,14 @@ public class TenantAccessAdministrationService {
         } else if (config.isScimGroupPushEnabled()) {
             throw new IllegalArgumentException("SCIM group push requires SCIM provisioning to be enabled");
         }
+        int reminderIntervalDays = config.getManagerAccessReviewReminderIntervalDays();
+        if (reminderIntervalDays < 1 || reminderIntervalDays > 30) {
+            throw new IllegalArgumentException("Manager access review reminder interval must be between 1 and 30 days");
+        }
+        requireHttpUrlIfPresent(config.getManagerAccessReviewTeamsWebhookUrl(), "Manager access review Teams webhook URL");
+        requireHttpUrlIfPresent(config.getManagerAccessReviewSlackWebhookUrl(), "Manager access review Slack webhook URL");
+        requireHttpUrlIfPresent(config.getPrivilegedActionAlertTeamsWebhookUrl(), "Privileged action alert Teams webhook URL");
+        requireHttpUrlIfPresent(config.getPrivilegedActionAlertSlackWebhookUrl(), "Privileged action alert Slack webhook URL");
     }
 
     private String normalizePreferredLoginMode(String value) {
@@ -1090,6 +1125,12 @@ public class TenantAccessAdministrationService {
             }
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(label + " must be a valid URL");
+        }
+    }
+
+    private void requireHttpUrlIfPresent(String value, String label) {
+        if (trimToNull(value) != null) {
+            requireHttpUrl(value, label);
         }
     }
 
@@ -1269,6 +1310,15 @@ public class TenantAccessAdministrationService {
                 .scimBearerTokenRef(entity.getScimBearerTokenRef())
                 .scimGroupPushEnabled(entity.isScimGroupPushEnabled())
                 .scimDeprovisionPolicy(entity.getScimDeprovisionPolicy())
+                .managerAccessReviewRemindersEnabled(entity.isManagerAccessReviewRemindersEnabled())
+                .managerAccessReviewReminderIntervalDays(entity.getManagerAccessReviewReminderIntervalDays())
+                .managerAccessReviewAdditionalEmails(entity.getManagerAccessReviewAdditionalEmails())
+                .managerAccessReviewTeamsWebhookUrl(entity.getManagerAccessReviewTeamsWebhookUrl())
+                .managerAccessReviewSlackWebhookUrl(entity.getManagerAccessReviewSlackWebhookUrl())
+                .privilegedActionAlertsEnabled(entity.isPrivilegedActionAlertsEnabled())
+                .privilegedActionAlertEmailRecipients(entity.getPrivilegedActionAlertEmailRecipients())
+                .privilegedActionAlertTeamsWebhookUrl(entity.getPrivilegedActionAlertTeamsWebhookUrl())
+                .privilegedActionAlertSlackWebhookUrl(entity.getPrivilegedActionAlertSlackWebhookUrl())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

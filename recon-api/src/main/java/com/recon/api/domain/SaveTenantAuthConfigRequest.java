@@ -34,4 +34,13 @@ public class SaveTenantAuthConfigRequest {
     private String scimBearerTokenRef;
     private Boolean scimGroupPushEnabled;
     private String scimDeprovisionPolicy;
+    private Boolean managerAccessReviewRemindersEnabled;
+    private Integer managerAccessReviewReminderIntervalDays;
+    private String managerAccessReviewAdditionalEmails;
+    private String managerAccessReviewTeamsWebhookUrl;
+    private String managerAccessReviewSlackWebhookUrl;
+    private Boolean privilegedActionAlertsEnabled;
+    private String privilegedActionAlertEmailRecipients;
+    private String privilegedActionAlertTeamsWebhookUrl;
+    private String privilegedActionAlertSlackWebhookUrl;
 }

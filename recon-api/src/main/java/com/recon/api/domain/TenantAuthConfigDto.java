@@ -39,6 +39,15 @@ public class TenantAuthConfigDto {
     private String scimBearerTokenRef;
     private boolean scimGroupPushEnabled;
     private String scimDeprovisionPolicy;
+    private boolean managerAccessReviewRemindersEnabled;
+    private int managerAccessReviewReminderIntervalDays;
+    private String managerAccessReviewAdditionalEmails;
+    private String managerAccessReviewTeamsWebhookUrl;
+    private String managerAccessReviewSlackWebhookUrl;
+    private boolean privilegedActionAlertsEnabled;
+    private String privilegedActionAlertEmailRecipients;
+    private String privilegedActionAlertTeamsWebhookUrl;
+    private String privilegedActionAlertSlackWebhookUrl;
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

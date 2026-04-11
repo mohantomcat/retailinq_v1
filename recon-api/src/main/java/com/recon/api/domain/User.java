@@ -84,6 +84,9 @@ public class User {
     @Column(name = "access_review_due_at")
     private LocalDateTime accessReviewDueAt;
 
+    @Column(name = "access_review_last_reminder_at")
+    private LocalDateTime accessReviewLastReminderAt;
+
     @Column(name = "failed_login_attempts", nullable = false)
     @Builder.Default
     private int failedLoginAttempts = 0;

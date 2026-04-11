@@ -16,6 +16,7 @@ import com.recon.api.repository.RoleRepository;
 import com.recon.api.repository.UserEmergencyAccessGrantRepository;
 import com.recon.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PrivilegedAccessService {
 
     private static final int DEFAULT_EMERGENCY_ACCESS_HOURS = 4;
@@ -42,6 +44,7 @@ public class PrivilegedAccessService {
     private final RoleRepository roleRepository;
     private final AuditLedgerEntryRepository auditLedgerEntryRepository;
     private final AuditLedgerService auditLedgerService;
+    private final AccessGovernanceNotificationService accessGovernanceNotificationService;
 
     @Transactional
     public EmergencyAccessGrantDto grantEmergencyAccess(String tenantId,
@@ -145,6 +148,7 @@ public class PrivilegedAccessService {
                 alreadyQueuedUsers++;
             } else {
                 user.setAccessReviewStatus("PENDING_MANAGER");
+                user.setAccessReviewLastReminderAt(null);
                 userRepository.save(user);
                 queuedUsers++;
             }
@@ -175,6 +179,7 @@ public class PrivilegedAccessService {
                 .evidenceTags(List.of("SECURITY", "ACCESS_REVIEW"))
                 .afterState(response)
                 .build());
+        accessGovernanceNotificationService.dispatchManagerAccessReviewRemindersForTenant(tenantId, true);
         return response;
     }
 
@@ -436,6 +441,25 @@ public class PrivilegedAccessService {
                 .afterState(afterState)
                 .metadata(metadata)
                 .build());
+        try {
+            accessGovernanceNotificationService.notifyPrivilegedAction(
+                    tenantId,
+                    actionType,
+                    title,
+                    summary,
+                    actor,
+                    entityType,
+                    entityKey,
+                    status,
+                    afterState,
+                    metadata);
+        } catch (Exception ex) {
+            log.error("Privileged action notification dispatch failed for tenant {} action {}: {}",
+                    tenantId,
+                    actionType,
+                    ex.getMessage(),
+                    ex);
+        }
     }
 
     private boolean isHighPrivilegePermission(String permission) {

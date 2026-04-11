@@ -126,6 +126,15 @@ export default function TenantAccessCenter() {
         scimBearerTokenRef: '',
         scimGroupPushEnabled: false,
         scimDeprovisionPolicy: 'DEACTIVATE',
+        managerAccessReviewRemindersEnabled: false,
+        managerAccessReviewReminderIntervalDays: 7,
+        managerAccessReviewAdditionalEmails: '',
+        managerAccessReviewTeamsWebhookUrl: '',
+        managerAccessReviewSlackWebhookUrl: '',
+        privilegedActionAlertsEnabled: false,
+        privilegedActionAlertEmailRecipients: '',
+        privilegedActionAlertTeamsWebhookUrl: '',
+        privilegedActionAlertSlackWebhookUrl: '',
     })
     const [groupMappingForm, setGroupMappingForm] = useState([
         {oidcGroup: '', roleId: '', active: true},
@@ -787,6 +796,134 @@ export default function TenantAccessCenter() {
                             <MenuItem value="DEACTIVATE">{t('Deactivate')}</MenuItem>
                             <MenuItem value="REMOVE_ACCESS">{t('Remove Access')}</MenuItem>
                         </TextField>
+
+                        <Box sx={{pt: 1.5, mt: 0.5, borderTop: `1px solid ${palette.borderSoft}`}}>
+                            <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
+                                {t('Governance Notifications')}
+                            </Typography>
+                            <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
+                                {t('Deliver manager access review reminders and privileged access alerts by email, Teams, and Slack.')}
+                            </Typography>
+                            <Stack spacing={1.25}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={!!authForm.managerAccessReviewRemindersEnabled}
+                                            onChange={(event) =>
+                                                setAuthForm((current) => ({
+                                                    ...current,
+                                                    managerAccessReviewRemindersEnabled: event.target.checked,
+                                                }))
+                                            }
+                                        />
+                                    }
+                                    label={t('Enable Manager Review Reminders')}
+                                />
+                                <TextField
+                                    size="small"
+                                    type="number"
+                                    label={t('Reminder Interval (Days)')}
+                                    value={authForm.managerAccessReviewReminderIntervalDays ?? 7}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewReminderIntervalDays: Number(event.target.value || 7),
+                                        }))
+                                    }
+                                    helperText={t('Managers receive one reminder per pending review cycle at this cadence.')}
+                                    inputProps={{min: 1, max: 30}}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Reminder Summary Emails')}
+                                    value={authForm.managerAccessReviewAdditionalEmails || ''}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewAdditionalEmails: event.target.value,
+                                        }))
+                                    }
+                                    helperText={t('Optional comma-separated email recipients for tenant-level reminder summaries.')}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Reminder Teams Webhook URL')}
+                                    value={authForm.managerAccessReviewTeamsWebhookUrl || ''}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewTeamsWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Reminder Slack Webhook URL')}
+                                    value={authForm.managerAccessReviewSlackWebhookUrl || ''}
+                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            managerAccessReviewSlackWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={!!authForm.privilegedActionAlertsEnabled}
+                                            onChange={(event) =>
+                                                setAuthForm((current) => ({
+                                                    ...current,
+                                                    privilegedActionAlertsEnabled: event.target.checked,
+                                                }))
+                                            }
+                                        />
+                                    }
+                                    label={t('Enable Privileged Action Alerts')}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Privileged Alert Emails')}
+                                    value={authForm.privilegedActionAlertEmailRecipients || ''}
+                                    disabled={!authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            privilegedActionAlertEmailRecipients: event.target.value,
+                                        }))
+                                    }
+                                    helperText={t('Comma-separated recipients for emergency access and privileged change alerts.')}
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Privileged Alert Teams Webhook URL')}
+                                    value={authForm.privilegedActionAlertTeamsWebhookUrl || ''}
+                                    disabled={!authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            privilegedActionAlertTeamsWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <TextField
+                                    size="small"
+                                    label={t('Privileged Alert Slack Webhook URL')}
+                                    value={authForm.privilegedActionAlertSlackWebhookUrl || ''}
+                                    disabled={!authForm.privilegedActionAlertsEnabled}
+                                    onChange={(event) =>
+                                        setAuthForm((current) => ({
+                                            ...current,
+                                            privilegedActionAlertSlackWebhookUrl: event.target.value,
+                                        }))
+                                    }
+                                />
+                            </Stack>
+                        </Box>
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>

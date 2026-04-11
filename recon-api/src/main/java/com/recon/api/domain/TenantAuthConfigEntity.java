@@ -129,6 +129,36 @@ public class TenantAuthConfigEntity {
     @Builder.Default
     private String scimDeprovisionPolicy = "DEACTIVATE";
 
+    @Column(name = "manager_access_review_reminders_enabled", nullable = false)
+    @Builder.Default
+    private boolean managerAccessReviewRemindersEnabled = false;
+
+    @Column(name = "manager_access_review_reminder_interval_days", nullable = false)
+    @Builder.Default
+    private int managerAccessReviewReminderIntervalDays = 7;
+
+    @Column(name = "manager_access_review_additional_emails")
+    private String managerAccessReviewAdditionalEmails;
+
+    @Column(name = "manager_access_review_teams_webhook_url")
+    private String managerAccessReviewTeamsWebhookUrl;
+
+    @Column(name = "manager_access_review_slack_webhook_url")
+    private String managerAccessReviewSlackWebhookUrl;
+
+    @Column(name = "privileged_action_alerts_enabled", nullable = false)
+    @Builder.Default
+    private boolean privilegedActionAlertsEnabled = false;
+
+    @Column(name = "privileged_action_alert_email_recipients")
+    private String privilegedActionAlertEmailRecipients;
+
+    @Column(name = "privileged_action_alert_teams_webhook_url")
+    private String privilegedActionAlertTeamsWebhookUrl;
+
+    @Column(name = "privileged_action_alert_slack_webhook_url")
+    private String privilegedActionAlertSlackWebhookUrl;
+
     @Column(name = "updated_by")
     private String updatedBy;
 
@@ -173,6 +203,9 @@ public class TenantAuthConfigEntity {
         }
         if (scimDeprovisionPolicy == null || scimDeprovisionPolicy.isBlank()) {
             scimDeprovisionPolicy = "DEACTIVATE";
+        }
+        if (managerAccessReviewReminderIntervalDays < 1) {
+            managerAccessReviewReminderIntervalDays = 7;
         }
     }
 }
