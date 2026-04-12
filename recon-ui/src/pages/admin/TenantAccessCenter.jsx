@@ -376,7 +376,12 @@ export default function TenantAccessCenter() {
     const storeCatalog = center?.storeCatalog || []
     const apiKeys = center?.apiKeys || []
     const reconGroups = center?.reconGroups || []
-    const systemEndpointProfiles = center?.systemEndpointProfiles || []
+    const systemEndpointProfiles = (center?.systemEndpointProfiles || [])
+        .map((profile) => ({
+            ...profile,
+            options: (profile.options || []).filter((option) => option.implemented),
+        }))
+        .filter((profile) => (profile.options || []).length > 0)
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
     const missingRequiredReconGroups = reconGroups
         .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
@@ -730,9 +735,10 @@ export default function TenantAccessCenter() {
                         </Typography>
                         <Stack spacing={1.5}>
                             {systemEndpointProfiles.map((profile) => {
-                                const selectedOption = (profile.options || []).find(
+                                const availableOptions = profile.options || []
+                                const selectedOption = availableOptions.find(
                                     (option) => option.endpointMode === (endpointProfileForm[profile.systemName] || profile.selectedEndpointMode)
-                                )
+                                ) || availableOptions[0] || null
                                 return (
                                     <Box
                                         key={profile.systemName}
@@ -764,14 +770,12 @@ export default function TenantAccessCenter() {
                                                     }))
                                                 }
                                             >
-                                                {(profile.options || []).map((option) => (
+                                                {availableOptions.map((option) => (
                                                     <MenuItem
                                                         key={`${profile.systemName}-${option.endpointMode}`}
                                                         value={option.endpointMode}
-                                                        disabled={!option.implemented}
                                                     >
                                                         {option.endpointMode}
-                                                        {!option.implemented ? ` - ${t('Planned')}` : ''}
                                                     </MenuItem>
                                                 ))}
                                             </TextField>
@@ -789,12 +793,11 @@ export default function TenantAccessCenter() {
                                                 ) : null}
                                                 <Chip
                                                     size="small"
-                                                    label={selectedOption?.implemented ? t('Implemented') : t('Planned')}
+                                                    label={t('Implemented')}
                                                     sx={{
-                                                        backgroundColor: selectedOption?.implemented ? palette.tealChipBg : palette.cardBg,
-                                                        color: selectedOption?.implemented ? palette.tealChipText : palette.textMuted,
+                                                        backgroundColor: palette.tealChipBg,
+                                                        color: palette.tealChipText,
                                                         fontWeight: 700,
-                                                        border: selectedOption?.implemented ? 'none' : `1px solid ${palette.borderSoft}`,
                                                     }}
                                                 />
                                                 {selectedOption?.integrationConnectorKey ? (

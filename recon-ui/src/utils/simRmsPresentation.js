@@ -100,7 +100,7 @@ export function buildFixedInventoryPresentation({
             leftQuantity: t('{system} Quantity', {system: config.originSystem}),
             rightQuantity: t('{system} Quantity', {system: config.counterpartySystem}),
             variance: t('Quantity Variance'),
-            note: t('Quantity metrics are available when the connector payload supports them. Value metrics remain deferred until backend enrichment is available.'),
+            note: t('Quantity metrics reflect the connector payload coverage for the selected lane.'),
         },
         exceptionLabels: {
             pending: t('Delayed {system} Update', {system: config.counterpartySystem}),

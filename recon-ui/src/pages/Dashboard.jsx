@@ -61,19 +61,12 @@ import {useAuth} from '../context/AuthContext'
 import {ACTIVITY_TAB_IDS, ALERT_TAB_IDS, CONFIGURATION_TAB_IDS, EXCEPTION_TAB_IDS, getTabLabel, INTEGRATION_TAB_IDS, OPERATIONS_TAB_IDS, REPORT_TAB_IDS, SLA_TAB_IDS} from '../constants/navigation'
 import {
     buildSiocsMfcsPresentation,
-    buildSiocsMfcsDemoResolvedProfiles,
     formatSiocsMfcsTransactionFamily,
     formatSiocsMfcsTransactionPhase,
-    getSiocsMfcsPhaseOptions,
     getSiocsMfcsReconStatuses,
     getSiocsMfcsStatusPresentation,
 } from '../utils/siocsMfcsPresentation'
 import {buildFixedInventoryPresentation, isFixedInventoryReconView} from '../utils/simRmsPresentation'
-import {
-    isSiocsMfcsDemoAvailable,
-    isSiocsMfcsDemoEnabled,
-    setSiocsMfcsDemoEnabled,
-} from '../services/siocsMfcsDemoData'
 import {
     EXCEPTION_QUEUE_PREFILL_EVENT,
     EXCEPTION_QUEUE_PREFILL_KEY,
@@ -1299,14 +1292,11 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     const [registers, setRegisters] = useState([])
     const [transactionTypes, setTransactionTypes] = useState([])
     const [transactionFamilies, setTransactionFamilies] = useState([])
-    const transactionPhaseOptions = useMemo(() => getSiocsMfcsPhaseOptions(t), [t])
     const [selectedStores, setSelectedStores] = useState([])
     const [selectedRegisters, setSelectedRegisters] = useState([])
     const [selectedTransactionTypes, setSelectedTransactionTypes] = useState([])
     const [selectedTransactionFamilies, setSelectedTransactionFamilies] = useState([])
     const [selectedTransactionPhases, setSelectedTransactionPhases] = useState([])
-    const [mfcsDemoMode, setMfcsDemoMode] = useState(() => isSiocsMfcsDemoEnabled())
-    const mfcsDemoAvailable = isSiocsMfcsDemoAvailable()
     const [fromDate, setFromDate] = useState('')
     const [toDate, setToDate] = useState('')
     const isTransactionFamilyScoped = isInventoryReconView(reconView)
@@ -1314,11 +1304,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     const isSimWorkbench = tabId === 'xstore-sim'
     const isSiocsMfcsWorkbench = reconView === 'SIOCS_MFCS'
     const isInventoryWorkbench = isInventoryReconView(reconView)
-    const inventoryResolvedProfiles = useMemo(
-        () => (isSiocsMfcsWorkbench && mfcsDemoMode ? buildSiocsMfcsDemoResolvedProfiles(t) : undefined),
-        [isSiocsMfcsWorkbench, mfcsDemoMode, t]
-    )
-    const inventoryPhaseFilterEnabled = isSiocsMfcsWorkbench && mfcsDemoMode && selectedTransactionFamilies.length > 0
     const detailScopedTransactionFamilies = useMemo(
         () => (isInventoryWorkbench && detailTransactionFamilyFocus
             ? [detailTransactionFamilyFocus]
@@ -1332,8 +1317,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         if (isSiocsMfcsWorkbench) {
             return buildSiocsMfcsPresentation({
                 selectedFamilies: selectedTransactionFamilies,
-                selectedPhases: selectedTransactionPhases,
-                resolvedProfiles: inventoryResolvedProfiles,
                 t,
             })
         }
@@ -1347,7 +1330,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         }
         return null
     }, [
-        inventoryResolvedProfiles,
         isInventoryWorkbench,
         isSiocsMfcsWorkbench,
         reconView,
@@ -1361,7 +1343,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
 
     useEffect(() => {
         reconApi.getStores(reconView).then(setStores).catch(console.error)
-    }, [reconView, mfcsDemoMode])
+    }, [reconView])
 
     useEffect(() => {
         setSelectedRegisters([])
@@ -1370,12 +1352,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         setSelectedTransactionPhases([])
         setContentTab('workbench')
     }, [reconView])
-
-    useEffect(() => {
-        if (!inventoryPhaseFilterEnabled && selectedTransactionPhases.length > 0) {
-            setSelectedTransactionPhases([])
-        }
-    }, [inventoryPhaseFilterEnabled, selectedTransactionPhases.length])
 
     useEffect(() => {
         if (!reconView) {
@@ -1405,7 +1381,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
             .catch(console.error)
         setTransactionTypes([])
         setTransactionFamilies([])
-    }, [selectedStores, reconView, isTransactionFamilyScoped, mfcsDemoMode])
+    }, [selectedStores, reconView, isTransactionFamilyScoped])
 
     useEffect(() => {
         if (!reconView) {
@@ -1464,7 +1440,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         setDetailTitle('')
         setDetailTransactionFamilyFocus(null)
         setPage(0)
-    }, [reconView, selectedStores, selectedTransactionFamilies, selectedTransactionPhases, fromDate, toDate, isTransactionFamilyScoped, mfcsDemoMode])
+    }, [reconView, selectedStores, selectedTransactionFamilies, selectedTransactionPhases, fromDate, toDate, isTransactionFamilyScoped])
 
     useEffect(() => {
         if (!reconView) {
@@ -1492,7 +1468,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         }
 
         loadAnalytics()
-    }, [reconView, selectedStores, selectedRegisters, selectedTransactionTypes, selectedTransactionFamilies, selectedTransactionPhases, isTransactionFamilyScoped, mfcsDemoMode])
+    }, [reconView, selectedStores, selectedRegisters, selectedTransactionTypes, selectedTransactionFamilies, selectedTransactionPhases, isTransactionFamilyScoped])
 
     useEffect(() => {
         if (!isSimWorkbench || !reconView || loadingKpis || selectedKpi || Object.keys(kpis).length === 0) {
@@ -1509,7 +1485,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     useEffect(() => {
         if (!selectedKpi || !reconView) return
 
-        const inventoryReconStatuses = isSiocsMfcsWorkbench && mfcsDemoMode
+        const inventoryReconStatuses = isSiocsMfcsWorkbench
             ? getSiocsMfcsReconStatuses(selectedKpiFilter || selectedKpi, inventoryPresentation)
             : []
         const reconStatus = inventoryReconStatuses.length > 0
@@ -1617,7 +1593,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         isInventoryWorkbench,
         isSiocsMfcsWorkbench,
         inventoryPresentation,
-        mfcsDemoMode,
     ])
 
     const handleKpiClick = (title, key, filterKey = key) => {
@@ -1835,7 +1810,9 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                 value: kpis.total || 0,
                 tone: 'neutral',
                 filterKey: 'total',
-                supportingText: `${inventoryPresentation.familySummary} / ${inventoryPresentation.phaseSummary}`,
+                supportingText: inventoryPresentation.phaseSummary
+                    ? `${inventoryPresentation.familySummary} / ${inventoryPresentation.phaseSummary}`
+                    : inventoryPresentation.familySummary,
                 definitionText: inventoryPresentation.summaryDefinitions.total,
             },
             {
@@ -2271,28 +2248,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
 
     const openSelectedRecordInExceptionQueue = () => openRecordInExceptionQueue(selectedDetailRow)
     const openSelectedRecordDrillDown = () => openRecordDrillDown(selectedDetailRow)
-    const toggleMfcsDemoMode = () => {
-        if (!mfcsDemoAvailable) {
-            return
-        }
-        const next = !mfcsDemoMode
-        setSiocsMfcsDemoEnabled(next)
-        setMfcsDemoMode(next)
-        setSelectedStores([])
-        setSelectedRegisters([])
-        setSelectedTransactionTypes([])
-        setSelectedTransactionFamilies([])
-        setSelectedTransactionPhases([])
-        setFromDate('')
-        setToDate('')
-        setSelectedKpi(null)
-        setSelectedKpiFilter(null)
-        setSelectedDetailRow(null)
-        setDetailData([])
-        setDetailTransactionFamilyFocus(null)
-        setPage(0)
-        setContentTab('workbench')
-    }
     const focusTrendStore = (storeId) => {
         if (!storeId) {
             return
@@ -2654,122 +2609,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                     </Select>
                 </FormControl>
 
-                {isInventoryWorkbench ? (
-                    <FormControl size="small" sx={{width: 220}}>
-                        <InputLabel sx={{color: palette.textMuted}}>
-                            {t('Transaction Type')}
-                        </InputLabel>
-                        <Select
-                            multiple
-                            value={selectedTransactionPhases}
-                            disabled={!inventoryPhaseFilterEnabled}
-                            onChange={(e) => {
-                                const v = e.target.value
-                                setSelectedTransactionPhases(typeof v === 'string' ? v.split(',') : v)
-                            }}
-                            input={<OutlinedInput label={t('Transaction Type')}/>}
-                            renderValue={(sel) => (
-                                <Box
-                                    sx={{
-                                        display: 'flex',
-                                        flexWrap: 'nowrap',
-                                        gap: 0.5,
-                                        overflow: 'hidden',
-                                    }}
-                                >
-                                    {sel.length > 0 ? (
-                                        sel.map((value) => (
-                                            <Chip
-                                                key={value}
-                                                label={formatSiocsMfcsTransactionPhase(value, t)}
-                                                size="small"
-                                                sx={{
-                                                    height: 20,
-                                                    fontSize: '0.75rem',
-                                                    backgroundColor: palette.blueChipBg,
-                                                    color: palette.blueChipText,
-                                                }}
-                                            />
-                                        ))
-                                    ) : (
-                                        <Chip
-                                            label={t('All transaction types')}
-                                            size="small"
-                                            sx={{
-                                                height: 20,
-                                                fontSize: '0.75rem',
-                                                backgroundColor: palette.cardBgAlt,
-                                                color: palette.textMuted,
-                                            }}
-                                        />
-                                    )}
-                                </Box>
-                            )}
-                            sx={{
-                                color: palette.text,
-                                backgroundColor: palette.cardBg,
-                                '& .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: palette.border,
-                                },
-                                '&.Mui-disabled': {
-                                    color: palette.textMuted,
-                                    backgroundColor: palette.cardBgAlt,
-                                },
-                                '& .MuiSvgIcon-root': {
-                                    color: palette.textMuted,
-                                },
-                            }}
-                        >
-                            {transactionPhaseOptions.map((option) => (
-                                <MenuItem key={option.value} value={option.value}>
-                                    <Box
-                                        sx={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 1,
-                                        }}
-                                    >
-                                        {renderCheckbox(selectedTransactionPhases.includes(option.value))}
-                                        {option.label}
-                                    </Box>
-                                </MenuItem>
-                            ))}
-                        </Select>
-                        {!inventoryPhaseFilterEnabled ? (
-                            <Typography sx={{mt: 0.6, fontSize: '0.74rem', color: palette.textMuted}}>
-                                {isInventoryWorkbench
-                                    ? t('Select a transaction family to unlock transaction type filtering.')
-                                    : t('Transaction type filtering will be enabled when backend support is available.')}
-                            </Typography>
-                        ) : null}
-                    </FormControl>
-                ) : null}
-
-                {isSiocsMfcsWorkbench && mfcsDemoAvailable ? (
-                    <Button
-                        variant={mfcsDemoMode ? 'contained' : 'outlined'}
-                        size="small"
-                        onClick={toggleMfcsDemoMode}
-                        sx={{
-                            alignSelf: 'center',
-                            minWidth: 150,
-                            textTransform: 'none',
-                            fontWeight: 700,
-                            borderRadius: 2,
-                            ...(mfcsDemoMode
-                                ? {
-                                    backgroundColor: '#2563EB',
-                                    '&:hover': {
-                                        backgroundColor: '#1D4ED8',
-                                    },
-                                }
-                                : {}),
-                        }}
-                    >
-                        {mfcsDemoMode ? t('Sample Data On') : t('Load Sample Data')}
-                    </Button>
-                ) : null}
-
                 <LocalizationProvider dateAdapter={AdapterDayjs}>
                     <ClearableDatePicker
                         label={t('From Date')}
@@ -2989,17 +2828,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                                             {inventoryPresentation.banner.description}
                                         </Typography>
                                         <Box sx={{display: 'flex', gap: 0.75, flexWrap: 'wrap', ml: {md: 'auto'}}}>
-                                            {isSiocsMfcsWorkbench && mfcsDemoMode ? (
-                                                <Chip
-                                                    label={t('Sample Data')}
-                                                    size="small"
-                                                    sx={{
-                                                        backgroundColor: palette.tealChipBg,
-                                                        color: palette.tealChipText,
-                                                        fontWeight: 700,
-                                                    }}
-                                                />
-                                            ) : null}
                                             <Chip
                                                 label={inventoryPresentation.familySummary}
                                                 size="small"
@@ -3009,15 +2837,17 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                                                     fontWeight: 700,
                                                 }}
                                             />
-                                            <Chip
-                                                label={inventoryPresentation.phaseSummary}
-                                                size="small"
-                                                sx={{
-                                                    backgroundColor: palette.cardBgAlt,
-                                                    color: palette.text,
-                                                    fontWeight: 700,
-                                                }}
-                                            />
+                                            {inventoryPresentation.phaseSummary ? (
+                                                <Chip
+                                                    label={inventoryPresentation.phaseSummary}
+                                                    size="small"
+                                                    sx={{
+                                                        backgroundColor: palette.cardBgAlt,
+                                                        color: palette.text,
+                                                        fontWeight: 700,
+                                                    }}
+                                                />
+                                            ) : null}
                                         </Box>
                                     </Box>
                                 </Paper>

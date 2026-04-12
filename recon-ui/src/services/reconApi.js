@@ -1,13 +1,4 @@
 import {apiFetch, parseResponse} from './apiFetch'
-import {
-    getSiocsMfcsDemoDashboard,
-    getSiocsMfcsDemoDashboardAnalytics,
-    getSiocsMfcsDemoStores,
-    getSiocsMfcsDemoTransaction,
-    getSiocsMfcsDemoTransactionFamilies,
-    getSiocsMfcsDemoTransactions,
-    isSiocsMfcsDemoEnabled,
-} from './siocsMfcsDemoData'
 
 const BASE = '/api/v1/recon'
 
@@ -26,20 +17,10 @@ export const reconApi = {
     getDashboard: async ({
                              storeIds = [],
                              transactionFamilies = [],
-                             transactionPhases = [],
                              reconView = null,
                              fromBusinessDate = null,
                              toBusinessDate = null,
                          } = {}) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoDashboard({
-                storeIds,
-                transactionFamilies,
-                transactionPhases,
-                fromBusinessDate,
-                toBusinessDate,
-            })
-        }
         const params = new URLSearchParams()
         if (storeIds?.length)
             storeIds.forEach(s =>
@@ -64,16 +45,8 @@ export const reconApi = {
                                       wkstnIds = [],
                                       transactionTypes = [],
                                       transactionFamilies = [],
-                                      transactionPhases = [],
                                       reconView = null,
                                   } = {}) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoDashboardAnalytics({
-                storeIds,
-                transactionFamilies,
-                transactionPhases,
-            })
-        }
         const params = new URLSearchParams()
         if (storeIds?.length) {
             storeIds.forEach((s) => params.append('storeIds', s))
@@ -124,26 +97,11 @@ export const reconApi = {
 
     getTransactions: async ({
                                 storeIds, wkstnIds, transactionTypes, transactionFamilies,
-                                transactionPhases,
-                                reconStatuses,
                                 reconView,
                                 fromBusinessDate, toBusinessDate,
                                 reconStatus, fromDate, toDate,
                                 page = 0, size = 20,
                             } = {}) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoTransactions({
-                storeIds,
-                transactionFamilies,
-                transactionPhases,
-                reconStatuses,
-                reconStatus,
-                fromBusinessDate,
-                toBusinessDate,
-                page,
-                size,
-            })
-        }
         const params = new URLSearchParams({page, size})
         if (storeIds?.length)
             storeIds.forEach(s =>
@@ -174,9 +132,6 @@ export const reconApi = {
     },
 
     getTransaction: async (transactionKey, reconView = null) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoTransaction(transactionKey)
-        }
         const encoded = encodeURIComponent(transactionKey)
         const params = new URLSearchParams()
         if (reconView) {
@@ -225,9 +180,6 @@ export const reconApi = {
     },
 
     getStores: async (reconView = null) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoStores()
-        }
         const params = new URLSearchParams()
         if (reconView)
             params.append('reconView', reconView)
@@ -264,9 +216,6 @@ export const reconApi = {
     },
 
     getTransactionFamilies: async (storeIds, reconView = null) => {
-        if (reconView === 'SIOCS_MFCS' && isSiocsMfcsDemoEnabled()) {
-            return getSiocsMfcsDemoTransactionFamilies(storeIds)
-        }
         const params = new URLSearchParams()
         if (storeIds?.length)
             storeIds.forEach(s =>

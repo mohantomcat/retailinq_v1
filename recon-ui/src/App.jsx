@@ -12,7 +12,6 @@ import {lazyImportWithRetry} from './utils/lazyImportWithRetry'
 
 const DashboardWrapper = lazyImportWithRetry(() => import('./pages/DashboardWrapper'), 'pages/DashboardWrapper')
 const Dashboard = lazyImportWithRetry(() => import('./pages/Dashboard'), 'pages/Dashboard')
-const KpiMockup = lazyImportWithRetry(() => import('./pages/KpiMockup'), 'pages/KpiMockup')
 const Login = lazyImportWithRetry(() => import('./pages/Login'), 'pages/Login')
 const Unauthorized = lazyImportWithRetry(() => import('./pages/Unauthorized'), 'pages/Unauthorized')
 
@@ -451,16 +450,6 @@ function AppRoutes() {
                         </ProtectedRoute>
                     }
                 />
-
-                <Route
-                    path="/kpi-mockup"
-                    element={
-                        <ProtectedRoute>
-                            <KpiMockup/>
-                        </ProtectedRoute>
-                    }
-                />
-
                 <Route path="*" element={<Navigate to="/" replace/>}/>
             </Routes>
         </Suspense>

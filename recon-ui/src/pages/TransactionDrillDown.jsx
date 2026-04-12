@@ -20,14 +20,12 @@ import {reconApi} from '../services/reconApi'
 import {useAuth} from '../context/AuthContext'
 import {exceptionApi} from '../services/exceptionApi'
 import {
-    buildSiocsMfcsDemoResolvedProfiles,
     buildSiocsMfcsPresentation,
     formatSiocsMfcsTransactionFamily,
     formatSiocsMfcsTransactionPhase,
     SIOCS_MFCS_SCOPE_MODE,
 } from '../utils/siocsMfcsPresentation'
 import {buildFixedInventoryPresentation, isFixedInventoryReconView} from '../utils/simRmsPresentation'
-import {isSiocsMfcsDemoEnabled} from '../services/siocsMfcsDemoData'
 import {
     EXCEPTION_QUEUE_PREFILL_EVENT,
     EXCEPTION_QUEUE_PREFILL_KEY,
@@ -200,30 +198,34 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
         return () => window.removeEventListener(TRANSACTION_DRILLDOWN_PREFILL_EVENT, handlePrefill)
     }, [])
 
-    const metrics = useMemo(() => (transaction ? [
-        {label: t('Match Score'), value: transaction.matchScore ?? '-'},
-        {label: t('Match Band'), value: transaction.matchBand || '-'},
-        {label: t('Transaction Amount'), value: formatCurrencyValue(transaction.transactionAmount)},
-        {label: t('Amount Variance'), value: formatCurrencyValue(transaction.amountVariance)},
-        {label: t('Quantity Impact'), value: formatMetricValue(transaction.quantityImpact)},
-        {label: t('Affected Items'), value: transaction.affectedItemCount ?? '-'},
-    ] : []), [transaction, t])
-
     const effectiveReconView = transaction?.reconView || selection?.reconView || ''
     const effectiveReconTabId = getReconTabId(effectiveReconView)
     const targetSystemLabel = getTargetSystemLabel(effectiveReconView)
     const isSiocsMfcsLane = effectiveReconView === 'SIOCS_MFCS'
     const isInventoryLane = isSiocsMfcsLane || isFixedInventoryReconView(effectiveReconView)
-    const siocsMfcsResolvedProfiles = useMemo(
-        () => (isSiocsMfcsLane && isSiocsMfcsDemoEnabled() ? buildSiocsMfcsDemoResolvedProfiles(t) : undefined),
-        [isSiocsMfcsLane, t],
-    )
+    const showInventoryValueMetrics = !isInventoryLane
+    const metrics = useMemo(() => {
+        if (!transaction) {
+            return []
+        }
+        const next = [
+            {label: t('Match Score'), value: transaction.matchScore ?? '-'},
+            {label: t('Match Band'), value: transaction.matchBand || '-'},
+            {label: t('Quantity Impact'), value: formatMetricValue(transaction.quantityImpact)},
+            {label: t('Affected Items'), value: transaction.affectedItemCount ?? '-'},
+        ]
+        if (showInventoryValueMetrics) {
+            next.splice(2, 0,
+                {label: t('Transaction Amount'), value: formatCurrencyValue(transaction.transactionAmount)},
+                {label: t('Amount Variance'), value: formatCurrencyValue(transaction.amountVariance)},
+            )
+        }
+        return next
+    }, [showInventoryValueMetrics, t, transaction])
     const inventoryPresentation = useMemo(() => {
         if (isSiocsMfcsLane) {
             return buildSiocsMfcsPresentation({
                 selectedFamilies: transaction?.transactionFamily ? [transaction.transactionFamily] : [],
-                selectedPhases: transaction?.transactionPhase ? [transaction.transactionPhase] : [],
-                resolvedProfiles: siocsMfcsResolvedProfiles,
                 t,
             })
         }
@@ -240,7 +242,6 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
         isSiocsMfcsLane,
         isInventoryLane,
         effectiveReconView,
-        siocsMfcsResolvedProfiles,
         t,
         transaction?.transactionFamily,
         transaction?.transactionPhase,
@@ -474,11 +475,16 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                     {label: t('Checksum Match'), value: transaction.checksumMatch ? t('Yes') : t('No')},
                                     {label: t('Tolerance Applied'), value: transaction.toleranceApplied ? t('Yes') : t('No')},
                                     {label: t('Quantity Variance %'), value: transaction.quantityVariancePercent !== null && transaction.quantityVariancePercent !== undefined ? `${formatMetricValue(transaction.quantityVariancePercent)}%` : '-'},
-                                    {label: t('Amount Variance %'), value: transaction.amountVariancePercent !== null && transaction.amountVariancePercent !== undefined ? `${formatMetricValue(transaction.amountVariancePercent)}%` : '-'},
                                     {label: t('Matched Lines'), value: transaction.matchedLineCount ?? '-'},
                                     {label: t('Discrepant Lines'), value: transaction.discrepantLineCount ?? '-'},
                                     {label: t('Tolerated Discrepancies'), value: transaction.toleratedDiscrepancyCount ?? '-'},
                                     {label: t('Material Discrepancies'), value: transaction.materialDiscrepancyCount ?? '-'},
+                                    ...(showInventoryValueMetrics ? [{
+                                        label: t('Amount Variance %'),
+                                        value: transaction.amountVariancePercent !== null && transaction.amountVariancePercent !== undefined
+                                            ? `${formatMetricValue(transaction.amountVariancePercent)}%`
+                                            : '-',
+                                    }] : []),
                                 ].map((item) => (
                                     <Box key={item.label} sx={{display: 'flex', justifyContent: 'space-between', gap: 2, p: 1.1, borderRadius: '14px', border: `1px solid ${palette.borderSoft}`, backgroundColor: palette.cardBgAlt}}>
                                         <Typography sx={{fontSize: '0.78rem', color: palette.textMuted}}>{item.label}</Typography>
@@ -504,7 +510,7 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                         <TableCell>{discrepancyLeftQuantityLabel}</TableCell>
                                         <TableCell>{discrepancyRightQuantityLabel}</TableCell>
                                         <TableCell>{t('Variance')}</TableCell>
-                                        <TableCell>{t('Amount')}</TableCell>
+                                        {showInventoryValueMetrics ? <TableCell>{t('Amount')}</TableCell> : null}
                                         <TableCell>{t('Severity')}</TableCell>
                                     </TableRow>
                                 </TableHead>
@@ -530,14 +536,16 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                                     {item.variancePercent !== null && item.variancePercent !== undefined ? `${formatMetricValue(item.variancePercent)}%` : '-'}
                                                 </Typography>
                                             </TableCell>
-                                            <TableCell>
-                                                <Typography sx={{fontSize: '0.8rem', color: palette.text}}>
-                                                    {formatCurrencyValue(item.varianceAmount)}
-                                                </Typography>
-                                                <Typography sx={{fontSize: '0.72rem', color: palette.textMuted}}>
-                                                    {item.varianceAmountPercent !== null && item.varianceAmountPercent !== undefined ? `${formatMetricValue(item.varianceAmountPercent)}%` : '-'}
-                                                </Typography>
-                                            </TableCell>
+                                            {showInventoryValueMetrics ? (
+                                                <TableCell>
+                                                    <Typography sx={{fontSize: '0.8rem', color: palette.text}}>
+                                                        {formatCurrencyValue(item.varianceAmount)}
+                                                    </Typography>
+                                                    <Typography sx={{fontSize: '0.72rem', color: palette.textMuted}}>
+                                                        {item.varianceAmountPercent !== null && item.varianceAmountPercent !== undefined ? `${formatMetricValue(item.varianceAmountPercent)}%` : '-'}
+                                                    </Typography>
+                                                </TableCell>
+                                            ) : null}
                                             <TableCell>
                                                 <Chip
                                                     size="small"
@@ -548,7 +556,7 @@ export default function TransactionDrillDown({palette, t, onOpenTab}) {
                                         </TableRow>
                                     )) : (
                                         <TableRow>
-                                            <TableCell colSpan={7}>
+                                            <TableCell colSpan={showInventoryValueMetrics ? 7 : 6}>
                                                 <Typography sx={{py: 2, fontSize: '0.84rem', color: palette.textMuted}}>
                                                     {t('No line discrepancies were captured for this transaction.')}
                                                 </Typography>

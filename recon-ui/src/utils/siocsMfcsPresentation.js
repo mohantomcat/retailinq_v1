@@ -11,10 +11,6 @@ const PHASE_LABELS = {
     UNKNOWN: 'Unknown',
 }
 
-// TODO: enable only when backend exposes reliable direction metadata that can
-// safely distinguish origin/counterparty by family + phase for this lane.
-const TRUSTED_DIRECTION_PROFILES = Object.freeze({})
-
 function normalizedValue(value) {
     return String(value || '').trim().toUpperCase()
 }
@@ -47,131 +43,26 @@ export function formatSiocsMfcsTransactionPhase(value, t) {
     return t(PHASE_LABELS[normalized] || normalized || 'Unknown')
 }
 
-export function getSiocsMfcsPhaseOptions(t) {
-    return Object.entries(PHASE_LABELS).map(([value, label]) => ({
-        value,
-        label: t(label),
-    }))
-}
-
-export function buildSiocsMfcsDemoResolvedProfiles(t) {
-    return {
-        'WHD|SHIPMENT': {
-            originSystem: 'MFCS',
-            counterpartySystem: 'SIOCS',
-            directionLabel: 'MFCS -> SIOCS',
-            contextTitle: t('WHD / Shipment Advice'),
-            description: t('Reconcile warehouse shipment advice sent from MFCS to SIOCS before store receipt.'),
-            summaryLabels: {
-                total: t('Total Shipment Advices'),
-                matched: t('Matched'),
-                missing: t('Missing in SIOCS'),
-                pending: t('Processing Pending in SIOCS'),
-                awaiting: t('Awaiting Store Receipt'),
-                exceptions: t('Exceptions'),
-            },
-            summaryDefinitions: {
-                total: t('All warehouse shipment advice transactions in scope for the selected filters.'),
-                matched: t('Shipment advice records reconciled successfully between MFCS and SIOCS.'),
-                missing: t('Shipment advice records expected in SIOCS but not found.'),
-                pending: t('Shipment advice records received by SIOCS and still processing.'),
-                awaiting: t('Shipment advice records waiting on the store receipt business event.'),
-                exceptions: t('Shipment advice transactions requiring review after excluding matched, missing, pending, and awaiting outcomes.'),
-            },
-            volumeLabels: {
-                title: t('Counts and Quantities'),
-                coverage: t('Shipment Advices with Quantity Metrics'),
-                leftQuantity: t('MFCS Quantity'),
-                rightQuantity: t('SIOCS Quantity'),
-                variance: t('Quantity Variance'),
-                note: t('Quantity metrics are available for sample shipment advice payloads. Value metrics remain deferred until backend enrichment is available.'),
-            },
-            exceptionLabels: {
-                pending: t('Delayed SIOCS Update'),
-                awaiting: t('Awaiting Store Receipt'),
-                duplicate: t('Duplicate Shipment Advice'),
-                itemMissing: t('Item Missing'),
-                quantityMismatch: t('Quantity Mismatch'),
-                statusConflict: t('Status Conflict'),
-            },
-        },
-        'WHD|RECEIPT': {
-            originSystem: 'SIOCS',
-            counterpartySystem: 'MFCS',
-            directionLabel: 'SIOCS -> MFCS',
-            contextTitle: t('WHD / Receipt Update'),
-            description: t('Reconcile store receipt confirmation sent from SIOCS to MFCS after receipt posting.'),
-            summaryLabels: {
-                total: t('Total Receipt Updates'),
-                matched: t('Matched'),
-                missing: t('Missing in MFCS'),
-                pending: t('Processing Pending in MFCS'),
-                awaiting: t('Awaiting MFCS Update'),
-                exceptions: t('Exceptions'),
-            },
-            summaryDefinitions: {
-                total: t('All store receipt update transactions in scope for the selected filters.'),
-                matched: t('Receipt update records reconciled successfully between SIOCS and MFCS.'),
-                missing: t('Receipt update records expected in MFCS but not found.'),
-                pending: t('Receipt update records received by MFCS and still processing.'),
-                awaiting: t('Receipt update records waiting on the MFCS update business event.'),
-                exceptions: t('Receipt update transactions requiring review after excluding matched, missing, pending, and awaiting outcomes.'),
-            },
-            volumeLabels: {
-                title: t('Counts and Quantities'),
-                coverage: t('Receipt Updates with Quantity Metrics'),
-                leftQuantity: t('SIOCS Quantity'),
-                rightQuantity: t('MFCS Quantity'),
-                variance: t('Quantity Variance'),
-                note: t('Quantity metrics are available for sample receipt update payloads. Value metrics remain deferred until backend enrichment is available.'),
-            },
-            exceptionLabels: {
-                pending: t('Delayed MFCS Update'),
-                awaiting: t('Awaiting MFCS Update'),
-                duplicate: t('Duplicate Receipt Update'),
-                itemMissing: t('Item Missing'),
-                quantityMismatch: t('Quantity Mismatch'),
-                statusConflict: t('Status Conflict'),
-            },
-        },
-    }
-}
-
-function resolvedProfileKey(family, phase) {
-    const normalizedFamily = normalizedValue(family)
-    const normalizedPhase = normalizedValue(phase)
-    if (!normalizedFamily || !normalizedPhase) {
-        return null
-    }
-    return `${normalizedFamily}|${normalizedPhase}`
-}
-
-function buildMixedScopePresentation(selectedFamilies, selectedPhases, t) {
+function buildMixedScopePresentation(selectedFamilies, t) {
     const familySummary = selectedFamilies.length === 1
         ? formatSiocsMfcsTransactionFamily(selectedFamilies[0], t)
         : selectedFamilies.length > 1
             ? t('{count} families selected', {count: selectedFamilies.length})
             : t('All transaction families')
 
-    const phaseSummary = selectedPhases.length === 1
-        ? formatSiocsMfcsTransactionPhase(selectedPhases[0], t)
-        : selectedPhases.length > 1
-            ? t('{count} transaction types selected', {count: selectedPhases.length})
-            : t('All transaction types')
-
     return {
         scopeMode: SIOCS_MFCS_SCOPE_MODE.MIXED,
         laneTitle: t('SIOCS \u2194 MFCS'),
         familySummary,
-        phaseSummary,
+        phaseSummary: null,
         originSystem: null,
         counterpartySystem: null,
-        directionLabel: t('Direction depends on selected transaction family and transaction type.'),
+        directionLabel: null,
         banner: {
             eyebrow: null,
-            title: t('Mixed transaction scope'),
-            directionText: t('Direction depends on selected transaction family and transaction type.'),
-            description: t('Narrow filters to a single family and transaction type to see direction-specific reconciliation wording when the backend provides enough context.'),
+            title: t('SIOCS and MFCS inventory reconciliation'),
+            directionText: null,
+            description: t('Review live transaction families across the lane with neutral wording until connector metadata supports stable direction labels.'),
         },
         summaryLabels: {
             total: t('Total Transactions'),
@@ -195,7 +86,7 @@ function buildMixedScopePresentation(selectedFamilies, selectedPhases, t) {
             leftQuantity: t('SIOCS Quantity'),
             rightQuantity: t('MFCS Quantity'),
             variance: t('Quantity Variance'),
-            note: t('Quantity metrics are available when the live payload supports them. Value metrics remain deferred until backend enrichment is available.'),
+            note: t('Quantity metrics reflect the live reconciliation payload coverage for the selected lane.'),
         },
         exceptionLabels: {
             pending: t('Delayed Update'),
@@ -208,45 +99,11 @@ function buildMixedScopePresentation(selectedFamilies, selectedPhases, t) {
     }
 }
 
-function buildResolvedScopePresentation(profile, family, phase, t) {
-    const directionText = t('Direction: {direction}', {direction: profile.directionLabel})
-    return {
-        scopeMode: SIOCS_MFCS_SCOPE_MODE.RESOLVED,
-        laneTitle: t('SIOCS \u2194 MFCS'),
-        familySummary: formatSiocsMfcsTransactionFamily(family, t),
-        phaseSummary: formatSiocsMfcsTransactionPhase(phase, t),
-        originSystem: profile.originSystem,
-        counterpartySystem: profile.counterpartySystem,
-        directionLabel: profile.directionLabel,
-        banner: {
-            eyebrow: directionText,
-            title: profile.contextTitle,
-            directionText: null,
-            description: profile.description,
-        },
-        summaryLabels: profile.summaryLabels,
-        summaryDefinitions: profile.summaryDefinitions,
-        volumeLabels: profile.volumeLabels,
-        exceptionLabels: profile.exceptionLabels,
-    }
-}
-
 export function buildSiocsMfcsPresentation({
     selectedFamilies = [],
-    selectedPhases = [],
-    resolvedProfiles = TRUSTED_DIRECTION_PROFILES,
     t,
 }) {
-    const key = selectedFamilies.length === 1 && selectedPhases.length === 1
-        ? resolvedProfileKey(selectedFamilies[0], selectedPhases[0])
-        : null
-    const resolvedProfile = key ? resolvedProfiles[key] : null
-
-    if (resolvedProfile) {
-        return buildResolvedScopePresentation(resolvedProfile, selectedFamilies[0], selectedPhases[0], t)
-    }
-
-    return buildMixedScopePresentation(selectedFamilies, selectedPhases, t)
+    return buildMixedScopePresentation(selectedFamilies, t)
 }
 
 export function getSiocsMfcsStatusPresentation(status, presentation, t) {
