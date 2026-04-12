@@ -219,7 +219,15 @@ function getSessionReconModules() {
     try {
         const storedUser = window.sessionStorage.getItem('recon_user')
         const user = storedUser ? JSON.parse(storedUser) : null
-        return Array.isArray(user?.accessibleModules) ? user.accessibleModules : []
+        return Array.isArray(user?.accessibleModules)
+            ? user.accessibleModules.filter((module) =>
+                Boolean(
+                    module?.reconView
+                    && module?.tabId
+                    && (module?.label || module?.moduleLabel || module?.reconView)
+                )
+            )
+            : []
     } catch {
         return []
     }
@@ -1218,57 +1226,6 @@ function WelcomeLanding({palette, t}) {
     )
 }
 
-function ComingSoonModule({tabId, palette, t}) {
-    return (
-        <Box sx={{px: 4, py: 4, maxWidth: 1480}}>
-            <Paper
-                elevation={0}
-                sx={{
-                    p: 4,
-                    borderRadius: '28px',
-                    border: `1px solid ${palette.border}`,
-                    background: palette.heroBg,
-                }}
-            >
-                <Chip
-                    label={t('Module Preview')}
-                    size="small"
-                    sx={{
-                        mb: 1.5,
-                        backgroundColor: palette.blueChipBg,
-                        color: palette.blueChipText,
-                        fontWeight: 700,
-                    }}
-                />
-
-                <Typography
-                    variant="h4"
-                    sx={{
-                        fontWeight: 700,
-                        color: palette.text,
-                        mb: 1.25,
-                    }}
-                >
-                    {getTabLabel(t, tabId)}
-                </Typography>
-
-                <Typography
-                    sx={{
-                        color: palette.textMuted,
-                        fontSize: '1rem',
-                        maxWidth: 780,
-                        lineHeight: 1.7,
-                    }}
-                >
-                    {t(
-                        'This module is being prepared with the same premium SaaS experience as the rest of RetailINQ. You can continue with reconciliation or admin modules already available.'
-                    )}
-                </Typography>
-            </Paper>
-        </Box>
-    )
-}
-
 function ReconContent({tabId, palette, t, onOpenTab}) {
     const reconView = getReconViewByTabId(tabId)
     const targetSystem = getTargetSystem(tabId)
@@ -1290,7 +1247,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     const [totalElements, setTotalElements] = useState(0)
     const [stores, setStores] = useState([])
     const [registers, setRegisters] = useState([])
-    const [transactionTypes, setTransactionTypes] = useState([])
     const [transactionFamilies, setTransactionFamilies] = useState([])
     const [selectedStores, setSelectedStores] = useState([])
     const [selectedRegisters, setSelectedRegisters] = useState([])
@@ -1356,7 +1312,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     useEffect(() => {
         if (!reconView) {
             setRegisters([])
-            setTransactionTypes([])
             setTransactionFamilies([])
             return
         }
@@ -1369,7 +1324,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
                 .then(setTransactionFamilies)
                 .catch(console.error)
             setRegisters([])
-            setTransactionTypes([])
             return
         }
 
@@ -1379,7 +1333,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         )
             .then(setRegisters)
             .catch(console.error)
-        setTransactionTypes([])
         setTransactionFamilies([])
     }, [selectedStores, reconView, isTransactionFamilyScoped])
 
@@ -1617,191 +1570,6 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
         (kpis.total || 0) - (kpis.matched || 0) - (kpis.missingInSiocs || 0) - pendingTotal,
         0
     )
-    const exceptionRate = (kpis.total || 0) > 0
-        ? Math.round((exceptionCount / kpis.total) * 10000) / 100
-        : 0
-    const laneHealth = (() => {
-        if (isInventoryWorkbench) {
-            if (!(kpis.total || 0)) {
-                return {
-                    label: t('No activity'),
-                    tone: 'info',
-                    summary: t('No transactions matched the current filter set.'),
-                    details: [
-                        t('Adjust filters or widen the business date range to inspect lane performance.'),
-                    ],
-                }
-            }
-            if ((analytics?.slaSummary?.breachedCases || 0) > 0 || (kpis.missingInSiocs || 0) > 0 || exceptionCount > 0) {
-                return {
-                    label: t('Attention Required'),
-                    tone: 'error',
-                    summary: t('The {lane} lane has active exceptions or SLA risk that need review.', {
-                        lane: inventoryPresentation?.laneTitle || t('inventory'),
-                    }),
-                    details: [
-                        pendingTotal > 0
-                            ? t('{count} transactions are still waiting on the next business event or counterparty processing.', {count: pendingTotal})
-                            : t('No transactions are currently waiting on the next business event or counterparty processing.'),
-                        (kpis.missingInSiocs || 0) > 0
-                            ? t('{count} transactions are missing in the counterparty system.', {count: kpis.missingInSiocs})
-                            : t('No missing counterparty transactions were detected.'),
-                        exceptionCount > 0
-                            ? t('{count} transactions currently require exception review.', {count: exceptionCount})
-                            : t('No exception-classified transactions are open right now.'),
-                        (analytics?.slaSummary?.breachedCases || 0) > 0
-                            ? t('{count} cases are already past SLA.', {count: analytics.slaSummary.breachedCases})
-                            : t('No active SLA breaches were found.'),
-                    ],
-                }
-            }
-            if (pendingTotal > 0) {
-                return {
-                    label: t('Watch Closely'),
-                    tone: 'warning',
-                    summary: t('The lane is mostly healthy, but counterparty processing or the next business event is still pending.'),
-                    details: [
-                        t('{count} transactions are still waiting for counterparty processing or the next business event.', {count: pendingTotal}),
-                        t('No missing transactions or material mismatches were detected.'),
-                        t('Monitor this queue and escalate only if pending items breach SLA.'),
-                    ],
-                }
-            }
-            return {
-                label: t('Healthy'),
-                tone: 'success',
-                summary: t('The {lane} lane is reconciling cleanly for the selected filters.', {
-                    lane: inventoryPresentation?.laneTitle || t('inventory'),
-                }),
-                details: [
-                    t('No pending processing backlog was detected.'),
-                    t('No missing transactions or open exception drivers were detected.'),
-                    t('{matchRate}% of the visible population is matched.', {matchRate: Math.round(kpis.matchRate || 0)}),
-                ],
-            }
-        }
-        if (!(kpis.total || 0)) {
-            return {
-                label: t('No activity'),
-                tone: 'info',
-                summary: t('No transactions matched the current filter set.'),
-                details: [
-                    t('Adjust filters or widen the business date range to inspect lane performance.'),
-                ],
-            }
-        }
-        if ((analytics?.slaSummary?.breachedCases || 0) > 0 || (kpis.missingInSiocs || 0) > 0 || exceptionCount > 0) {
-            return {
-                label: t('Attention Required'),
-                tone: 'error',
-                summary: t(`The ${targetSystem} lane has active exceptions or SLA risk that need review.`),
-                details: [
-                    pendingTotal > 0
-                        ? t(`${pendingTotal} transactions are still waiting on ${targetSystem}.`)
-                        : t(`No transactions are currently waiting on ${targetSystem}.`),
-                    (kpis.missingInSiocs || 0) > 0
-                        ? t(`${kpis.missingInSiocs} transactions are missing in ${targetSystem}.`)
-                        : t(`No missing transactions were detected in ${targetSystem}.`),
-                    exceptionCount > 0
-                        ? t(`${exceptionCount} transactions currently require exception review.`)
-                        : t('No exception-classified transactions are open right now.'),
-                    (analytics?.slaSummary?.breachedCases || 0) > 0
-                        ? t(`${analytics.slaSummary.breachedCases} cases are already past SLA.`)
-                        : t('No active SLA breaches were found.'),
-                ],
-            }
-        }
-        if (pendingTotal > 0) {
-            return {
-                label: t('Watch Closely'),
-                tone: 'warning',
-                summary: t(`The lane is mostly healthy, but ${targetSystem} processing is still in flight.`),
-                details: [
-                    t(`${pendingTotal} transactions are still pending in ${targetSystem}.`),
-                    t(`No missing transactions or material mismatches were detected.`),
-                    t(`Monitor this queue and escalate only if pending items breach SLA.`),
-                ],
-            }
-        }
-        return {
-            label: t('Healthy'),
-            tone: 'success',
-            summary: t(`The Xstore vs ${targetSystem} lane is reconciling cleanly for the selected filters.`),
-            details: [
-                t('No pending processing backlog was detected.'),
-                t('No missing transactions or open exception drivers were detected.'),
-                t(`${Math.round(kpis.matchRate || 0)}% of the visible population is matched.`),
-            ],
-        }
-    })()
-    const recommendedFocus = (() => {
-        const pendingOptions = (analytics?.slaSummary?.breachedCases || 0) > 0
-            ? [
-                {
-                    cardKey: 'awaitingSim',
-                    title: isInventoryWorkbench ? inventoryPresentation.summaryLabels.awaiting : t('Awaiting SIM Processing'),
-                    value: kpis.awaitingSim || 0,
-                    filterKey: 'awaitingSim',
-                    cta: isInventoryWorkbench ? t('Review next-event records') : t('Review awaiting SIM records'),
-                },
-                {
-                    cardKey: 'processingPending',
-                    title: isInventoryWorkbench ? inventoryPresentation.summaryLabels.pending : getProcessingPendingKpiTitle(tabId, t),
-                    value: kpis.processingPending || 0,
-                    filterKey: 'processingPending',
-                    cta: isInventoryWorkbench ? t('Review pending counterparty records') : t(`Review pending ${targetSystem} records`),
-                },
-            ]
-            : [
-                {
-                    cardKey: 'processingPending',
-                    title: isInventoryWorkbench ? inventoryPresentation.summaryLabels.pending : getProcessingPendingKpiTitle(tabId, t),
-                    value: kpis.processingPending || 0,
-                    filterKey: 'processingPending',
-                    cta: isInventoryWorkbench ? t('Review pending counterparty records') : t(`Review pending ${targetSystem} records`),
-                },
-                {
-                    cardKey: 'awaitingSim',
-                    title: isInventoryWorkbench ? inventoryPresentation.summaryLabels.awaiting : t('Awaiting SIM Processing'),
-                    value: kpis.awaitingSim || 0,
-                    filterKey: 'awaitingSim',
-                    cta: isInventoryWorkbench ? t('Review next-event records') : t('Review awaiting SIM records'),
-                },
-            ]
-
-        const options = [
-            {
-                cardKey: 'missingInSiocs',
-                title: isInventoryWorkbench ? inventoryPresentation.summaryLabels.missing : getMissingKpiTitle(tabId, t),
-                value: kpis.missingInSiocs || 0,
-                filterKey: 'missingInSiocs',
-                cta: isInventoryWorkbench ? t('Review missing counterparty records') : t(`Review missing ${targetSystem} records`),
-            },
-            {
-                cardKey: 'quantityMismatch',
-                title: t('Quantity Mismatch'),
-                value: kpis.quantityMismatch || 0,
-                filterKey: 'quantityMismatch',
-                cta: t('Review quantity mismatches'),
-            },
-            {
-                cardKey: 'itemMissing',
-                title: t('Item Missing'),
-                value: kpis.itemMissing || 0,
-                filterKey: 'itemMissing',
-                cta: t('Review item-level gaps'),
-            },
-            {
-                cardKey: 'duplicateTransactions',
-                title: isInventoryWorkbench ? inventoryPresentation.exceptionLabels.duplicate : getDuplicateKpiTitle(tabId, t),
-                value: kpis.duplicateTransactions || 0,
-                filterKey: 'duplicateTransactions',
-                cta: isInventoryWorkbench ? t('Review duplicate transaction records') : t(`Review duplicate ${targetSystem} postings`),
-            },
-            ...pendingOptions,
-        ]
-        return options.find((item) => item.value > 0) || null
-    })()
     const summaryCards = isInventoryWorkbench
         ? [
             {
@@ -2338,7 +2106,7 @@ function ReconContent({tabId, palette, t, onOpenTab}) {
     )
 
     if (!reconView) {
-        return <ComingSoonModule tabId={tabId} palette={palette} t={t}/>
+        return null
     }
 
     return (
@@ -4094,7 +3862,11 @@ function renderDashboardTab(tabId, palette, t, handleOpenTab) {
         return <Configurations tabId={tabId} palette={palette} t={t}/>
     }
 
-    return <ReconContent tabId={tabId} palette={palette} t={t} onOpenTab={handleOpenTab}/>
+    if (getSessionReconTabIds().includes(tabId)) {
+        return <ReconContent tabId={tabId} palette={palette} t={t} onOpenTab={handleOpenTab}/>
+    }
+
+    return null
 }
 
 function renderSecurityTab(tabId) {

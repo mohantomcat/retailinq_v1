@@ -13,6 +13,7 @@ import com.recon.api.service.AuditComplianceService;
 import com.recon.api.service.ActivityFeedService;
 import com.recon.api.service.ReconModuleService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -33,6 +34,9 @@ import java.time.LocalDate;
 @RequestMapping("/api/v1/activity")
 @RequiredArgsConstructor
 public class ActivityFeedController {
+
+    @Value("${app.activity.sox-report.enabled:false}")
+    private boolean soxReportEnabled;
 
     private final ActivityFeedService activityFeedService;
     private final AuditComplianceService auditComplianceService;
@@ -108,6 +112,9 @@ public class ActivityFeedController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate
     ) {
+        if (!soxReportEnabled) {
+            throw new AccessDeniedException("SOX reporting is disabled");
+        }
         requireGlobalAuditView(principal);
         return ApiResponse.ok(auditComplianceService.getSoxReport(
                 principal.getTenantId(),

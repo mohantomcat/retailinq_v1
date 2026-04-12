@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class AuditRetentionCenterResponse {
     private AuditRetentionPolicyDto policy;
+    private boolean soxReportEnabled;
     private long liveEntries;
     private long archivedEntries;
     private long eligibleForArchive;

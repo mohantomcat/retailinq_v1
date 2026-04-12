@@ -98,6 +98,9 @@ app:
     xocs-cloud-base-url: ${OPS_XOCS_CLOUD_BASE_URL:http://localhost:8183}
   collaboration:
     callback-base-url: ${APP_COLLABORATION_CALLBACK_BASE_URL:http://localhost:8090}
+  activity:
+    sox-report:
+      enabled: ${APP_ACTIVITY_SOX_REPORT_ENABLED:false}
 
 logging:
   level:

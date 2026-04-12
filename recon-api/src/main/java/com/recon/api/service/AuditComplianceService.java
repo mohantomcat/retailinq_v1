@@ -25,6 +25,7 @@ import com.recon.api.repository.AuditLedgerQueryRepository;
 import com.recon.api.repository.AuditRetentionPolicyRepository;
 import com.recon.api.util.TimezoneConverter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +53,8 @@ public class AuditComplianceService {
     private final AuditLedgerService auditLedgerService;
     private final TenantService tenantService;
     private final ObjectMapper objectMapper;
+    @Value("${app.activity.sox-report.enabled:false}")
+    private boolean soxReportEnabled;
 
     @Transactional(readOnly = true)
     public AuditRetentionCenterResponse getRetentionCenter(String tenantId) {
@@ -61,6 +64,7 @@ public class AuditComplianceService {
 
         return AuditRetentionCenterResponse.builder()
                 .policy(toDto(policy, tenant))
+                .soxReportEnabled(soxReportEnabled)
                 .liveEntries(auditLedgerEntryRepository.countByTenantId(tenantId))
                 .archivedEntries(archiveEntryRepository.countByTenantId(tenantId))
                 .eligibleForArchive(auditLedgerQueryRepository.countEligibleForArchive(tenantId, archiveBefore))

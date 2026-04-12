@@ -105,15 +105,17 @@ export default function Activity({palette, t}) {
         try {
             setLoading(true)
             setError('')
-            const [activityData, retentionData, soxData] = await Promise.all([
+            const [activityData, retentionData] = await Promise.all([
                 activityApi.getActivity({...nextFilters, limit: 250}),
                 activityApi.getRetentionCenter(),
-                activityApi.getSoxReport({
+            ])
+            const soxData = retentionData?.soxReportEnabled
+                ? await activityApi.getSoxReport({
                     moduleKey: nextFilters.moduleKey,
                     fromDate: nextFilters.fromDate,
                     toDate: nextFilters.toDate,
-                }),
-            ])
+                })
+                : null
             setData(activityData)
             setRetentionCenter(retentionData)
             setSoxReport(soxData)
@@ -208,6 +210,7 @@ export default function Activity({palette, t}) {
     const records = useMemo(() => data?.records || [], [data])
     const controls = useMemo(() => soxReport?.controls || [], [soxReport])
     const recentEvidence = useMemo(() => soxReport?.recentEvidence || [], [soxReport])
+    const soxReportEnabled = Boolean(retentionCenter?.soxReportEnabled)
 
     const activityMetrics = [
         {label: 'Total Records', value: summary.totalRecords, tone: 'blue'},
@@ -252,7 +255,9 @@ export default function Activity({palette, t}) {
                     <Box>
                         <Typography sx={{fontSize: '1.35rem', fontWeight: 800, color: palette.text}}>{t('Audit & Compliance')}</Typography>
                         <Typography sx={{mt: 0.5, fontSize: '0.92rem', color: palette.textMuted, maxWidth: 920}}>
-                            {t('Manage immutable audit evidence, retention policy, archive/export packages, and SOX-ready control reporting from one compliance workspace.')}
+                            {soxReportEnabled
+                                ? t('Manage immutable audit evidence, retention policy, archive/export packages, and SOX-ready control reporting from one compliance workspace.')
+                                : t('Manage immutable audit evidence, retention policy, and archive/export packages from one compliance workspace.')}
                         </Typography>
                     </Box>
                 </Box>
@@ -393,46 +398,48 @@ export default function Activity({palette, t}) {
                         </Grid>
                     </Grid>
 
-                    <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
-                        <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
-                            {t('SOX Control Evidence')}
-                        </Typography>
-                        <MetricGrid palette={palette} t={t} metrics={soxMetrics}/>
-                        <Box sx={{mt: 2.5}}>
-                            <TableContainer>
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>{t('Control')}</TableCell>
-                                            <TableCell>{t('Owner')}</TableCell>
-                                            <TableCell>{t('Status')}</TableCell>
-                                            <TableCell>{t('Evidence Count')}</TableCell>
-                                            <TableCell>{t('Last Evidence')}</TableCell>
-                                            <TableCell>{t('Narrative')}</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {controls.map((control) => (
-                                            <TableRow key={control.controlId}>
-                                                <TableCell>
-                                                    <Typography sx={{fontSize: '0.82rem', fontWeight: 700, color: palette.text}}>{control.controlId}</Typography>
-                                                    <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>{control.controlTitle}</Typography>
-                                                </TableCell>
-                                                <TableCell>{control.controlOwner}</TableCell>
-                                                <TableCell>{control.status}</TableCell>
-                                                <TableCell>{control.evidenceCount}</TableCell>
-                                                <TableCell sx={{whiteSpace: 'nowrap'}}>{control.lastEvidenceAt || '-'}</TableCell>
-                                                <TableCell>
-                                                    <Typography sx={{fontSize: '0.82rem', color: palette.text}}>{control.narrative}</Typography>
-                                                    {control.sampleReference ? <Typography sx={{fontSize: '0.75rem', color: palette.textMuted}}>{control.sampleReference}</Typography> : null}
-                                                </TableCell>
+                    {soxReportEnabled ? (
+                        <Paper elevation={0} sx={{p: 2.5, mb: 3, borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
+                            <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
+                                {t('SOX Control Evidence')}
+                            </Typography>
+                            <MetricGrid palette={palette} t={t} metrics={soxMetrics}/>
+                            <Box sx={{mt: 2.5}}>
+                                <TableContainer>
+                                    <Table size="small">
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell>{t('Control')}</TableCell>
+                                                <TableCell>{t('Owner')}</TableCell>
+                                                <TableCell>{t('Status')}</TableCell>
+                                                <TableCell>{t('Evidence Count')}</TableCell>
+                                                <TableCell>{t('Last Evidence')}</TableCell>
+                                                <TableCell>{t('Narrative')}</TableCell>
                                             </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        </Box>
-                    </Paper>
+                                        </TableHead>
+                                        <TableBody>
+                                            {controls.map((control) => (
+                                                <TableRow key={control.controlId}>
+                                                    <TableCell>
+                                                        <Typography sx={{fontSize: '0.82rem', fontWeight: 700, color: palette.text}}>{control.controlId}</Typography>
+                                                        <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>{control.controlTitle}</Typography>
+                                                    </TableCell>
+                                                    <TableCell>{control.controlOwner}</TableCell>
+                                                    <TableCell>{control.status}</TableCell>
+                                                    <TableCell>{control.evidenceCount}</TableCell>
+                                                    <TableCell sx={{whiteSpace: 'nowrap'}}>{control.lastEvidenceAt || '-'}</TableCell>
+                                                    <TableCell>
+                                                        <Typography sx={{fontSize: '0.82rem', color: palette.text}}>{control.narrative}</Typography>
+                                                        {control.sampleReference ? <Typography sx={{fontSize: '0.75rem', color: palette.textMuted}}>{control.sampleReference}</Typography> : null}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </Box>
+                        </Paper>
+                    ) : null}
 
                     <Grid container spacing={2} sx={{mb: 3}}>
                         <Grid size={{xs: 12, lg: 8}}>
@@ -495,29 +502,31 @@ export default function Activity({palette, t}) {
                             </Paper>
                         </Grid>
 
-                        <Grid size={{xs: 12, lg: 4}}>
-                            <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
-                                <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
-                                    {t('Recent SOX Evidence')}
-                                </Typography>
-                                <Stack spacing={1.2}>
-                                    {recentEvidence.length > 0 ? recentEvidence.map((item, index) => (
-                                        <Paper key={`${item.eventHash || item.referenceKey || 'e'}-${index}`} elevation={0} sx={{p: 1.5, borderRadius: 2.5, border: `1px solid ${palette.border}`, backgroundColor: palette.cardBgAlt}}>
-                                            <Typography sx={{fontSize: '0.82rem', fontWeight: 700, color: palette.text}}>{item.title}</Typography>
-                                            <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>{item.sourceType} | {item.moduleKey}</Typography>
-                                            <Typography sx={{mt: 0.6, fontSize: '0.78rem', color: palette.text}}>{item.summary || '-'}</Typography>
-                                            <Typography sx={{mt: 0.4, fontSize: '0.74rem', color: palette.textMuted}}>
-                                                {(item.eventTimestamp ? new Date(item.eventTimestamp).toLocaleString() : '-')} | {item.actor || '-'}
+                        {soxReportEnabled ? (
+                            <Grid size={{xs: 12, lg: 4}}>
+                                <Paper elevation={0} sx={{p: 2.5, height: '100%', borderRadius: '22px', border: `1px solid ${palette.border}`, backgroundColor: palette.cardBg}}>
+                                    <Typography sx={{fontSize: '1rem', fontWeight: 800, color: palette.text, mb: 2}}>
+                                        {t('Recent SOX Evidence')}
+                                    </Typography>
+                                    <Stack spacing={1.2}>
+                                        {recentEvidence.length > 0 ? recentEvidence.map((item, index) => (
+                                            <Paper key={`${item.eventHash || item.referenceKey || 'e'}-${index}`} elevation={0} sx={{p: 1.5, borderRadius: 2.5, border: `1px solid ${palette.border}`, backgroundColor: palette.cardBgAlt}}>
+                                                <Typography sx={{fontSize: '0.82rem', fontWeight: 700, color: palette.text}}>{item.title}</Typography>
+                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>{item.sourceType} | {item.moduleKey}</Typography>
+                                                <Typography sx={{mt: 0.6, fontSize: '0.78rem', color: palette.text}}>{item.summary || '-'}</Typography>
+                                                <Typography sx={{mt: 0.4, fontSize: '0.74rem', color: palette.textMuted}}>
+                                                    {(item.eventTimestamp ? new Date(item.eventTimestamp).toLocaleString() : '-')} | {item.actor || '-'}
+                                                </Typography>
+                                            </Paper>
+                                        )) : (
+                                            <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
+                                                {t('No recent control evidence available.')}
                                             </Typography>
-                                        </Paper>
-                                    )) : (
-                                        <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
-                                            {t('No recent control evidence available.')}
-                                        </Typography>
-                                    )}
-                                </Stack>
-                            </Paper>
-                        </Grid>
+                                        )}
+                                    </Stack>
+                                </Paper>
+                            </Grid>
+                        ) : null}
                     </Grid>
                 </>
             )}
