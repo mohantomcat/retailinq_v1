@@ -9,13 +9,9 @@ import java.util.List;
 @Builder
 public class TenantAccessCenterResponse {
     private TenantAuthConfigDto authConfig;
-    private TenantAccessGovernanceResponse governance;
     private List<OidcGroupRoleMappingDto> oidcGroupRoleMappings;
     private List<RoleDto> roles;
     private List<TenantApiKeyDto> apiKeys;
-    private List<EmergencyAccessGrantDto> emergencyAccessGrants;
-    private List<PrivilegedActionAlertDto> privilegedActionAlerts;
-    private List<AccessGovernanceNotificationHistoryDto> notificationHistory;
     private List<String> storeCatalog;
     private List<ReconGroupSelectionDto> reconGroups;
     private List<SystemEndpointProfileDto> systemEndpointProfiles;

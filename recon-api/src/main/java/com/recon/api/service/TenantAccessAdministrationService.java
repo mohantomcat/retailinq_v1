@@ -103,10 +103,8 @@ public class TenantAccessAdministrationService {
         accessScopeService.ensureTenantHierarchy(tenantId, "system");
         TenantAuthConfigEntity authConfig = resolveAuthConfig(tenantId);
         List<TenantApiKey> apiKeys = tenantApiKeyRepository.findByTenantIdOrderByUpdatedAtDesc(tenantId);
-        List<User> users = userRepository.findByTenantId(tenantId);
         return TenantAccessCenterResponse.builder()
                 .authConfig(toDto(authConfig))
-                .governance(buildGovernance(authConfig, users, apiKeys))
                 .oidcGroupRoleMappings(tenantOidcGroupRoleMappingRepository.findByTenantIdOrderByUpdatedAtDesc(tenantId)
                         .stream()
                         .map(this::toDto)
@@ -118,9 +116,6 @@ public class TenantAccessAdministrationService {
                 .apiKeys(apiKeys.stream()
                         .map(this::toDto)
                         .toList())
-                .emergencyAccessGrants(privilegedAccessService.listEmergencyAccessGrants(tenantId))
-                .privilegedActionAlerts(privilegedAccessService.listPrivilegedActionAlerts(tenantId))
-                .notificationHistory(accessGovernanceNotificationService.listRecentNotificationHistory(tenantId))
                 .storeCatalog(accessScopeService.getTenantStoreCatalog(tenantId))
                 .reconGroups(reconModuleService.getTenantReconGroups(tenantId))
                 .systemEndpointProfiles(systemEndpointProfileService.getTenantProfiles(tenantId))

@@ -4,10 +4,6 @@ import {
     Box,
     Button,
     Chip,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
     FormControlLabel,
     MenuItem,
     Paper,
@@ -27,6 +23,49 @@ const EMPTY_KEY_FORM = {
     allStoreAccess: true,
     allowedStoreIds: [],
     expiresInDays: 90,
+}
+
+const AUTH_FORM_DEFAULTS = {
+    localLoginEnabled: true,
+    preferredLoginMode: 'LOCAL',
+    oidcEnabled: false,
+    samlEnabled: false,
+    apiKeyAuthEnabled: false,
+    oidcDisplayName: '',
+    oidcIssuerUrl: '',
+    oidcClientId: '',
+    oidcRedirectUri: '',
+    oidcScopes: 'openid profile email',
+    oidcClientSecretRef: '',
+    samlDisplayName: '',
+    samlEntityId: '',
+    samlAcsUrl: '',
+    samlSsoUrl: '',
+    samlIdpEntityId: '',
+    samlIdpMetadataUrl: '',
+    samlIdpVerificationCertificate: '',
+    autoProvisionUsers: false,
+    allowedEmailDomains: '',
+    oidcUsernameClaim: 'preferred_username',
+    oidcEmailClaim: 'email',
+    oidcGroupsClaim: 'groups',
+    samlEmailAttribute: '',
+    samlGroupsAttribute: '',
+    samlUsernameAttribute: 'uid',
+    scimEnabled: false,
+    scimBearerTokenRef: '',
+    scimGroupPushEnabled: false,
+    scimDeprovisionPolicy: 'DEACTIVATE',
+}
+
+function pickSupportedAuthConfig(value) {
+    const next = {...AUTH_FORM_DEFAULTS}
+    Object.keys(AUTH_FORM_DEFAULTS).forEach((key) => {
+        if (value?.[key] !== undefined) {
+            next[key] = value[key]
+        }
+    })
+    return next
 }
 
 function normalizeSelectArray(value) {
@@ -56,35 +95,6 @@ function formatDate(value) {
     })
 }
 
-function formatDateTime(value) {
-    if (!value) return '-'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    })
-}
-
-function formatFinding(value) {
-    return String(value || '')
-        .replaceAll('_', ' ')
-        .toLowerCase()
-        .replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
-function isHighPrivilegePermission(permission) {
-    const normalized = String(permission || '').trim().toUpperCase()
-    return Boolean(normalized) && (
-        normalized.startsWith('ADMIN_')
-        || normalized.endsWith('_MANAGE')
-        || ['AUDIT_EXPORT', 'AUDIT_GLOBAL_VIEW', 'API_ACCESS_MANAGE', 'ACCESS_REVIEW_MANAGE'].includes(normalized)
-    )
-}
-
 export default function TenantAccessCenter() {
     const palette = useAdminPalette()
     const {t} = useI18n()
@@ -95,62 +105,7 @@ export default function TenantAccessCenter() {
     const [selectedUserId, setSelectedUserId] = useState('')
     const [selectedOrgUnitIds, setSelectedOrgUnitIds] = useState([])
     const [includeDescendants, setIncludeDescendants] = useState(true)
-    const [authForm, setAuthForm] = useState({
-        localLoginEnabled: true,
-        preferredLoginMode: 'LOCAL',
-        oidcEnabled: false,
-        samlEnabled: false,
-        apiKeyAuthEnabled: false,
-        oidcDisplayName: '',
-        oidcIssuerUrl: '',
-        oidcClientId: '',
-        oidcRedirectUri: '',
-        oidcScopes: 'openid profile email',
-        oidcClientSecretRef: '',
-        samlDisplayName: '',
-        samlEntityId: '',
-        samlAcsUrl: '',
-        samlSsoUrl: '',
-        samlIdpEntityId: '',
-        samlIdpMetadataUrl: '',
-        samlIdpVerificationCertificate: '',
-        autoProvisionUsers: false,
-        allowedEmailDomains: '',
-        oidcUsernameClaim: 'preferred_username',
-        oidcEmailClaim: 'email',
-        oidcGroupsClaim: 'groups',
-        samlEmailAttribute: '',
-        samlGroupsAttribute: '',
-        samlUsernameAttribute: 'uid',
-        scimEnabled: false,
-        scimBearerTokenRef: '',
-        scimGroupPushEnabled: false,
-        scimDeprovisionPolicy: 'DEACTIVATE',
-        managerAccessReviewRemindersEnabled: false,
-        managerAccessReviewReminderIntervalDays: 7,
-        governanceNotificationMaxAttempts: 3,
-        governanceNotificationBackoffMinutes: 15,
-        managerAccessReviewAdditionalEmails: '',
-        managerAccessReviewTeamsWebhookUrl: '',
-        managerAccessReviewSlackWebhookUrl: '',
-        managerAccessReviewEscalationEnabled: false,
-        managerAccessReviewEscalationAfterDays: 3,
-        managerAccessReviewEscalationEmailRecipients: '',
-        managerAccessReviewEscalationTeamsWebhookUrl: '',
-        managerAccessReviewEscalationSlackWebhookUrl: '',
-        managerAccessReviewNextTierEscalationEnabled: false,
-        managerAccessReviewNextTierEscalationAfterDays: 3,
-        privilegedActionAlertsEnabled: false,
-        privilegedActionAlertEmailRecipients: '',
-        privilegedActionAlertTeamsWebhookUrl: '',
-        privilegedActionAlertSlackWebhookUrl: '',
-        managerAccessReviewReminderSubjectTemplate: '',
-        managerAccessReviewReminderBodyTemplate: '',
-        managerAccessReviewEscalationSubjectTemplate: '',
-        managerAccessReviewEscalationBodyTemplate: '',
-        privilegedActionAlertSubjectTemplate: '',
-        privilegedActionAlertBodyTemplate: '',
-    })
+    const [authForm, setAuthForm] = useState(AUTH_FORM_DEFAULTS)
     const [groupMappingForm, setGroupMappingForm] = useState([
         {oidcGroup: '', roleId: '', active: true},
     ])
@@ -162,33 +117,6 @@ export default function TenantAccessCenter() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
-    const [reviewDialog, setReviewDialog] = useState({
-        open: false,
-        userId: '',
-        userLabel: '',
-        decision: 'CERTIFIED',
-        notes: '',
-        deactivateUser: false,
-    })
-    const [ackDialog, setAckDialog] = useState({
-        open: false,
-        userId: '',
-        userLabel: '',
-        note: '',
-    })
-    const [emergencyForm, setEmergencyForm] = useState({
-        userId: '',
-        roleIds: [],
-        expiresInHours: 4,
-        justification: '',
-        approvalNote: '',
-    })
-    const [revokeDialog, setRevokeDialog] = useState({
-        open: false,
-        grantId: '',
-        userLabel: '',
-        revokeNote: '',
-    })
 
     const loadData = async () => {
         setLoading(true)
@@ -203,7 +131,7 @@ export default function TenantAccessCenter() {
             setOrgUnits(units)
             setRoles(accessCenter?.roles || [])
             if (accessCenter?.authConfig) {
-                setAuthForm((current) => ({...current, ...accessCenter.authConfig}))
+                setAuthForm(pickSupportedAuthConfig(accessCenter.authConfig))
             }
             setError('')
         } catch (err) {
@@ -258,16 +186,6 @@ export default function TenantAccessCenter() {
         [orgUnits]
     )
 
-    const roleNameById = useMemo(
-        () => new Map(roles.map((role) => [String(role.id), role.name || String(role.id)])),
-        [roles]
-    )
-
-    const privilegedRoles = useMemo(
-        () => roles.filter((role) => (role.permissionCodes || []).some(isHighPrivilegePermission)),
-        [roles]
-    )
-
     const selectedUser = useMemo(
         () => users.find((user) => String(user.id) === String(selectedUserId)) || null,
         [users, selectedUserId]
@@ -299,7 +217,7 @@ export default function TenantAccessCenter() {
     const saveAuthConfig = async () => {
         setSaving(true)
         try {
-            const authConfig = await adminApi.saveTenantAuthConfig(authForm)
+            const authConfig = await adminApi.saveTenantAuthConfig(pickSupportedAuthConfig(authForm))
             setCenter((current) => ({...current, authConfig}))
             setSuccess(t('Tenant auth settings updated'))
             setError('')
@@ -455,232 +373,10 @@ export default function TenantAccessCenter() {
         }
     }
 
-    const startQuarterlyAccessReviewCycle = async () => {
-        setSaving(true)
-        try {
-            const response = await adminApi.startQuarterlyAccessReviewCycle()
-            await loadData()
-            setSuccess(
-                `${t('Quarterly review cycle started')}: ${response?.queuedUsers ?? 0} ${t('users queued')}`
-            )
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to start quarterly access review cycle')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const openReviewDialog = (finding, decision = 'CERTIFIED') => {
-        setReviewDialog({
-            open: true,
-            userId: String(finding?.userId || ''),
-            userLabel: finding?.fullName || finding?.username || '',
-            decision,
-            notes: '',
-            deactivateUser: false,
-        })
-    }
-
-    const submitReviewUserAccess = async () => {
-        if (!reviewDialog.userId) {
-            setError(t('Select a user to review'))
-            return
-        }
-        if (!reviewDialog.notes.trim()) {
-            setError(t('Review note is required'))
-            return
-        }
-        setSaving(true)
-        try {
-            await adminApi.reviewUserAccess(reviewDialog.userId, {
-                decision: reviewDialog.decision,
-                notes: reviewDialog.notes,
-                deactivateUser: reviewDialog.deactivateUser,
-                nextReviewInDays: reviewDialog.decision === 'CERTIFIED' ? 90 : 14,
-            })
-            await loadData()
-            setReviewDialog({
-                open: false,
-                userId: '',
-                userLabel: '',
-                decision: 'CERTIFIED',
-                notes: '',
-                deactivateUser: false,
-            })
-            setSuccess(t('User access review updated'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to update access review')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const openAckDialog = (finding) => {
-        setAckDialog({
-            open: true,
-            userId: String(finding?.userId || ''),
-            userLabel: finding?.fullName || finding?.username || '',
-            note: '',
-        })
-    }
-
-    const submitAcknowledgeReminder = async () => {
-        if (!ackDialog.userId) {
-            setError(t('Select a user to acknowledge'))
-            return
-        }
-        if (!ackDialog.note.trim()) {
-            setError(t('Acknowledgment note is required'))
-            return
-        }
-        setSaving(true)
-        try {
-            await adminApi.acknowledgeAccessReviewReminder(ackDialog.userId, {
-                note: ackDialog.note,
-            })
-            await loadData()
-            setAckDialog({
-                open: false,
-                userId: '',
-                userLabel: '',
-                note: '',
-            })
-            setSuccess(t('Manager reminder acknowledged'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to acknowledge manager reminder')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const resendManagerReminder = async (finding) => {
-        if (!finding?.userId) {
-            setError(t('Select a user to remind'))
-            return
-        }
-        setSaving(true)
-        try {
-            const result = await adminApi.resendAccessReviewReminder(finding.userId)
-            await loadData()
-            setSuccess(result?.message || t('Manager reminder queued'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to resend manager reminder')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const escalateManagerReview = async (finding) => {
-        if (!finding?.userId) {
-            setError(t('Select a user to escalate'))
-            return
-        }
-        setSaving(true)
-        try {
-            const result = await adminApi.escalateAccessReview(finding.userId)
-            await loadData()
-            setSuccess(result?.message || t('Manager review escalation queued'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to escalate manager review')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const grantEmergencyAccess = async () => {
-        if (!emergencyForm.userId) {
-            setError(t('Select a user for emergency access'))
-            return
-        }
-        if ((emergencyForm.roleIds || []).length === 0) {
-            setError(t('Select at least one privileged role'))
-            return
-        }
-        if (!String(emergencyForm.justification || '').trim() || !String(emergencyForm.approvalNote || '').trim()) {
-            setError(t('Justification and approval note are required'))
-            return
-        }
-        setSaving(true)
-        try {
-            await adminApi.grantEmergencyAccess({
-                userId: emergencyForm.userId,
-                roleIds: emergencyForm.roleIds,
-                expiresInHours: Number(emergencyForm.expiresInHours || 4),
-                justification: emergencyForm.justification,
-                approvalNote: emergencyForm.approvalNote,
-            })
-            await loadData()
-            setEmergencyForm({
-                userId: '',
-                roleIds: [],
-                expiresInHours: 4,
-                justification: '',
-                approvalNote: '',
-            })
-            setSuccess(t('Emergency access granted'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to grant emergency access')
-        } finally {
-            setSaving(false)
-        }
-    }
-
-    const openRevokeDialog = (grant) => {
-        setRevokeDialog({
-            open: true,
-            grantId: String(grant?.id || ''),
-            userLabel: grant?.fullName || grant?.username || '',
-            revokeNote: '',
-        })
-    }
-
-    const revokeEmergencyAccess = async () => {
-        if (!revokeDialog.grantId) {
-            setError(t('Select an emergency access grant'))
-            return
-        }
-        if (!revokeDialog.revokeNote.trim()) {
-            setError(t('Revoke note is required'))
-            return
-        }
-        setSaving(true)
-        try {
-            await adminApi.revokeEmergencyAccess(revokeDialog.grantId, {
-                revokeNote: revokeDialog.revokeNote,
-            })
-            await loadData()
-            setRevokeDialog({
-                open: false,
-                grantId: '',
-                userLabel: '',
-                revokeNote: '',
-            })
-            setSuccess(t('Emergency access revoked'))
-            setError('')
-        } catch (err) {
-            setError(err.message || 'Failed to revoke emergency access')
-        } finally {
-            setSaving(false)
-        }
-    }
-
     const storeCatalog = center?.storeCatalog || []
     const apiKeys = center?.apiKeys || []
-    const governance = center?.governance || {}
-    const userFindings = governance.userFindings || []
-    const apiKeyFindings = governance.apiKeyFindings || []
-    const emergencyAccessGrants = center?.emergencyAccessGrants || []
-    const privilegedActionAlerts = center?.privilegedActionAlerts || []
-    const notificationHistory = center?.notificationHistory || []
     const reconGroups = center?.reconGroups || []
     const systemEndpointProfiles = center?.systemEndpointProfiles || []
-    const templatePlaceholderHint = t('Available placeholders: {{tenantId}}, {{dashboardUrl}}, {{pendingUserCount}}, {{pendingUsersList}}, {{managerName}}, {{originalManagerName}}, {{notificationTier}}, {{escalationAfterDays}}, {{alertTitle}}, {{summary}}, {{actor}}, {{severity}}.')
     const hasAnyReconGroupSelection = reconGroups.some((group) => Boolean(reconGroupForm[group.groupCode]))
     const missingRequiredReconGroups = reconGroups
         .filter((group) => group.selectionRequired && !reconGroupForm[group.groupCode])
@@ -703,263 +399,6 @@ export default function TenantAccessCenter() {
                     <Typography sx={{fontFamily: 'monospace', wordBreak: 'break-all'}}>{createdKey}</Typography>
                 </Alert>
             )}
-
-            <Paper elevation={0} sx={{p: 2.25, mb: 2, borderRadius: 2, border: `1px solid ${palette.border}`}}>
-                <Stack spacing={1.75}>
-                    <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap'}}>
-                        <Box>
-                            <Typography sx={{fontWeight: 800, color: palette.text}}>
-                                {t('Access Governance')}
-                            </Typography>
-                            <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mt: 0.25}}>
-                                {t('Certification, high-risk access, identity source, and API key exposure.')}
-                            </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            <Chip
-                                label={`${t('Preferred Login Mode')}: ${governance.preferredLoginMode || authForm.preferredLoginMode || 'LOCAL'}`}
-                                sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
-                            />
-                            <Button
-                                variant="outlined"
-                                onClick={startQuarterlyAccessReviewCycle}
-                                disabled={loading || saving}
-                                sx={{textTransform: 'none', borderRadius: 2}}
-                            >
-                                {saving ? t('Starting...') : t('Start Quarterly Review')}
-                            </Button>
-                        </Stack>
-                    </Box>
-
-                    <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr 1fr', md: 'repeat(6, minmax(0, 1fr))'}, gap: 1}}>
-                        {[
-                            [t('Active Users'), governance.activeUsers ?? 0],
-                            [t('Review Due'), governance.usersDueForReview ?? 0],
-                            [t('Pending Manager'), governance.pendingManagerReviews ?? 0],
-                            [t('Acknowledged'), governance.acknowledgedManagerReviews ?? 0],
-                            [t('Escalated'), governance.escalatedManagerReviews ?? 0],
-                            [t('Next Tier'), governance.nextTierEscalatedManagerReviews ?? 0],
-                            [t('High Privilege'), governance.highPrivilegeUsers ?? 0],
-                            [t('Emergency Access'), governance.activeEmergencyAccessUsers ?? 0],
-                            [t('API Keys Expiring'), governance.apiKeysExpiringSoon ?? 0],
-                        ].map(([label, value]) => (
-                            <Box key={label} sx={{border: `1px solid ${palette.borderSoft}`, borderRadius: 2, p: 1.25}}>
-                                <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, fontWeight: 700}}>
-                                    {label}
-                                </Typography>
-                                <Typography sx={{fontSize: '1.2rem', fontWeight: 800, color: palette.text}}>
-                                    {value}
-                                </Typography>
-                            </Box>
-                        ))}
-                    </Box>
-
-                    <Stack spacing={1}>
-                        {userFindings.slice(0, 6).map((finding) => (
-                            <Box
-                                key={finding.userId}
-                                sx={{
-                                    display: 'grid',
-                                    gridTemplateColumns: {xs: '1fr', md: 'minmax(180px, 1.2fr) minmax(220px, 2fr) auto'},
-                                    gap: 1,
-                                    alignItems: 'center',
-                                    border: `1px solid ${palette.borderSoft}`,
-                                    borderRadius: 2,
-                                    p: 1.25,
-                                }}
-                            >
-                                <Box>
-                                    <Typography sx={{fontSize: '0.88rem', fontWeight: 800, color: palette.text}}>
-                                        {finding.fullName || finding.username}
-                                    </Typography>
-                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                        {finding.identityProvider || 'LOCAL'} - {t('Review due')} {formatDate(finding.accessReviewDueAt)}
-                                    </Typography>
-                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                        {t('Manager')}: {finding.managerFullName || finding.managerUsername || t('Unassigned')}
-                                    </Typography>
-                                    {finding.accessReviewLastReminderAt ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                            {t('Last reminder')}: {formatDateTime(finding.accessReviewLastReminderAt)}
-                                        </Typography>
-                                    ) : null}
-                                    {finding.accessReviewReminderAcknowledgedAt ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                            {t('Acknowledged')}: {formatDateTime(finding.accessReviewReminderAcknowledgedAt)} {t('by')} {finding.accessReviewReminderAcknowledgedBy || t('manager')}
-                                        </Typography>
-                                    ) : null}
-                                    {finding.accessReviewLastEscalatedAt ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                            {t('Escalated')}: {formatDateTime(finding.accessReviewLastEscalatedAt)}
-                                        </Typography>
-                                    ) : null}
-                                    {finding.accessReviewLastNextTierEscalatedAt ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                            {t('Next-tier escalated')}: {formatDateTime(finding.accessReviewLastNextTierEscalatedAt)}
-                                        </Typography>
-                                    ) : null}
-                                </Box>
-                                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                                    {(finding.findingTypes || []).map((type) => (
-                                        <Chip
-                                            key={`${finding.userId}-${type}`}
-                                            size="small"
-                                            label={formatFinding(type)}
-                                            sx={{backgroundColor: palette.paperBgAlt, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
-                                        />
-                                    ))}
-                                </Stack>
-                                <Stack direction="row" spacing={0.75} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
-                                    {finding.accessReviewStatus === 'PENDING_MANAGER' && finding.accessReviewLastReminderAt ? (
-                                        <Button
-                                            size="small"
-                                            variant="text"
-                                            onClick={() => openAckDialog(finding)}
-                                            disabled={saving}
-                                            sx={{textTransform: 'none', borderRadius: 2}}
-                                        >
-                                            {t('Acknowledge')}
-                                        </Button>
-                                    ) : null}
-                                    {finding.accessReviewStatus === 'PENDING_MANAGER' ? (
-                                        <Button
-                                            size="small"
-                                            variant="text"
-                                            onClick={() => resendManagerReminder(finding)}
-                                            disabled={saving}
-                                            sx={{textTransform: 'none', borderRadius: 2}}
-                                        >
-                                            {t('Resend Reminder')}
-                                        </Button>
-                                    ) : null}
-                                    {finding.accessReviewStatus === 'PENDING_MANAGER'
-                                        && (authForm.managerAccessReviewEscalationEnabled
-                                            || authForm.managerAccessReviewNextTierEscalationEnabled) ? (
-                                        <Button
-                                            size="small"
-                                            variant="text"
-                                            color="warning"
-                                            onClick={() => escalateManagerReview(finding)}
-                                            disabled={saving}
-                                            sx={{textTransform: 'none', borderRadius: 2}}
-                                        >
-                                            {t('Escalate Now')}
-                                        </Button>
-                                    ) : null}
-                                    <Button
-                                        size="small"
-                                        variant="contained"
-                                        onClick={() => openReviewDialog(finding, 'CERTIFIED')}
-                                        disabled={saving}
-                                        sx={{textTransform: 'none', borderRadius: 2}}
-                                    >
-                                        {t('Certify')}
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        variant="outlined"
-                                        onClick={() => openReviewDialog(finding, 'NEEDS_CHANGES')}
-                                        disabled={saving}
-                                        sx={{textTransform: 'none', borderRadius: 2}}
-                                    >
-                                        {t('Needs Changes')}
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        variant="outlined"
-                                        color="warning"
-                                        onClick={() => openReviewDialog(finding, 'REVOKE_REQUESTED')}
-                                        disabled={saving}
-                                        sx={{textTransform: 'none', borderRadius: 2}}
-                                    >
-                                        {t('Request Revoke')}
-                                    </Button>
-                                </Stack>
-                            </Box>
-                        ))}
-                        {userFindings.length === 0 && (
-                            <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
-                                {t('No access review findings.')}
-                            </Typography>
-                        )}
-                    </Stack>
-
-                    {apiKeyFindings.length > 0 && (
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            {apiKeyFindings.slice(0, 4).map((finding) => (
-                                <Chip
-                                    key={finding.id}
-                                    label={`${finding.keyName}: ${(finding.findingTypes || []).map(formatFinding).join(', ')}`}
-                                    sx={{backgroundColor: palette.paperBgAlt, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
-                                />
-                            ))}
-                        </Stack>
-                    )}
-
-                    <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
-                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
-                            {t('Notification Delivery')}
-                        </Typography>
-                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
-                            {t('Recent reminder, escalation, and privileged alert deliveries with queue status and retry state.')}
-                        </Typography>
-                        <Stack spacing={1}>
-                            {notificationHistory.slice(0, 10).map((job) => (
-                                <Box
-                                    key={job.id}
-                                    sx={{
-                                        border: `1px solid ${palette.borderSoft}`,
-                                        borderRadius: 2,
-                                        p: 1.25,
-                                        backgroundColor: palette.paperBgAlt,
-                                    }}
-                                >
-                                    <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
-                                        <Box>
-                                            <Typography sx={{fontSize: '0.84rem', fontWeight: 800, color: palette.text}}>
-                                                {formatFinding(job.notificationType)} - {formatFinding(job.notificationTier)}
-                                            </Typography>
-                                            <Typography sx={{fontSize: '0.74rem', color: palette.textMuted}}>
-                                                {job.targetLabel || '-'}
-                                            </Typography>
-                                        </Box>
-                                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                                            <Chip
-                                                size="small"
-                                                label={`${formatFinding(job.notificationStatus)} (${job.attemptCount || 0}/${job.maxAttempts || 0})`}
-                                                sx={{backgroundColor: palette.paperBg, color: palette.text, border: `1px solid ${palette.borderSoft}`}}
-                                            />
-                                            <Chip
-                                                size="small"
-                                                label={formatFinding(job.channelType)}
-                                                sx={{backgroundColor: palette.chipBlueBg, color: palette.chipBlueText, fontWeight: 700}}
-                                            />
-                                        </Stack>
-                                    </Stack>
-                                    <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.75}}>
-                                        {t('Queued')}: {formatDateTime(job.createdAt)} | {t('Delivered')}: {formatDateTime(job.deliveredAt)} | {t('Next Retry')}: {formatDateTime(job.nextAttemptAt)}
-                                    </Typography>
-                                    {(job.referenceUsers || []).length > 0 ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.35}}>
-                                            {t('Users')}: {(job.referenceUsers || []).join(', ')}
-                                        </Typography>
-                                    ) : null}
-                                    {job.lastError ? (
-                                        <Typography sx={{fontSize: '0.74rem', color: '#B45309', mt: 0.35}}>
-                                            {job.lastError}
-                                        </Typography>
-                                    ) : null}
-                                </Box>
-                            ))}
-                            {notificationHistory.length === 0 ? (
-                                <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
-                                    {t('No notification deliveries recorded yet.')}
-                                </Typography>
-                            ) : null}
-                        </Stack>
-                    </Box>
-                </Stack>
-            </Paper>
 
             <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', xl: '1fr 1fr'}, gap: 2}}>
                 <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
@@ -1017,344 +456,6 @@ export default function TenantAccessCenter() {
                             <MenuItem value="REMOVE_ACCESS">{t('Remove Access')}</MenuItem>
                         </TextField>
 
-                        <Box sx={{pt: 1.5, mt: 0.5, borderTop: `1px solid ${palette.borderSoft}`}}>
-                            <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
-                                {t('Governance Notifications')}
-                            </Typography>
-                            <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.25}}>
-                                {t('Deliver manager access review reminders and privileged access alerts by email, Teams, and Slack.')}
-                            </Typography>
-                            <Stack spacing={1.25}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={!!authForm.managerAccessReviewRemindersEnabled}
-                                            onChange={(event) =>
-                                                setAuthForm((current) => ({
-                                                    ...current,
-                                                    managerAccessReviewRemindersEnabled: event.target.checked,
-                                                }))
-                                            }
-                                        />
-                                    }
-                                    label={t('Enable Manager Review Reminders')}
-                                />
-                                <TextField
-                                    size="small"
-                                    type="number"
-                                    label={t('Reminder Interval (Days)')}
-                                    value={authForm.managerAccessReviewReminderIntervalDays ?? 7}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewReminderIntervalDays: Number(event.target.value || 7),
-                                        }))
-                                    }
-                                    helperText={t('Managers receive one reminder per pending review cycle at this cadence.')}
-                                    inputProps={{min: 1, max: 30}}
-                                />
-                                <TextField
-                                    size="small"
-                                    type="number"
-                                    label={t('Retry Attempts')}
-                                    value={authForm.governanceNotificationMaxAttempts ?? 3}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled && !authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            governanceNotificationMaxAttempts: Number(event.target.value || 3),
-                                        }))
-                                    }
-                                    helperText={t('Queued email and webhook deliveries retry up to this many times before they fail closed.')}
-                                    inputProps={{min: 1, max: 10}}
-                                />
-                                <TextField
-                                    size="small"
-                                    type="number"
-                                    label={t('Retry Backoff (Minutes)')}
-                                    value={authForm.governanceNotificationBackoffMinutes ?? 15}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled && !authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            governanceNotificationBackoffMinutes: Number(event.target.value || 15),
-                                        }))
-                                    }
-                                    helperText={t('Each retry waits longer using exponential backoff from this base interval.')}
-                                    inputProps={{min: 1, max: 1440}}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Reminder Summary Emails')}
-                                    value={authForm.managerAccessReviewAdditionalEmails || ''}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewAdditionalEmails: event.target.value,
-                                        }))
-                                    }
-                                    helperText={t('Optional comma-separated email recipients for tenant-level reminder summaries.')}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Reminder Teams Webhook URL')}
-                                    value={authForm.managerAccessReviewTeamsWebhookUrl || ''}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewTeamsWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Reminder Slack Webhook URL')}
-                                    value={authForm.managerAccessReviewSlackWebhookUrl || ''}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewSlackWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={!!authForm.managerAccessReviewEscalationEnabled}
-                                            disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                            onChange={(event) =>
-                                                setAuthForm((current) => ({
-                                                    ...current,
-                                                    managerAccessReviewEscalationEnabled: event.target.checked,
-                                                }))
-                                            }
-                                        />
-                                    }
-                                    label={t('Enable Admin Escalation')}
-                                />
-                                <TextField
-                                    size="small"
-                                    type="number"
-                                    label={t('Admin Escalate After (Days)')}
-                                    value={authForm.managerAccessReviewEscalationAfterDays ?? 3}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationAfterDays: Number(event.target.value || 3),
-                                        }))
-                                    }
-                                    helperText={t('Admin escalation triggers when a reminder stays unworked past this threshold.')}
-                                    inputProps={{min: 1, max: 30}}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Admin Escalation Emails')}
-                                    value={authForm.managerAccessReviewEscalationEmailRecipients || ''}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationEmailRecipients: event.target.value,
-                                        }))
-                                    }
-                                    helperText={t('Optional comma-separated recipients for admin escalation summaries.')}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Admin Escalation Teams Webhook URL')}
-                                    value={authForm.managerAccessReviewEscalationTeamsWebhookUrl || ''}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationTeamsWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Admin Escalation Slack Webhook URL')}
-                                    value={authForm.managerAccessReviewEscalationSlackWebhookUrl || ''}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationSlackWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={!!authForm.managerAccessReviewNextTierEscalationEnabled}
-                                            disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                            onChange={(event) =>
-                                                setAuthForm((current) => ({
-                                                    ...current,
-                                                    managerAccessReviewNextTierEscalationEnabled: event.target.checked,
-                                                }))
-                                            }
-                                        />
-                                    }
-                                    label={t('Enable Next-tier Manager Escalation')}
-                                />
-                                <TextField
-                                    size="small"
-                                    type="number"
-                                    label={t('Next-tier Escalate After (Days)')}
-                                    value={authForm.managerAccessReviewNextTierEscalationAfterDays ?? 3}
-                                    disabled={!authForm.managerAccessReviewNextTierEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewNextTierEscalationAfterDays: Number(event.target.value || 3),
-                                        }))
-                                    }
-                                    helperText={t('After the first manager acknowledges a reminder, the manager\'s manager can be notified if the review is still open.')}
-                                    inputProps={{min: 1, max: 30}}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Reminder Subject Template')}
-                                    value={authForm.managerAccessReviewReminderSubjectTemplate || ''}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewReminderSubjectTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                                <TextField
-                                    size="small"
-                                    multiline
-                                    minRows={4}
-                                    label={t('Reminder Body Template')}
-                                    value={authForm.managerAccessReviewReminderBodyTemplate || ''}
-                                    disabled={!authForm.managerAccessReviewRemindersEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewReminderBodyTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Escalation Subject Template')}
-                                    value={authForm.managerAccessReviewEscalationSubjectTemplate || ''}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationSubjectTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                                <TextField
-                                    size="small"
-                                    multiline
-                                    minRows={4}
-                                    label={t('Escalation Body Template')}
-                                    value={authForm.managerAccessReviewEscalationBodyTemplate || ''}
-                                    disabled={!authForm.managerAccessReviewEscalationEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            managerAccessReviewEscalationBodyTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={!!authForm.privilegedActionAlertsEnabled}
-                                            onChange={(event) =>
-                                                setAuthForm((current) => ({
-                                                    ...current,
-                                                    privilegedActionAlertsEnabled: event.target.checked,
-                                                }))
-                                            }
-                                        />
-                                    }
-                                    label={t('Enable Privileged Action Alerts')}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Privileged Alert Emails')}
-                                    value={authForm.privilegedActionAlertEmailRecipients || ''}
-                                    disabled={!authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            privilegedActionAlertEmailRecipients: event.target.value,
-                                        }))
-                                    }
-                                    helperText={t('Comma-separated recipients for emergency access and privileged change alerts.')}
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Privileged Alert Teams Webhook URL')}
-                                    value={authForm.privilegedActionAlertTeamsWebhookUrl || ''}
-                                    disabled={!authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            privilegedActionAlertTeamsWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Privileged Alert Slack Webhook URL')}
-                                    value={authForm.privilegedActionAlertSlackWebhookUrl || ''}
-                                    disabled={!authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            privilegedActionAlertSlackWebhookUrl: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <TextField
-                                    size="small"
-                                    label={t('Privileged Alert Subject Template')}
-                                    value={authForm.privilegedActionAlertSubjectTemplate || ''}
-                                    disabled={!authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            privilegedActionAlertSubjectTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                                <TextField
-                                    size="small"
-                                    multiline
-                                    minRows={4}
-                                    label={t('Privileged Alert Body Template')}
-                                    value={authForm.privilegedActionAlertBodyTemplate || ''}
-                                    disabled={!authForm.privilegedActionAlertsEnabled}
-                                    onChange={(event) =>
-                                        setAuthForm((current) => ({
-                                            ...current,
-                                            privilegedActionAlertBodyTemplate: event.target.value,
-                                        }))
-                                    }
-                                    helperText={templatePlaceholderHint}
-                                />
-                            </Stack>
-                        </Box>
                         <Button variant="contained" onClick={saveAuthConfig} disabled={loading || saving} sx={{textTransform: 'none', borderRadius: 2.5}}>
                             {saving ? t('Saving...') : t('Save Auth Settings')}
                         </Button>
@@ -1518,188 +619,7 @@ export default function TenantAccessCenter() {
                         </Stack>
                     </Paper>
 
-                    <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
-                        <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
-                            {t('Privileged Access')}
-                        </Typography>
-                        <Typography sx={{fontSize: '0.78rem', color: palette.textMuted, mb: 1.5}}>
-                            {t('Grant temporary admin access with approval evidence, automatic expiry, and an audit-backed alert feed.')}
-                        </Typography>
-                        <Stack spacing={1.25}>
-                            <TextField
-                                select
-                                size="small"
-                                label={t('User')}
-                                value={emergencyForm.userId}
-                                onChange={(event) => setEmergencyForm((current) => ({...current, userId: event.target.value}))}
-                            >
-                                <MenuItem value="">{t('Select a user')}</MenuItem>
-                                {users.filter((user) => user.active).map((user) => (
-                                    <MenuItem key={user.id} value={String(user.id)}>
-                                        {user.fullName || user.username}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
-                            <TextField
-                                select
-                                size="small"
-                                label={t('Privileged Roles')}
-                                SelectProps={{
-                                    multiple: true,
-                                    value: emergencyForm.roleIds,
-                                    renderValue: (selected) =>
-                                        normalizeSelectArray(selected)
-                                            .map((id) => roleNameById.get(id) || id)
-                                            .join(', '),
-                                }}
-                                value={emergencyForm.roleIds}
-                                onChange={(event) =>
-                                    setEmergencyForm((current) => ({
-                                        ...current,
-                                        roleIds: normalizeSelectArray(event.target.value),
-                                    }))
-                                }
-                            >
-                                {privilegedRoles.map((role) => (
-                                    <MenuItem key={role.id} value={String(role.id)}>
-                                        {role.name}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
-                            <TextField
-                                size="small"
-                                type="number"
-                                label={t('Expires In Hours')}
-                                value={emergencyForm.expiresInHours}
-                                onChange={(event) =>
-                                    setEmergencyForm((current) => ({
-                                        ...current,
-                                        expiresInHours: Number(event.target.value || 4),
-                                    }))
-                                }
-                                inputProps={{min: 1, max: 24}}
-                            />
-                            <TextField
-                                size="small"
-                                multiline
-                                minRows={2}
-                                label={t('Justification')}
-                                value={emergencyForm.justification}
-                                onChange={(event) => setEmergencyForm((current) => ({...current, justification: event.target.value}))}
-                            />
-                            <TextField
-                                size="small"
-                                multiline
-                                minRows={2}
-                                label={t('Approval Note')}
-                                value={emergencyForm.approvalNote}
-                                onChange={(event) => setEmergencyForm((current) => ({...current, approvalNote: event.target.value}))}
-                            />
-                            <Button
-                                variant="contained"
-                                onClick={grantEmergencyAccess}
-                                disabled={loading || saving || privilegedRoles.length === 0}
-                                sx={{textTransform: 'none', borderRadius: 2.5}}
-                            >
-                                {saving ? t('Saving...') : t('Grant Emergency Access')}
-                            </Button>
 
-                            <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
-                                <Typography sx={{fontWeight: 800, color: palette.text, mb: 1}}>
-                                    {t('Recent Emergency Grants')}
-                                </Typography>
-                                <Stack spacing={1}>
-                                    {emergencyAccessGrants.slice(0, 6).map((grant) => (
-                                        <Paper key={grant.id} elevation={0} sx={{p: 1.25, borderRadius: '16px', backgroundColor: palette.paperBgAlt, border: `1px solid ${palette.borderSoft}`}}>
-                                            <Stack spacing={0.75}>
-                                                <Box sx={{display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap'}}>
-                                                    <Box>
-                                                        <Typography sx={{fontSize: '0.88rem', fontWeight: 700, color: palette.text}}>
-                                                            {grant.fullName || grant.username}
-                                                        </Typography>
-                                                        <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
-                                                            {(grant.roles || []).map((role) => role.name).join(', ') || t('No roles')}
-                                                        </Typography>
-                                                    </Box>
-                                                    <Stack direction="row" spacing={1} alignItems="center">
-                                                        <Chip
-                                                            size="small"
-                                                            label={grant.active ? t('Active') : t('Closed')}
-                                                            sx={{
-                                                                backgroundColor: grant.active ? palette.chipRedBg : palette.chipNeutralBg,
-                                                                color: grant.active ? palette.chipRedText : palette.chipNeutralText,
-                                                                fontWeight: 700,
-                                                            }}
-                                                        />
-                                                        {grant.active ? (
-                                                            <Button
-                                                                size="small"
-                                                                onClick={() => openRevokeDialog(grant)}
-                                                                disabled={saving}
-                                                                sx={{textTransform: 'none'}}
-                                                            >
-                                                                {t('Revoke')}
-                                                            </Button>
-                                                        ) : null}
-                                                    </Stack>
-                                                </Box>
-                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
-                                                    {t('Expires')} {formatDateTime(grant.expiresAt)} · {t('Approved by')} {grant.grantedBy}
-                                                </Typography>
-                                                <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
-                                                    {grant.justification}
-                                                </Typography>
-                                            </Stack>
-                                        </Paper>
-                                    ))}
-                                    {emergencyAccessGrants.length === 0 ? (
-                                        <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
-                                            {t('No emergency access grants recorded.')}
-                                        </Typography>
-                                    ) : null}
-                                </Stack>
-                            </Box>
-
-                            <Box sx={{pt: 1.5, borderTop: `1px solid ${palette.borderSoft}`}}>
-                                <Typography sx={{fontWeight: 800, color: palette.text, mb: 1}}>
-                                    {t('Privileged Action Alerts')}
-                                </Typography>
-                                <Stack spacing={1}>
-                                    {privilegedActionAlerts.slice(0, 8).map((alertItem) => (
-                                        <Box key={alertItem.id} sx={{p: 1.25, borderRadius: '16px', backgroundColor: palette.paperBgAlt, border: `1px solid ${palette.borderSoft}`}}>
-                                            <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
-                                                <Box>
-                                                    <Typography sx={{fontSize: '0.86rem', fontWeight: 700, color: palette.text}}>
-                                                        {alertItem.title}
-                                                    </Typography>
-                                                    <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
-                                                        {alertItem.detail || alertItem.actionType}
-                                                    </Typography>
-                                                </Box>
-                                                <Chip
-                                                    size="small"
-                                                    label={alertItem.severity || 'HIGH'}
-                                                    sx={{
-                                                        backgroundColor: alertItem.severity === 'CRITICAL' ? palette.chipRedBg : palette.chipBlueBg,
-                                                        color: alertItem.severity === 'CRITICAL' ? palette.chipRedText : palette.chipBlueText,
-                                                        fontWeight: 700,
-                                                    }}
-                                                />
-                                            </Stack>
-                                            <Typography sx={{fontSize: '0.74rem', color: palette.textMuted, mt: 0.75}}>
-                                                {alertItem.actor || t('system')} · {formatDateTime(alertItem.eventAt)}
-                                            </Typography>
-                                        </Box>
-                                    ))}
-                                    {privilegedActionAlerts.length === 0 ? (
-                                        <Typography sx={{fontSize: '0.82rem', color: palette.textMuted}}>
-                                            {t('No privileged action alerts.')}
-                                        </Typography>
-                                    ) : null}
-                                </Stack>
-                            </Box>
-                        </Stack>
-                    </Paper>
 
                     <Paper elevation={0} sx={{p: 2.25, borderRadius: '24px', border: `1px solid ${palette.border}`}}>
                         <Typography sx={{fontWeight: 800, color: palette.text, mb: 0.75}}>
@@ -1954,7 +874,7 @@ export default function TenantAccessCenter() {
                                                 {apiKey.keyName}
                                             </Typography>
                                             <Typography sx={{fontSize: '0.76rem', color: palette.textMuted}}>
-                                                {apiKey.keyPrefix} · {apiKey.allStoreAccess ? t('All stores') : `${(apiKey.allowedStoreIds || []).length} ${t('stores')}`}
+                                                {apiKey.keyPrefix} - {apiKey.allStoreAccess ? t('All stores') : `${(apiKey.allowedStoreIds || []).length} ${t('stores')}`}
                                             </Typography>
                                         </Box>
                                         <Typography sx={{fontSize: '0.76rem', color: palette.textMuted, alignSelf: 'center'}}>
@@ -1973,165 +893,6 @@ export default function TenantAccessCenter() {
                 </Stack>
             </Box>
 
-            <Dialog
-                open={ackDialog.open}
-                onClose={() => setAckDialog((current) => ({...current, open: false}))}
-                maxWidth="sm"
-                fullWidth
-            >
-                <DialogTitle>{t('Acknowledge Reminder')}</DialogTitle>
-                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
-                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
-                        {ackDialog.userLabel || t('Selected user')}
-                    </Typography>
-                    <TextField
-                        size="small"
-                        multiline
-                        minRows={3}
-                        label={t('Acknowledgment Note')}
-                        value={ackDialog.note}
-                        onChange={(event) =>
-                            setAckDialog((current) => ({
-                                ...current,
-                                note: event.target.value,
-                            }))
-                        }
-                    />
-                </DialogContent>
-                <DialogActions sx={{px: 3, pb: 3}}>
-                    <Button
-                        onClick={() => setAckDialog((current) => ({...current, open: false}))}
-                        sx={{textTransform: 'none', color: palette.textMuted}}
-                    >
-                        {t('Cancel')}
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={submitAcknowledgeReminder}
-                        disabled={saving}
-                        sx={{textTransform: 'none', borderRadius: 2}}
-                    >
-                        {saving ? t('Saving...') : t('Acknowledge')}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Dialog
-                open={reviewDialog.open}
-                onClose={() => setReviewDialog((current) => ({...current, open: false}))}
-                maxWidth="sm"
-                fullWidth
-            >
-                <DialogTitle>{t('Review Access')}</DialogTitle>
-                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
-                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
-                        {reviewDialog.userLabel || t('Selected user')}
-                    </Typography>
-                    <TextField
-                        select
-                        size="small"
-                        label={t('Decision')}
-                        value={reviewDialog.decision}
-                        onChange={(event) =>
-                            setReviewDialog((current) => ({
-                                ...current,
-                                decision: event.target.value,
-                            }))
-                        }
-                    >
-                        <MenuItem value="CERTIFIED">{t('Certified')}</MenuItem>
-                        <MenuItem value="NEEDS_CHANGES">{t('Needs Changes')}</MenuItem>
-                        <MenuItem value="REVOKE_REQUESTED">{t('Revoke Requested')}</MenuItem>
-                    </TextField>
-                    <TextField
-                        size="small"
-                        multiline
-                        minRows={3}
-                        label={t('Review Note')}
-                        value={reviewDialog.notes}
-                        onChange={(event) =>
-                            setReviewDialog((current) => ({
-                                ...current,
-                                notes: event.target.value,
-                            }))
-                        }
-                    />
-                    <FormControlLabel
-                        control={
-                            <Switch
-                                checked={reviewDialog.deactivateUser}
-                                onChange={(event) =>
-                                    setReviewDialog((current) => ({
-                                        ...current,
-                                        deactivateUser: event.target.checked,
-                                    }))
-                                }
-                            />
-                        }
-                        label={t('Deactivate user as part of this review')}
-                    />
-                </DialogContent>
-                <DialogActions sx={{px: 3, pb: 3}}>
-                    <Button
-                        onClick={() => setReviewDialog((current) => ({...current, open: false}))}
-                        sx={{textTransform: 'none', color: palette.textMuted}}
-                    >
-                        {t('Cancel')}
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={submitReviewUserAccess}
-                        disabled={saving}
-                        sx={{textTransform: 'none', borderRadius: 2}}
-                    >
-                        {saving ? t('Saving...') : t('Save Review')}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Dialog
-                open={revokeDialog.open}
-                onClose={() => setRevokeDialog((current) => ({...current, open: false}))}
-                maxWidth="sm"
-                fullWidth
-            >
-                <DialogTitle>{t('Revoke Emergency Access')}</DialogTitle>
-                <DialogContent sx={{display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important'}}>
-                    <Typography sx={{fontSize: '0.84rem', color: palette.textMuted}}>
-                        {revokeDialog.userLabel || t('Selected user')}
-                    </Typography>
-                    <TextField
-                        size="small"
-                        multiline
-                        minRows={3}
-                        label={t('Revoke Note')}
-                        value={revokeDialog.revokeNote}
-                        onChange={(event) =>
-                            setRevokeDialog((current) => ({
-                                ...current,
-                                revokeNote: event.target.value,
-                            }))
-                        }
-                    />
-                </DialogContent>
-                <DialogActions sx={{px: 3, pb: 3}}>
-                    <Button
-                        onClick={() => setRevokeDialog((current) => ({...current, open: false}))}
-                        sx={{textTransform: 'none', color: palette.textMuted}}
-                    >
-                        {t('Cancel')}
-                    </Button>
-                    <Button
-                        variant="contained"
-                        color="error"
-                        onClick={revokeEmergencyAccess}
-                        disabled={saving}
-                        sx={{textTransform: 'none', borderRadius: 2}}
-                    >
-                        {saving ? t('Saving...') : t('Revoke')}
-                    </Button>
-                </DialogActions>
-            </Dialog>
         </Box>
     )
 }

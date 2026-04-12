@@ -86,59 +86,6 @@ export const adminApi = {
         return await parseResponse(res)
     },
 
-    reviewUserAccess: async (userId, data) => {
-        const res = await apiFetch(`${BASE}/users/${userId}/access-review`, {
-            method: 'POST',
-            body: JSON.stringify(data || {}),
-        })
-        return await parseResponse(res)
-    },
-
-    acknowledgeAccessReviewReminder: async (userId, data) => {
-        const res = await apiFetch(`${BASE}/users/${userId}/access-review/acknowledge`, {
-            method: 'POST',
-            body: JSON.stringify(data || {}),
-        })
-        return await parseResponse(res)
-    },
-
-    resendAccessReviewReminder: async (userId) => {
-        const res = await apiFetch(`${BASE}/users/${userId}/access-review/remind`, {
-            method: 'POST',
-        })
-        return await parseResponse(res)
-    },
-
-    escalateAccessReview: async (userId) => {
-        const res = await apiFetch(`${BASE}/users/${userId}/access-review/escalate`, {
-            method: 'POST',
-        })
-        return await parseResponse(res)
-    },
-
-    startQuarterlyAccessReviewCycle: async () => {
-        const res = await apiFetch(`${BASE}/access-reviews/quarterly-cycle`, {
-            method: 'POST',
-        })
-        return await parseResponse(res)
-    },
-
-    grantEmergencyAccess: async (data) => {
-        const res = await apiFetch(`${BASE}/emergency-access-grants`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        })
-        return await parseResponse(res)
-    },
-
-    revokeEmergencyAccess: async (grantId, data) => {
-        const res = await apiFetch(`${BASE}/emergency-access-grants/${grantId}/revoke`, {
-            method: 'POST',
-            body: JSON.stringify(data || {}),
-        })
-        return await parseResponse(res)
-    },
-
     // Roles
     getRoles: async () => {
         const res = await apiFetch(`${BASE}/roles`)
